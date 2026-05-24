@@ -1,0 +1,60 @@
+<?xml version="1.0"?>
+<!--
+  Charging dock station with ArUco marker ID=0 (DICT_4X4_50).
+  Origin at dock centre, wall face pointing +X (east).
+  Robot backs in from the east, camera (rear) sees the marker on the west face.
+
+  Coordinate convention (in model frame):
+    - dock base: 0.4 × 0.3 m floor pad
+    - dock wall: 0.1 m thick, 0.3 × 0.35 m face, sitting on base
+    - ArUco panel: 0.20 × 0.20 m placard flush on east face of wall
+-->
+<sdf version="1.6">
+  <model name="aruco_dock">
+    <static>true</static>
+    <link name="link">
+
+      <!-- Green floor pad -->
+      <visual name="base">
+        <pose>0 0 0.025 0 0 0</pose>
+        <geometry><box><size>0.4 0.3 0.05</size></box></geometry>
+        <material>
+          <ambient>0.1 0.8 0.1 1</ambient>
+          <diffuse>0.1 0.8 0.1 1</diffuse>
+        </material>
+      </visual>
+
+      <!-- Yellow back wall (robot backs toward it) -->
+      <collision name="col_wall">
+        <pose>-0.15 0 0.225 0 0 0</pose>
+        <geometry><box><size>0.1 0.3 0.35</size></box></geometry>
+      </collision>
+      <visual name="wall">
+        <pose>-0.15 0 0.225 0 0 0</pose>
+        <geometry><box><size>0.1 0.3 0.35</size></box></geometry>
+        <material>
+          <ambient>0.8 0.8 0.1 1</ambient>
+          <diffuse>0.8 0.8 0.1 1</diffuse>
+        </material>
+      </visual>
+
+      <!--
+        ArUco marker panel — on the EAST face of the wall (+X side),
+        so the camera (at robot back, facing -X when robot faces +X) can see it.
+        Panel is 20 × 20 cm, centred at wall face height 0.20 m.
+      -->
+      <visual name="aruco_panel">
+        <pose>-0.095 0 0.20 0 1.5708 0</pose>
+        <geometry><box><size>0.20 0.20 0.001</size></box></geometry>
+        <material>
+          <script>
+            <uri>model://aruco_dock/materials/scripts</uri>
+            <uri>model://aruco_dock/materials/textures</uri>
+            <name>ArucoMarker/ID0</name>
+          </script>
+        </material>
+      </visual>
+
+    </link>
+  </model>
+</sdf>

@@ -1,0 +1,11 @@
+string station_id    # Station name / identifier
+uint8 type           # Station type: 0=Pick, 1=Drop, 2=Pick&Drop, 3=Charging
+
+float32 x_pose       # Station x position (map frame)
+float32 y_pose       # Station y position (map frame)
+float32 yaw_pose     # Station yaw orientation (radians)
+
+uint8 action         # 0=delete, 1=save
+---
+string result
+

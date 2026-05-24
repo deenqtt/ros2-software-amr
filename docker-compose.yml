@@ -1,0 +1,82 @@
+services:
+
+  # ── AMR Simulation (ROS2 Humble + Gazebo + Nav2) ────────────────────────────
+  amr-sim:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    image: amr-sim:humble
+    container_name: amr-sim
+    restart: unless-stopped
+
+    environment:
+      - DISPLAY=${DISPLAY}
+      - TURTLEBOT3_MODEL=waffle_pi
+      - ROS_DOMAIN_ID=42
+      - USE_SLAM=${USE_SLAM:-true}
+
+    volumes:
+      # X11 for Gazebo GUI
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      # Persist saved maps
+      - ./maps:/maps
+      # Hot-reload workspace source during development
+      - ./ros2_ws/src:/ros2_ws/src:ro
+
+    ports:
+      - "8765:8765"   # Foxglove Bridge (WebSocket → web UI)
+      - "8080:8080"   # web_video_server (camera stream)
+
+    network_mode: host   # Simplifies ROS2 DDS discovery
+
+    # Allow GPU/display access
+    devices:
+      - /dev/dri:/dev/dri
+
+    privileged: true
+
+    command: ros2 launch amr_bringup bringup.launch.py use_slam:=${USE_SLAM:-true}
+
+    healthcheck:
+      test: ["CMD", "ros2", "node", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # ── AMR Backend (FastAPI + SQLite) ──────────────────────────────────────────
+  amr-backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: amr-backend
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    volumes:
+      - ./data:/data        # SQLite DB
+      - ./maps:/maps        # shared map files — same path sebagai amr-sim
+    environment:
+      - DB_PATH=/data/amr.db
+      - MAPS_DIR=/maps
+      - ROS_MAPS_PATH=/maps
+
+  # ── Teleop (optional — keyboard control for manual SLAM mapping) ────────────
+  teleop:
+    image: amr-sim:humble
+    container_name: amr-teleop
+    profiles: ["teleop"]   # Only starts with: docker compose --profile teleop up
+    depends_on: [amr-sim]
+    network_mode: host
+    environment:
+      - ROS_DOMAIN_ID=42
+    stdin_open: true
+    tty: true
+    command: >
+      bash -c "source /opt/ros/humble/setup.bash &&
+               source /ros2_ws/install/setup.bash &&
+               ros2 run teleop_twist_keyboard teleop_twist_keyboard"
+
+volumes:
+  maps:
+  data:

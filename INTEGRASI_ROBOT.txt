@@ -1,0 +1,61 @@
+==========================================================
+  CHECKLIST INTEGRASI WEB UI → ROBOT HARDWARE
+==========================================================
+
+Halo tim robot, berikut beberapa hal yang kami butuhkan
+untuk mengintegrasikan Web UI kami ke robot hardware.
+
+----------------------------------------------------------
+1. ROSBRIDGE WEBSOCKET
+----------------------------------------------------------
+Web UI kami berkomunikasi dengan ROS2 via rosbridge_websocket.
+
+Pertanyaan:
+- Apakah rosbridge_websocket sudah terinstall dan berjalan
+  di Jetson? (port default: 8765)
+- Jika belum, bisa diinstall dengan:
+    apt install ros-humble-rosbridge-suite
+  Dan dijalankan dengan:
+    ros2 launch rosbridge_server rosbridge_websocket_launch.xml
+
+----------------------------------------------------------
+2. WEB VIDEO SERVER (untuk stream kamera)
+----------------------------------------------------------
+- Apakah web_video_server sudah berjalan di Jetson?
+  (port default: 8080)
+- Topic kamera yang digunakan apa?
+  (default kami: /camera/image_raw)
+
+----------------------------------------------------------
+3. NAMA TOPIC
+----------------------------------------------------------
+Mohon konfirmasi nama topic yang digunakan di robot:
+
+  Topic          | Default kami      | Nama di robot?
+  ---------------|-------------------|----------------
+  LiDAR          | /scan             |
+  Odometry       | /odom             |
+  Map            | /map              |
+  Velocity cmd   | /cmd_vel          |
+  Camera         | /camera/image_raw |
+  AMCL pose      | /amcl_pose        |
+  Nav path       | /plan             |
+
+----------------------------------------------------------
+4. NETWORK
+----------------------------------------------------------
+- IP address Jetson berapa?
+  (kami butuh untuk connect web UI ke ws://[IP]:8765)
+- Apakah robot dan laptop kami bisa saling ping?
+  (harus dalam satu jaringan / WiFi yang sama)
+
+----------------------------------------------------------
+5. NAVIGASI
+----------------------------------------------------------
+- Apakah Nav2 sudah berjalan dan bisa navigate_to_pose?
+- Map yang digunakan sudah disimpan dalam format .yaml + .pgm?
+
+==========================================================
+  Jika semua di atas sudah oke, web UI langsung bisa
+  digunakan tanpa perubahan apapun di sisi software kami.
+==========================================================

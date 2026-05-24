@@ -1,0 +1,25 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual Environments
+.venv/
+venv/
+ENV/
+
+# Node.js
+node_modules/
+dist/
+
+# Databases
+*.db
+*.sqlite3
+
+# Local config
+.env
+
+# ROS2 build artifacts
+install/
+build/
+log/

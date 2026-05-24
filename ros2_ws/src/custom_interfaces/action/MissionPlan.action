@@ -1,0 +1,7 @@
+string station_id    # Destination station identifier
+int8 dest_tasks      # Task on destination: 1=Pick, 2=Drop
+bool continue_mode   # true=Auto, false=Manual (wait confirm)
+---
+string result        # Mission result: SUCCESS / FAILED / CANCELED
+---
+string mission_sts   # Feedback: NAVIGATING / DOCKING / WAITING PAYLOAD / COMPLETED

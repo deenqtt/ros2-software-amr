@@ -1,0 +1,221 @@
+# Web UI — Progress & Status
+
+> Last updated: 2026-04-06
+> Stack: Vue 3 + Pinia + roslibjs + Leaflet · Terhubung ke ROS2 via rosbridge WebSocket :8765
+
+---
+
+## Status Keseluruhan
+
+| Komponen | Status | Keterangan |
+|---|---|---|
+| Koneksi ROS | ✅ Done | WebSocket ke rosbridge, auto-reconnect |
+| Map Viewer | ✅ Done | OccupancyGrid render di Leaflet, costmap overlay |
+| Robot Pose | ✅ Done | AMCL pose + footprint URDF, partikel cloud |
+| Single Navigation | ✅ Done | Klik peta → kirim ke `/goal_pose` |
+| Mission System | ✅ Done | Action `/mission_plan` sequential, loop, Manual mode |
+| Docking | ✅ Done | Send/undock/cancel via `/dock_command` service |
+| Teleop | ✅ Done | Joystick pad + D-pad → `/cmd_vel` |
+| SLAM / Mapping | ✅ Done | Toggle SLAM mode, save map |
+| Keepout Zones | ✅ Done | Draw polygon di peta → publish ke ROS |
+| Battery Monitor | ✅ Done | Progress bar, charging indicator |
+| Destination Points | ✅ Done | CRUD via backend API + register ke `/station_config` |
+| Mission Save/Load | ✅ Done | Simpan ke backend SQLite, load by map |
+| Camera Feed | ✅ Done | `web_video_server` :8080 embedded |
+| Map Manager | ✅ Done | Upload/activate/switch map |
+
+---
+
+## Detail Fitur per Panel
+
+### Mission Panel
+```
+Destinations → tambah titik di peta (Pick / Drop / P&D)
+Waypoints    → maks 5 titik, pilih dari destinations
+Options      → Loop (count 0=∞), Timeout per waypoint (default 120s)
+Controls     → Start / Pause / Stop
+Manual mode  → tombol "Confirm" muncul saat robot menunggu konfirmasi
+```
+
+**Alur eksekusi mission:**
+```
+Start
+ └─ followWaypoints(waypoints[])
+      └─ _sendMissionGoal(index=0)
+           └─ send_action_goal → /mission_plan
+                ├─ feedback: NAVIGATING → ARRIVING → EXECUTING_PICK/DROP
+                ├─ [jika Manual] → WAITING_CONFIRM → tunggu tombol Confirm
+                └─ result: SUCCESS
+                     └─ _advanceMission() → index++
+                          ├─ [ada waypoint berikutnya] → _sendMissionGoal(index+1)
+                          └─ [selesai semua]
+                               ├─ [loop aktif] → followWaypoints() lagi
+                               └─ [selesai] → stopMission()
+```
+
+**ROS interface mission:**
+| Arah | Interface | Keterangan |
+|---|---|---|
+| UI → Robot | `send_action_goal /mission_plan` | Kirim satu waypoint per goal |
+| Robot → UI | `/mission_plan/_action/status` | Deteksi goal selesai |
+| Robot → UI | `/mission_plan/_action/feedback` | Status teks navigasi |
+| UI → Robot | `service /mission_confirm` | Konfirmasi Manual mode |
+| UI → Robot | `service /mission_plan/_action/cancel_goal` | Cancel goal aktif |
+
+---
+
+### Navigation Panel
+- Single point navigate → klik peta / input koordinat → `/goal_pose` topic
+- Set initial pose AMCL → klik + drag di peta → `/initialpose`
+- Cancel navigation → service `/navigate_to_pose/_action/cancel_goal`
+
+### Docking Panel
+- Daftar dock stations dari backend API
+- Send to dock → service `/dock_command` `{ action: "dock", station_id, station_name }`
+- Undock / Cancel
+- Status realtime dari topic `/dock_status`
+- Auto-dock jika baterai rendah (configurable threshold)
+
+### Mapping Panel
+- Toggle SLAM / Nav mode
+- Save map → service `/map_saver/save_map`
+- Joystick teleop → publish `/cmd_vel` tiap 80ms
+
+### Setup Panel
+- Map manager: upload `.yaml` + `.pgm`, activate map
+- Destination editor: CRUD, rename, ubah type
+- Dock station editor: set posisi + approach point
+
+### Status Bar
+- Koneksi ROS (connected/disconnected)
+- Robot pose (x, y, θ)
+- Battery percent + charging indicator
+- Nav status (idle/navigating/executing/waiting_confirm/docking)
+- Map save button
+
+---
+
+## Arsitektur Komunikasi
+
+```
+Vue 3 Web UI (:3000)
+    │
+    ├── WebSocket :8765 ──► rosbridge_server
+    │       │
+    │       ├── Topics subscribe:
+    │       │     /map, /amcl_pose, /odom, /plan, /scan
+    │       │     /particle_cloud, /robot_description
+    │       │     /global_costmap/costmap
+    │       │     /mission_plan/_action/status
+    │       │     /mission_plan/_action/feedback
+    │       │     /dock_status, /battery_state
+    │       │
+    │       ├── Topics publish:
+    │       │     /goal_pose, /cmd_vel, /initialpose
+    │       │     /amr/keepout_zones
+    │       │
+    │       ├── Actions:
+    │       │     /mission_plan  (custom_interfaces/action/MissionPlan)
+    │       │
+    │       └── Services:
+    │             /station_config, /dock_command, /mission_confirm
+    │             /map_saver/save_map, /map_server/load_map
+    │             /navigate_to_pose/_action/cancel_goal
+    │             /mission_plan/_action/cancel_goal
+    │
+    └── HTTP :3001 ──► FastAPI Backend (SQLite)
+            │
+            ├── GET/POST/PUT/DELETE /api/destinations
+            ├── GET/POST/PUT/DELETE /api/docks
+            ├── GET/POST/DELETE     /api/missions
+            ├── GET/POST/DELETE     /api/maps
+            └── GET/POST/DELETE     /api/keepout
+```
+
+---
+
+## ROS2 Nodes yang Dijalankan di Simulasi
+
+| Node | File | Fungsi |
+|---|---|---|
+| `rosbridge_websocket` | ros package | Jembatan WebSocket ↔ ROS2 |
+| `mission_manager_node` | `amr_navigation/scripts/` | Action server `/mission_plan` |
+| `docking_manager_node` | `amr_docking/scripts/` | State machine docking |
+| `battery_sim_node` | `amr_simulation/scripts/` | Simulasi baterai |
+| `keepout_mask_server` | `amr_navigation/scripts/` | Update keepout costmap filter |
+| `bt_navigator` | Nav2 | Eksekusi navigasi BehaviorTree |
+| `amcl` | Nav2 | Lokalisasi |
+| `map_server` | Nav2 | Publish `/map` |
+| `slam_toolbox` | — | Mode mapping |
+| `gazebo` | — | Simulasi fisik robot |
+
+---
+
+## Custom Interfaces (ROS2)
+
+```
+custom_interfaces/action/MissionPlan.action
+  Goal:
+    geometry_msgs/PoseStamped dest_pose
+    int8 dest_tasks          # 1=Pick, 2=Drop
+    bool continue_mode       # true=Auto, false=Manual
+  Result:
+    string result            # SUCCESS / FAILED:<reason> / CANCELED
+  Feedback:
+    string mission_sts       # NAVIGATING(Xm) / ARRIVING(Xm) /
+                             # EXECUTING_PICK / EXECUTING_DROP /
+                             # WAITING_CONFIRM / SUCCESS
+
+custom_interfaces/srv/DockCommand.srv
+  string action              # dock / undock / cancel
+  uint8 station_id
+  string station_name
+  ---
+  string result
+
+custom_interfaces/srv/StationConfig.srv
+  uint8 id
+  string name
+  uint8 type                 # 0=Pick, 1=Drop, 2=Pick&Drop
+  uint8 action               # 0=delete, 1=save
+  float64 x_pose, y_pose, yaw_pose
+  float64 x_approach, y_approach, yaw_approach
+  ---
+  string result
+```
+
+---
+
+## Known Issues & Catatan
+
+| # | Issue | Status | Catatan |
+|---|---|---|---|
+| 1 | `missionProgress` bar hitung kurang tepat | Open | `index/total` → seharusnya `(index+1)/total` |
+| 2 | roslibjs tidak emit `action_result`/`action_feedback` | Workaround | Pakai subscribe `_action/status` topic sebagai gantinya |
+| 3 | Manual mode belum ada timeout | Open | Robot bisa stuck selamanya jika operator lupa confirm |
+| 4 | `MissionEditor.vue` duplikat logic dengan `MissionPanel.vue` | Open | Perlu cleanup, gunakan salah satu |
+| 5 | Keepout zones tidak persist di ROS setelah rosbridge restart | Workaround | Re-publish dari localStorage saat reconnect (sudah diimplementasi) |
+
+---
+
+## Changelog Singkat
+
+```
+2026-04-06  Mission system overhaul
+            - Ganti /goal_pose + /amr/mission_payload → /mission_plan action
+            - mission_manager_node.py: action server dengan Nav2 + feedback + manual mode
+            - Fix roslibjs action_result tidak teremit → subscribe _action/status
+            - Tambah /mission_confirm service untuk Manual mode
+            - Tambah tombol Confirm di MissionPanel saat WAITING_CONFIRM
+            - Tambah _advancing guard untuk cegah double-advance
+
+2026-04-xx  Docking system overhaul
+            - Reverse docking via cmd_vel (bukan Nav2)
+            - Odom-based distance tracking
+            - Custom /dock_command service (bukan opennav_docking)
+
+2026-04-xx  Initial release
+            - Full simulation stack: Gazebo + SLAM + Nav2
+            - Vue 3 Web UI dengan semua panel
+            - FastAPI backend + SQLite
+```

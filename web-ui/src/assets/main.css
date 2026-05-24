@@ -1,0 +1,221 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Custom easing curves ───────────────────────────────────────────── */
+:root {
+  --ease-out:    cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+/* ── shadcn-vue CSS Variables (Zinc Dark) ──────────────────────────── */
+@layer base {
+  :root {
+    --background: 0 0% 3.9%;
+    --foreground: 0 0% 98%;
+    --card: 0 0% 7%;
+    --card-foreground: 0 0% 98%;
+    --popover: 0 0% 5%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 0 0% 98%;
+    --primary-foreground: 0 0% 9%;
+    --secondary: 0 0% 14.9%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 0 0% 14.9%;
+    --muted-foreground: 0 0% 63.9%;
+    --accent: 0 0% 14.9%;
+    --accent-foreground: 0 0% 98%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 0 0% 14.9%;
+    --input: 0 0% 14.9%;
+    --ring: 0 0% 83.1%;
+    --radius: 0.5rem;
+
+    /* Sidebar */
+    --sidebar-background: 0 0% 98%;
+    --sidebar-foreground: 240 5.3% 26.1%;
+    --sidebar-primary: 240 5.9% 10%;
+    --sidebar-primary-foreground: 0 0% 98%;
+    --sidebar-accent: 240 4.8% 95.9%;
+    --sidebar-accent-foreground: 240 5.9% 10%;
+    --sidebar-border: 220 13% 91%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+
+  .dark {
+    --sidebar-background: 240 5.9% 10%;
+    --sidebar-foreground: 240 4.8% 95.9%;
+    --sidebar-primary: 224.3 76.3% 48%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 240 3.7% 15.9%;
+    --sidebar-accent-foreground: 240 4.8% 95.9%;
+    --sidebar-border: 240 3.7% 15.9%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+}
+
+/* ── Base ──────────────────────────────────────────────────────────── */
+@layer base {
+  * {
+    border-color: hsl(var(--border));
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'Inter', system-ui, sans-serif;
+  }
+}
+
+/* ── Leaflet dark ──────────────────────────────────────────────────── */
+.leaflet-container {
+  background: #09090b !important;
+}
+
+/* ── Scrollbar ─────────────────────────────────────────────────────── */
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* ── Monospace for sensor data ─────────────────────────────────────── */
+.font-data {
+  font-family: 'JetBrains Mono', monospace;
+}
+
+/* ── AGV Status glow animations ────────────────────────────────────── */
+@keyframes glow-ok {
+
+  0%,
+  100% {
+    box-shadow: 0 0 5px rgba(34, 197, 94, 0.4);
+  }
+
+  50% {
+    box-shadow: 0 0 12px rgba(34, 197, 94, 0.8);
+  }
+}
+
+@keyframes glow-danger {
+
+  0%,
+  100% {
+    box-shadow: 0 0 5px rgba(239, 68, 68, 0.4);
+  }
+
+  50% {
+    box-shadow: 0 0 12px rgba(239, 68, 68, 0.8);
+  }
+}
+
+@keyframes glow-warning {
+
+  0%,
+  100% {
+    box-shadow: 0 0 5px rgba(234, 179, 8, 0.4);
+  }
+
+  50% {
+    box-shadow: 0 0 12px rgba(234, 179, 8, 0.8);
+  }
+}
+
+.glow-ok {
+  animation: glow-ok 2s ease-in-out infinite;
+}
+
+.glow-danger {
+  animation: glow-danger 2s ease-in-out infinite;
+}
+
+.glow-warning {
+  animation: glow-warning 2s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .glow-ok,
+  .glow-danger,
+  .glow-warning {
+    animation: none;
+  }
+
+  .fade-enter-active,
+  .fade-leave-active {
+    transition: opacity 100ms linear;
+  }
+}
+
+/* ── Hover guard: only on pointer-capable devices ──────────────────── */
+@media not (hover: hover) {
+  .hover-only:hover {
+    background: transparent;
+  }
+}
+
+/* ── Tooltip scale-in from trigger side ────────────────────────────── */
+.map-tooltip {
+  transform-origin: right center;
+  transition: opacity 125ms var(--ease-out), transform 125ms var(--ease-out);
+}
+
+.map-tooltip.hidden-tooltip {
+  opacity: 0;
+  transform: scale(0.95);
+}
+
+/* ── Joystick pad ──────────────────────────────────────────────────── */
+.joystick-pad {
+  @apply relative rounded-full cursor-pointer select-none;
+  background: radial-gradient(circle, hsl(0 0% 10%) 0%, hsl(0 0% 6%) 100%);
+  border: 1px solid hsl(var(--border));
+  box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.5);
+}
+
+.joystick-thumb {
+  @apply absolute rounded-full;
+  width: 36px;
+  height: 36px;
+  background: radial-gradient(circle, hsl(0 0% 30%) 0%, hsl(0 0% 18%) 100%);
+  border: 1px solid hsl(0 0% 35%);
+  transform: translate(-50%, -50%);
+  transition: background 0.1s;
+}
+
+.joystick-thumb.active {
+  background: radial-gradient(circle, hsl(0 0% 45%) 0%, hsl(0 0% 28%) 100%);
+}
+
+/* ── Map mode badge (floating overlay) ────────────────────────────── */
+.map-mode-badge {
+  @apply absolute bottom-3 left-1/2 -translate-x-1/2 z-[600] px-3 py-1 rounded-full text-xs font-medium bg-background/90 backdrop-blur border border-border;
+}
+
+/* ── Map waiting overlay fade transition ───────────────────────────── */
+.fade-enter-active {
+  transition: opacity 200ms var(--ease-out);
+}
+
+.fade-leave-active {
+  transition: opacity 150ms var(--ease-out);
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}

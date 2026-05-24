@@ -1,0 +1,198 @@
+==============================================================================
+ KEEPOUT ZONE INTEGRATION — Panduan untuk Tim Robot
+ AGV Web Control Panel
+==============================================================================
+
+OVERVIEW
+--------
+Web UI kami memiliki fitur "Keepout Zones" — operator bisa gambar area terlarang
+langsung di peta via browser. Supaya robot benar-benar menghindari area tersebut,
+tim robot perlu menjalankan 1 node ROS2 yang kami sediakan.
+
+
+CARA KERJA (Alur Data)
+----------------------
+
+  [Browser / Web UI]
+       |
+       | draw polygon di peta → klik "Finish Zone"
+       |
+       ▼
+  [Topic: /amr/keepout_zones]
+  Type: std_msgs/String
+  Format: JSON array, contoh:
+    [
+      {
+        "polygon": [
+          {"x": 1.0, "y": 2.0},
+          {"x": 1.5, "y": 2.0},
+          {"x": 1.5, "y": 2.5},
+          {"x": 1.0, "y": 2.5}
+        ]
+      },
+      {
+        "polygon": [ ... zone ke-2 ... ]
+      }
+    ]
+  Koordinat: meter, frame "map" (sama dengan koordinat Nav2)
+  Publish: setiap kali zone ditambah / dihapus
+       |
+       ▼
+  [Node: keepout_mask_server.py]  ← FILE INI YANG PERLU DIJALANKAN TIM ROBOT
+       |
+       | subscribe /map → dapat resolusi & ukuran peta
+       | subscribe /amr/keepout_zones → dapat polygon zones
+       | convert polygon → OccupancyGrid (cell = 100 jika dalam zona)
+       |
+       ├──► publish /costmap_filter_info  (latched, nav2_msgs/CostmapFilterInfo)
+       └──► publish /keepout_filter_mask  (latched, nav_msgs/OccupancyGrid)
+                    |
+                    ▼
+  [Nav2 KeepoutFilter plugin]
+       |
+       ▼
+  Robot benar-benar avoid area keepout ✓
+
+
+FILE YANG PERLU DIINTEGRASIKAN
+-------------------------------
+Kami berikan 1 file Python:
+
+  keepout_mask_server.py
+
+Taruh di ROS2 workspace tim robot, contoh:
+  ~/robot_ws/src/<package_kalian>/scripts/keepout_mask_server.py
+
+
+CARA INSTALL DI WORKSPACE TIM ROBOT
+-------------------------------------
+
+1. Copy file ke package kalian:
+   cp keepout_mask_server.py ~/robot_ws/src/<package>/scripts/
+
+2. Pastikan file executable:
+   chmod +x ~/robot_ws/src/<package>/scripts/keepout_mask_server.py
+
+3. Daftarkan di CMakeLists.txt package kalian:
+   install(PROGRAMS
+     scripts/keepout_mask_server.py
+     DESTINATION lib/<package>
+   )
+
+4. Build:
+   cd ~/robot_ws
+   colcon build --packages-select <package>
+   source install/setup.bash
+
+5. Jalankan node:
+   ros2 run <package> keepout_mask_server.py
+
+   Atau tambahkan ke launch file kalian:
+   Node(
+       package='<package>',
+       executable='keepout_mask_server.py',
+       name='keepout_mask_server',
+       output='screen',
+   )
+
+
+KONFIGURASI NAV2 YANG DIPERLUKAN
+----------------------------------
+Di nav2_params.yaml kalian, pastikan global_costmap dan/atau local_costmap
+memiliki KeepoutFilter plugin:
+
+  global_costmap:
+    global_costmap:
+      ros__parameters:
+        plugins: ["static_layer", "obstacle_layer", "keepout_filter", "inflation_layer"]
+        keepout_filter:
+          plugin: "nav2_costmap_2d::KeepoutFilter"
+          enabled: true
+          filter_info_topic: "/costmap_filter_info"
+
+  local_costmap:
+    local_costmap:
+      ros__parameters:
+        plugins: ["voxel_layer", "keepout_filter", "inflation_layer"]
+        keepout_filter:
+          plugin: "nav2_costmap_2d::KeepoutFilter"
+          enabled: true
+          filter_info_topic: "/costmap_filter_info"
+
+CATATAN: Urutan plugins penting — keepout_filter harus sebelum inflation_layer.
+
+
+TOPICS SUMMARY
+--------------
+  Subscribe oleh node kami:
+    /map                   nav_msgs/OccupancyGrid    (dari map_server kalian)
+    /amr/keepout_zones     std_msgs/String           (dari Web UI kami)
+
+  Publish oleh node kami:
+    /costmap_filter_info   nav2_msgs/CostmapFilterInfo   (dibaca Nav2)
+    /keepout_filter_mask   nav_msgs/OccupancyGrid         (dibaca Nav2)
+
+Semua publish pakai QoS transient_local (latched) agar Nav2 dapat
+message meskipun subscribe setelah publish.
+
+
+DEPENDENCIES NODE
+-----------------
+Package ROS2 yang dibutuhkan (biasanya sudah ada di Nav2):
+  - rclpy
+  - std_msgs
+  - nav_msgs
+  - nav2_msgs
+
+Tidak perlu install tambahan jika Nav2 sudah terpasang.
+
+
+TESTING / VERIFIKASI
+---------------------
+Setelah node jalan:
+
+1. Cek node running:
+   ros2 node list | grep keepout
+
+2. Cek topic publish:
+   ros2 topic echo /keepout_filter_mask --once
+
+3. Cek dari Web UI:
+   - Buka browser → Maps panel → aktifkan map
+   - Klik toolbar "Keepout" di map
+   - Gambar polygon → Finish
+   - Di terminal Jetson harusnya muncul log:
+     "[keepout_mask_server] Keepout zones updated: 1 zone(s)"
+     "[keepout_mask_server] Published keepout mask: 1 zone(s), N occupied cells"
+
+4. Test robot avoid:
+   - Gambar zone di depan robot
+   - Send nav goal melewati zone → robot harus cari jalan alternatif
+
+
+TROUBLESHOOTING
+---------------
+Problem: Node jalan tapi robot tidak avoid zone
+  → Pastikan KeepoutFilter plugin aktif di nav2_params.yaml
+  → Pastikan filter_info_topic = "/costmap_filter_info" (sama persis)
+  → Restart Nav2 setelah ubah params
+
+Problem: Log "Waiting for /map..." terus menerus
+  → /map belum publish, pastikan map_server sudah jalan
+  → Cek: ros2 topic hz /map
+
+Problem: Zone tergambar di UI tapi tidak ke-publish
+  → Pastikan robot sudah connect ke Foxglove Bridge
+  → Cek: ros2 topic echo /amr/keepout_zones
+
+Problem: Koordinat zone tidak sesuai (offset/salah posisi)
+  → Koordinat polygon dalam frame "map", origin harus sama dengan map_server
+  → Cek origin di file .yaml map kalian
+
+
+KONTAK
+------
+Untuk pertanyaan terkait format data / protokol komunikasi:
+hubungi tim software (yang pegang web-ui dan backend).
+
+==============================================================================

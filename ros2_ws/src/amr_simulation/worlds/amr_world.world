@@ -1,0 +1,178 @@
+<?xml version="1.0"?>
+<!--
+  AMR Warehouse World for Gazebo Classic.
+  A simple warehouse layout with walls, shelving areas, and a charging dock.
+  Based on the TurtleBot3 world format.
+-->
+<sdf version="1.6">
+  <world name="amr_world">
+
+    <!-- Physics -->
+    <physics type="ode">
+      <real_time_update_rate>1000.0</real_time_update_rate>
+      <max_step_size>0.001</max_step_size>
+      <real_time_factor>1</real_time_factor>
+    </physics>
+
+    <!-- Plugins -->
+    <plugin name="gazebo_ros_state" filename="libgazebo_ros_state.so">
+      <ros>
+        <namespace>/gazebo</namespace>
+      </ros>
+      <update_rate>1.0</update_rate>
+    </plugin>
+
+    <!-- Lighting -->
+    <light type="directional" name="sun">
+      <cast_shadows>true</cast_shadows>
+      <pose>0 0 10 0 0 0</pose>
+      <diffuse>0.8 0.8 0.8 1</diffuse>
+      <specular>0.2 0.2 0.2 1</specular>
+      <direction>-0.5 0.1 -0.9</direction>
+    </light>
+
+    <!-- Ground Plane -->
+    <model name="ground_plane">
+      <static>true</static>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <plane>
+              <normal>0 0 1</normal>
+              <size>100 100</size>
+            </plane>
+          </geometry>
+          <surface>
+            <friction>
+              <ode>
+                <mu>100</mu>
+                <mu2>50</mu2>
+              </ode>
+            </friction>
+          </surface>
+        </collision>
+        <visual name="visual">
+          <cast_shadows>false</cast_shadows>
+          <geometry>
+            <plane>
+              <normal>0 0 1</normal>
+              <size>100 100</size>
+            </plane>
+          </geometry>
+          <material>
+            <script>
+              <uri>file://media/materials/scripts/gazebo.material</uri>
+              <name>Gazebo/Grey</name>
+            </script>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- ═══════════════════════════════════════════
+         Warehouse outer walls  (10m × 10m room)
+         ═══════════════════════════════════════════ -->
+
+    <!-- North wall -->
+    <model name="wall_north">
+      <static>true</static>
+      <pose>0 5 0.5 0 0 0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>10 0.2 1</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>10 0.2 1</size></box></geometry>
+          <material><script><name>Gazebo/White</name></script></material></visual>
+      </link>
+    </model>
+
+    <!-- South wall -->
+    <model name="wall_south">
+      <static>true</static>
+      <pose>0 -5 0.5 0 0 0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>10 0.2 1</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>10 0.2 1</size></box></geometry>
+          <material><script><name>Gazebo/White</name></script></material></visual>
+      </link>
+    </model>
+
+    <!-- East wall -->
+    <model name="wall_east">
+      <static>true</static>
+      <pose>5 0 0.5 0 0 1.5707963</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>10 0.2 1</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>10 0.2 1</size></box></geometry>
+          <material><script><name>Gazebo/White</name></script></material></visual>
+      </link>
+    </model>
+
+    <!-- West wall -->
+    <model name="wall_west">
+      <static>true</static>
+      <pose>-5 0 0.5 0 0 1.5707963</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>10 0.2 1</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>10 0.2 1</size></box></geometry>
+          <material><script><name>Gazebo/White</name></script></material></visual>
+      </link>
+    </model>
+
+    <!-- ═══════════════════════════════════════════
+         Shelving obstacles (simulate warehouse racks)
+         ═══════════════════════════════════════════ -->
+
+    <model name="shelf_1">
+      <static>true</static>
+      <pose>-2 2 0.5 0 0 0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>1.5 0.3 1</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>1.5 0.3 1</size></box></geometry>
+          <material><script><name>Gazebo/WoodPallet</name></script></material></visual>
+      </link>
+    </model>
+
+    <model name="shelf_2">
+      <static>true</static>
+      <pose>-2 -1 0.5 0 0 0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>1.5 0.3 1</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>1.5 0.3 1</size></box></geometry>
+          <material><script><name>Gazebo/WoodPallet</name></script></material></visual>
+      </link>
+    </model>
+
+    <model name="shelf_3">
+      <static>true</static>
+      <pose>2 2 0.5 0 0 0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>1.5 0.3 1</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>1.5 0.3 1</size></box></geometry>
+          <material><script><name>Gazebo/WoodPallet</name></script></material></visual>
+      </link>
+    </model>
+
+    <model name="shelf_4">
+      <static>true</static>
+      <pose>2 -1 0.5 0 0 0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>1.5 0.3 1</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>1.5 0.3 1</size></box></geometry>
+          <material><script><name>Gazebo/WoodPallet</name></script></material></visual>
+      </link>
+    </model>
+
+    <!-- ═══════════════════════════════════════════
+         Charging dock station — ArUco ID=0 (4x4_50)
+         Position: (-4, -4) corner.
+         Model origin = dock centre, wall facing +X (east).
+         Robot approaches from east, backs in westward.
+         ═══════════════════════════════════════════ -->
+
+    <include>
+      <uri>model://aruco_dock</uri>
+      <!-- Dock at SW corner; wall on west side → marker face points east (+X) -->
+      <pose>-4 -4 0 0 0 0</pose>
+    </include>
+
+  </world>
+</sdf>

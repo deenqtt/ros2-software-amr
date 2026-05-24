@@ -1,0 +1,4 @@
+string action        # Action: dock / undock / cancel
+string station_id    # Target station identifier
+---
+string result

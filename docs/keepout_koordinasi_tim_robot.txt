@@ -1,0 +1,141 @@
+==============================================================================
+ KEEPOUT ZONE — Panduan Koordinasi dengan Tim Robot
+==============================================================================
+
+LANGKAH PERTAMA: TANYA TIM ROBOT
+----------------------------------
+Sebelum apapun, tanyakan satu pertanyaan ini ke tim robot:
+
+  "Kalian sudah pakai KeepoutFilter di Nav2?
+   Kalau iya, pakai static mask file atau ada node sendiri
+   yang publish /keepout_filter_mask?"
+
+
+==============================================================================
+ SKENARIO A — Tim Robot BELUM punya keepout sama sekali
+==============================================================================
+
+Tanda-tandanya:
+  - nav2_params.yaml mereka tidak ada "keepout_filter" di plugins
+  - Tidak ada file keepout_mask.yaml
+  - Tidak ada node yang publish /keepout_filter_mask
+
+Yang perlu dilakukan:
+  1. Kasih file keepout_mask_server.py ke tim robot
+  2. Kasih file keepout_integration.txt (panduan teknis lengkap)
+  3. Minta mereka ikuti panduan tersebut
+
+Hasil: Keepout zones bisa diatur langsung dari Web UI browser.
+Tidak ada konflik. Langsung jalan.
+
+
+==============================================================================
+ SKENARIO B — Tim Robot pakai STATIC MASK FILE (.yaml)
+==============================================================================
+
+Tanda-tandanya:
+  - Ada file keepout_mask.yaml di workspace mereka
+  - nav2_params.yaml mereka ada "keepout_filter" di plugins
+  - Ada launch file yang start map_server untuk keepout mask
+  - Zones-nya fixed, tidak bisa diubah tanpa edit file
+
+Masalahnya:
+  Node kita dan setup mereka sama-sama publish ke:
+    /costmap_filter_info
+    /keepout_filter_mask
+  Kalau dua-duanya jalan → konflik, hasilnya tidak predictable.
+
+Yang perlu dilakukan — pilih salah satu:
+
+  -----------------------------------------------------------------------
+  PILIHAN B1 — Pakai punya kita, matikan static file mereka  [RECOMMENDED]
+  -----------------------------------------------------------------------
+  Minta tim robot:
+    1. Nonaktifkan map_server untuk keepout mask di launch file mereka
+    2. Jalankan keepout_mask_server.py kita sebagai gantinya
+    3. Config nav2_params.yaml tidak perlu diubah (filter_info_topic sama)
+
+  Keuntungan: Operator bisa edit zones dari browser kapan saja
+  Kekurangan: Zones tidak persistent saat node restart
+              (solusi: UI simpan ke DB, re-publish saat connect)
+
+  -----------------------------------------------------------------------
+  PILIHAN B2 — Tetap pakai static file mereka, nonaktifkan UI keepout
+  -----------------------------------------------------------------------
+  Tidak perlu koordinasi lebih lanjut dengan tim robot.
+  Di sisi kita: fitur keepout di Web UI bisa dibiarkan
+  (visual only, tidak affect robot).
+
+  Keuntungan: Zero risk, tidak ada yang perlu diubah di ROS
+  Kekurangan: Operator tidak bisa edit zones dari browser
+
+
+==============================================================================
+ SKENARIO C — Tim Robot punya NODE SENDIRI untuk keepout
+==============================================================================
+
+Tanda-tandanya:
+  - Ada Python/C++ node di workspace mereka yang publish /keepout_filter_mask
+  - Mereka punya UI atau cara sendiri untuk manage zones
+
+Masalahnya:
+  Dua node publish ke topic yang sama → konflik langsung.
+
+Yang perlu dilakukan — pilih salah satu:
+
+  -----------------------------------------------------------------------
+  PILIHAN C1 — Koordinasi: node mereka subscribe topic kita juga
+  -----------------------------------------------------------------------
+  Minta tim robot modifikasi node mereka agar juga subscribe
+  /amr/keepout_zones dari kita, lalu merge dengan zones mereka.
+
+  Format JSON yang kita publish:
+    [
+      {"polygon": [{"x": 1.0, "y": 2.0}, {"x": 1.5, "y": 2.0}, ...]},
+      {"polygon": [ ... ]}
+    ]
+  Koordinat: meter, frame "map"
+
+  Keuntungan: Dua sistem bisa jalan bersamaan
+  Kekurangan: Perlu effort dari tim robot untuk modifikasi node mereka
+
+  -----------------------------------------------------------------------
+  PILIHAN C2 — Nonaktifkan keepout di UI kita
+  -----------------------------------------------------------------------
+  Tidak ada yang perlu diubah. UI keepout jadi visual only.
+
+  Keuntungan: Zero effort, zero risk
+  Kekurangan: Fitur keepout UI tidak functional
+
+
+==============================================================================
+ RINGKASAN KEPUTUSAN
+==============================================================================
+
+  Tim robot belum punya apa-apa?
+    → Kasih keepout_mask_server.py + keepout_integration.txt
+    → Selesai
+
+  Tim robot pakai static file?
+    → Recommended: minta mereka ganti ke node kita (Pilihan B1)
+    → Atau biarkan saja, keepout UI jadi visual only (Pilihan B2)
+
+  Tim robot punya node sendiri?
+    → Tanya mereka mau merge atau tidak (Pilihan C1)
+    → Atau biarkan saja, keepout UI jadi visual only (Pilihan C2)
+
+
+==============================================================================
+ CATATAN PENTING
+==============================================================================
+
+Keepout zones dari UI disimpan ke database kita (/opt/amr/data/amr.db).
+Saat operator activate map, zones langsung di-publish ulang ke ROS.
+Jadi meski node restart, zones tidak hilang selama backend kita jalan.
+
+Untuk pameran:
+  Kalau keepout tidak jadi requirement fungsional,
+  visual only (zones tampil di peta UI) sudah cukup bagus.
+  Tidak perlu integrasi apapun dengan tim robot.
+
+==============================================================================
