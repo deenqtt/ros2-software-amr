@@ -45,6 +45,16 @@ def generate_launch_description():
     declare_use_sim_time = DeclareLaunchArgument(
         "use_sim_time", default_value="true"
     )
+    declare_gui = DeclareLaunchArgument(
+        "gui",
+        default_value="false",
+        description="Enable Gazebo GUI when a local display is available",
+    )
+    declare_headless = DeclareLaunchArgument(
+        "headless",
+        default_value="true",
+        description="Run Gazebo server-only; takes precedence over gui",
+    )
     declare_foxglove_port = DeclareLaunchArgument(
         "foxglove_port", default_value="8765"
     )
@@ -56,6 +66,8 @@ def generate_launch_description():
         ),
         launch_arguments={
             "use_sim_time": LaunchConfiguration("use_sim_time"),
+            "gui": LaunchConfiguration("gui"),
+            "headless": LaunchConfiguration("headless"),
         }.items(),
     )
 
@@ -163,6 +175,8 @@ def generate_launch_description():
             declare_use_slam,
             declare_map,
             declare_use_sim_time,
+            declare_gui,
+            declare_headless,
             declare_foxglove_port,
             sim,
             slam,

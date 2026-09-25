@@ -1,0 +1,24 @@
+Investigation: cross-machine velocity/pose drift
+Collected: 2026-09-18 Asia/Jakarta
+Label: VERIFIED AT RUNTIME / SOURCE CONTROL
+
+Computer A:
+  pwd: /home/deden/Documents/my-project/ros2-software-amr
+  branch: main
+  HEAD: 3ddde28b668d646fed8f9e39188a9f1153e74a28
+  working tree: dirty before investigation
+  tracked modifications included web-ui/src/composables/useROS.js and multiple ROS/docker files
+  untracked reports/evidence existed before this investigation
+
+No production source file was edited by this investigation.
+
+Computer B:
+  host: gspe-ai3-MS-7E32
+  workspace: /home/gspe-ai3/ros2_gprp_amr_ws
+  branch: desktop_test
+  HEAD: 73d4fd1bd66529111bc0aa8d8e6aacd34aa00d26
+  ROS_DISTRO: jazzy
+  ROS_DOMAIN_ID: 10
+  working tree: dirty before investigation
+
+Credentials were not written to this file or any repository file.

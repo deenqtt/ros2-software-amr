@@ -9,7 +9,7 @@
     - dock wall: 0.1 m thick, 0.3 × 0.35 m face, sitting on base
     - ArUco panel: 0.20 × 0.20 m placard flush on east face of wall
 -->
-<sdf version="1.6">
+<sdf version="1.9">
   <model name="aruco_dock">
     <static>true</static>
     <link name="link">
@@ -46,12 +46,11 @@
       <visual name="aruco_panel">
         <pose>-0.095 0 0.20 0 1.5708 0</pose>
         <geometry><box><size>0.20 0.20 0.001</size></box></geometry>
+        <!-- The legacy texture script is not portable to Harmonic. Keep the
+             panel geometry; visual marker texture is a later camera phase. -->
         <material>
-          <script>
-            <uri>model://aruco_dock/materials/scripts</uri>
-            <uri>model://aruco_dock/materials/textures</uri>
-            <name>ArucoMarker/ID0</name>
-          </script>
+          <ambient>0.05 0.05 0.05 1</ambient>
+          <diffuse>0.05 0.05 0.05 1</diffuse>
         </material>
       </visual>
 

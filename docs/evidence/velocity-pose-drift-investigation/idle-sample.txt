@@ -1,0 +1,4 @@
+Label: NOT VERIFIED
+
+No idle /cmd_vel, /odom, or TF sample was collected because Computer B had no active
+AMR ROS graph and Mapping/navigation was intentionally not started.

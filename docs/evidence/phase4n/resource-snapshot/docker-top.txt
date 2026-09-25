@@ -1,0 +1,7 @@
+PID                 PPID                STAT                ELAPSED             %CPU                %MEM                COMMAND
+842456              842432              Ss                  00:14               0.2                 0.0                 tail
+842987              842456              Sl                  00:11               4.3                 0.2                 ros2
+842997              842987              S                   00:11               0.0                 0.0                 sh
+842998              842987              Sl                  00:11               21.7                0.3                 parameter_bridg
+842999              842987              Sl                  00:11               6.2                 0.1                 robot_state_pub
+843000              842997              Rl                  00:11               106                 2.2                 ruby

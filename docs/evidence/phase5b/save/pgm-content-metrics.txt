@@ -1,0 +1,1 @@
+{'magic': 'P5', 'width': 207, 'height': 206, 'max': 255, 'payload_bytes': 42642, 'unique_values': 3, 'top_values': [(254, 36799), (0, 3135), (205, 2708)], 'nonblank': True}

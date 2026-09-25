@@ -1,0 +1,857 @@
+## nodes
+/phase4_bridge
+/robot_state_publisher
+## topic list
+/parameter_events [rcl_interfaces/msg/ParameterEvent]
+/rosout [rcl_interfaces/msg/Log]
+## topic info
+### /clock
+Unknown topic '/clock'
+### /cmd_vel
+Unknown topic '/cmd_vel'
+### /odom
+Unknown topic '/odom'
+### /tf
+Type: tf2_msgs/msg/TFMessage
+
+Publisher count: 2
+
+Node name: phase4_bridge
+Node namespace: /
+Topic type: tf2_msgs/msg/TFMessage
+Topic type hash: RIHS01_e369d0f05a23ae52508854b66f6aa0437f3449d652e8cbf22d5abe85d020f087
+Endpoint type: PUBLISHER
+GID: 01.0f.9f.73.1e.00.7b.3c.00.00.00.00.00.00.18.03
+QoS profile:
+  Reliability: RELIABLE
+  History (Depth): UNKNOWN
+  Durability: VOLATILE
+  Lifespan: Infinite
+  Deadline: Infinite
+  Liveliness: AUTOMATIC
+  Liveliness lease duration: Infinite
+
+Node name: robot_state_publisher
+Node namespace: /
+Topic type: tf2_msgs/msg/TFMessage
+Topic type hash: RIHS01_e369d0f05a23ae52508854b66f6aa0437f3449d652e8cbf22d5abe85d020f087
+Endpoint type: PUBLISHER
+GID: 01.0f.9f.73.20.00.cb.bf.00.00.00.00.00.00.15.03
+QoS profile:
+  Reliability: RELIABLE
+  History (Depth): UNKNOWN
+  Durability: VOLATILE
+  Lifespan: Infinite
+  Deadline: Infinite
+  Liveliness: AUTOMATIC
+  Liveliness lease duration: Infinite
+
+Subscription count: 0
+
+### /tf_static
+Type: tf2_msgs/msg/TFMessage
+
+Publisher count: 1
+
+Node name: robot_state_publisher
+Node namespace: /
+Topic type: tf2_msgs/msg/TFMessage
+Topic type hash: RIHS01_e369d0f05a23ae52508854b66f6aa0437f3449d652e8cbf22d5abe85d020f087
+Endpoint type: PUBLISHER
+GID: 01.0f.9f.73.20.00.cb.bf.00.00.00.00.00.00.16.03
+QoS profile:
+  Reliability: RELIABLE
+  History (Depth): UNKNOWN
+  Durability: TRANSIENT_LOCAL
+  Lifespan: Infinite
+  Deadline: Infinite
+  Liveliness: AUTOMATIC
+  Liveliness lease duration: Infinite
+
+Subscription count: 0
+
+### /scan
+Type: sensor_msgs/msg/LaserScan
+
+Publisher count: 1
+
+Node name: phase4_bridge
+Node namespace: /
+Topic type: sensor_msgs/msg/LaserScan
+Topic type hash: RIHS01_64c191398013af96509d518dac71d5164f9382553fce5c1f8cca5be7924bd828
+Endpoint type: PUBLISHER
+GID: 01.0f.9f.73.1e.00.7b.3c.00.00.00.00.00.00.19.03
+QoS profile:
+  Reliability: BEST_EFFORT
+  History (Depth): UNKNOWN
+  Durability: VOLATILE
+  Lifespan: Infinite
+  Deadline: Infinite
+  Liveliness: AUTOMATIC
+  Liveliness lease duration: Infinite
+
+Subscription count: 0
+
+### /imu
+Type: sensor_msgs/msg/Imu
+
+Publisher count: 1
+
+Node name: phase4_bridge
+Node namespace: /
+Topic type: sensor_msgs/msg/Imu
+Topic type hash: RIHS01_7d9a00ff131080897a5ec7e26e315954b8eae3353c3f995c55faf71574000b5b
+Endpoint type: PUBLISHER
+GID: 01.0f.9f.73.1e.00.7b.3c.00.00.00.00.00.00.1a.03
+QoS profile:
+  Reliability: BEST_EFFORT
+  History (Depth): UNKNOWN
+  Durability: VOLATILE
+  Lifespan: Infinite
+  Deadline: Infinite
+  Liveliness: AUTOMATIC
+  Liveliness lease duration: Infinite
+
+Subscription count: 0
+
+### /camera/image_raw
+Type: sensor_msgs/msg/Image
+
+Publisher count: 1
+
+Node name: phase4_bridge
+Node namespace: /
+Topic type: sensor_msgs/msg/Image
+Topic type hash: RIHS01_d31d41a9a4c4bc8eae9be757b0beed306564f7526c88ea6a4588fb9582527d47
+Endpoint type: PUBLISHER
+GID: 01.0f.9f.73.1e.00.7b.3c.00.00.00.00.00.00.1b.03
+QoS profile:
+  Reliability: BEST_EFFORT
+  History (Depth): UNKNOWN
+  Durability: VOLATILE
+  Lifespan: Infinite
+  Deadline: Infinite
+  Liveliness: AUTOMATIC
+  Liveliness lease duration: Infinite
+
+Subscription count: 0
+
+### /camera/camera_info
+Type: sensor_msgs/msg/CameraInfo
+
+Publisher count: 1
+
+Node name: phase4_bridge
+Node namespace: /
+Topic type: sensor_msgs/msg/CameraInfo
+Topic type hash: RIHS01_b3dfd68ff46c9d56c80fd3bd4ed22c7a4ddce8c8348f2f59c299e73118e7e275
+Endpoint type: PUBLISHER
+GID: 01.0f.9f.73.1e.00.7b.3c.00.00.00.00.00.00.1c.03
+QoS profile:
+  Reliability: BEST_EFFORT
+  History (Depth): UNKNOWN
+  Durability: VOLATILE
+  Lifespan: Infinite
+  Deadline: Infinite
+  Liveliness: AUTOMATIC
+  Liveliness lease duration: Infinite
+
+Subscription count: 0
+
+## payload samples
+header:
+  stamp:
+    sec: 35
+    nanosec: 938000000
+  frame_id: odom
+child_frame_id: base_footprint
+pose:
+  pose:
+    position:
+      x: -7.612137319704957e-19
+      y: -4.343108786487912e-37
+      z: 0.0
+    orientation:
+      x: 0.0
+      y: 0.0
+      z: 6.899952254010378e-19
+      w: 1.0
+  covariance:
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+twist:
+  twist:
+    linear:
+      x: -1.5358827144963805e-20
+      y: 0.0
+      z: 0.0
+    angular:
+      x: 0.0
+      y: 0.0
+      z: 1.8678277168174408e-19
+  covariance:
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+---
+header:
+  stamp:
+    sec: 37
+    nanosec: 300000000
+  frame_id: base_scan
+angle_min: -2.356194496154785
+angle_max: 2.356194496154785
+angle_increment: 0.006554087623953819
+time_increment: 0.0
+scan_time: 0.0
+range_min: 0.11999999731779099
+range_max: 12.0
+ranges:
+- 0.27940917015075684
+- 0.28044232726097107
+- 6.828231334686279
+- 6.8058624267578125
+- 6.762408256530762
+- 6.702133655548096
+- 6.678409576416016
+- 6.628108024597168
+- 6.603909969329834
+- 6.544499397277832
+- 6.526951313018799
+- 6.4754180908203125
+- 6.449991703033447
+- 6.395388126373291
+- 6.373894691467285
+- 6.347805976867676
+- 6.297948360443115
+- 6.281239986419678
+- 6.228275775909424
+- 6.20573091506958
+- 6.179760932922363
+- 6.136543273925781
+- 6.116489887237549
+- 6.086665630340576
+- 6.043121337890625
+- 6.030925273895264
+- 6.000642776489258
+- 5.982186794281006
+- 5.924544811248779
+- 5.911091327667236
+- 5.897439002990723
+- 5.878457546234131
+- 5.8517961502075195
+- 5.81674861907959
+- 5.779574394226074
+- 5.773439407348633
+- 5.741939544677734
+- 5.728785514831543
+- 5.705187797546387
+- 5.665182113647461
+- 5.653657913208008
+- 5.633225440979004
+- 5.601165771484375
+- 5.598735809326172
+- 5.575915813446045
+- 5.560767650604248
+- 5.533647537231445
+- 5.524863243103027
+- 5.499474048614502
+- 5.483373641967773
+- 5.462601661682129
+- 5.451240062713623
+- 5.4209885597229
+- 5.4071364402771
+- 5.39068603515625
+- 5.373617649078369
+- 5.34998893737793
+- 5.340450763702393
+- 5.3300275802612305
+- 5.3138837814331055
+- 5.287295818328857
+- 5.282049179077148
+- 5.269020080566406
+- 5.259102821350098
+- 5.256227016448975
+- 5.243497371673584
+- 5.237292766571045
+- 5.2123823165893555
+- 5.192564964294434
+- 5.186856269836426
+- 5.1727094650268555
+- 5.162571907043457
+- 5.146965980529785
+- 5.141361236572266
+- 5.12699031829834
+- 5.117555141448975
+- 5.106040954589844
+- 5.098526954650879
+- 5.089393615722656
+- 5.07956600189209
+- 5.079772472381592
+- 5.057521343231201
+- 5.0431694984436035
+- 5.047623634338379
+- 5.027298450469971
+- 5.025062084197998
+- 5.010385036468506
+- 5.005005836486816
+- 5.011183738708496
+- 5.007198333740234
+- 5.005206108093262
+- 4.984079360961914
+- 4.986520767211914
+- 4.978706359863281
+- 4.970134258270264
+- 4.9766693115234375
+- 4.963982582092285
+- 4.956690311431885
+- 4.944342613220215
+- 4.9456586837768555
+- 4.935726642608643
+- 4.941890716552734
+- 4.933338165283203
+- 4.927419662475586
+- 4.925989627838135
+- 4.925465106964111
+- 4.923891067504883
+- 4.913185119628906
+- 4.914371967315674
+- 4.918920040130615
+- 4.907531261444092
+- 4.9031147956848145
+- 4.912022113800049
+- 4.907310962677002
+- 4.896213531494141
+- 4.915164947509766
+- 4.903446197509766
+- 4.89232873916626
+- 4.906975746154785
+- 4.9025163650512695
+- 4.894975662231445
+- 4.896466255187988
+- 4.8947224617004395
+- 4.900367736816406
+- 4.906126499176025
+- 4.911919116973877
+- 4.902468681335449
+- 4.90581750869751
+- '...'
+intensities:
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- '...'
+---
+header:
+  stamp:
+    sec: 38
+    nanosec: 550000000
+  frame_id: imu_link
+orientation:
+  x: -1.1287527942103988e-10
+  y: 9.428570821566707e-11
+  z: 5.949964761900439e-19
+  w: 1.0
+orientation_covariance:
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+angular_velocity:
+  x: 9.749469978756137e-13
+  y: -8.13013141546827e-13
+  z: 8.587399545980664e-19
+angular_velocity_covariance:
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+linear_acceleration:
+  x: -1.8479989055699721e-09
+  y: -2.2123546661874365e-09
+  z: 9.799999999999999
+linear_acceleration_covariance:
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+---
+header:
+  stamp:
+    sec: 39
+    nanosec: 799000000
+  frame_id: camera_rgb_optical_frame
+height: 480
+width: 640
+distortion_model: plumb_bob
+d:
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+k:
+- 457.00756072998047
+- 0.0
+- 320.0
+- 0.0
+- 457.007532119751
+- 240.0
+- 0.0
+- 0.0
+- 1.0
+r:
+- 1.0
+- 0.0
+- 0.0
+- 0.0
+- 1.0
+- 0.0
+- 0.0
+- 0.0
+- 1.0
+p:
+- 457.00756072998047
+- 0.0
+- 320.0
+- 0.0
+- 0.0
+- 457.007532119751
+- 240.0
+- 0.0
+- 0.0
+- 0.0
+- 1.0
+- 0.0
+binning_x: 0
+binning_y: 0
+roi:
+  x_offset: 0
+  y_offset: 0
+  height: 0
+  width: 0
+  do_rectify: false
+---
+## rates
+average rate: 9.771
+	min: 0.096s max: 0.111s std dev: 0.00358s window: 11
+average rate: 9.747
+	min: 0.095s max: 0.112s std dev: 0.00382s window: 21
+average rate: 9.709
+	min: 0.095s max: 0.115s std dev: 0.00447s window: 31
+average rate: 28.606
+	min: 0.032s max: 0.044s std dev: 0.00256s window: 30
+average rate: 28.941
+	min: 0.032s max: 0.044s std dev: 0.00197s window: 60
+average rate: 28.714
+	min: 0.032s max: 0.048s std dev: 0.00263s window: 89
+## tf edges
+[INFO] [1789881201.149467829] [tf2_echo]: Waiting for transform odom ->  base_footprint: Invalid frame ID "odom" passed to canTransform argument target_frame - frame does not exist
+At time 51.238000000
+- Translation: [-0.000, -0.000, 0.000]
+- Rotation: in Quaternion (xyzw) [0.000, 0.000, 0.000, 1.000]
+- Rotation: in RPY (radian) [0.000, -0.000, 0.000]
+- Rotation: in RPY (degree) [0.000, -0.000, 0.000]
+- Matrix:
+  1.000 -0.000  0.000 -0.000
+  0.000  1.000  0.000 -0.000
+  0.000  0.000  1.000  0.000
+  0.000  0.000  0.000  1.000
+At time 52.190000000
+- Translation: [-0.000, -0.000, 0.000]
+- Rotation: in Quaternion (xyzw) [0.000, 0.000, 0.000, 1.000]
+- Rotation: in RPY (radian) [0.000, -0.000, 0.000]
+- Rotation: in RPY (degree) [0.000, -0.000, 0.000]
+- Matrix:
+  1.000 -0.000  0.000 -0.000
+  0.000  1.000  0.000 -0.000
+  0.000  0.000  1.000  0.000
+  0.000  0.000  0.000  1.000
+At time 53.176000000
+- Translation: [-0.000, -0.000, 0.000]
+- Rotation: in Quaternion (xyzw) [0.000, 0.000, 0.000, 1.000]
+- Rotation: in RPY (radian) [0.000, -0.000, 0.000]
+- Rotation: in RPY (degree) [0.000, -0.000, 0.000]
+- Matrix:
+  1.000 -0.000  0.000 -0.000
+  0.000  1.000  0.000 -0.000
+  0.000  0.000  1.000  0.000
+  0.000  0.000  0.000  1.000
+At time 54.128000000
+- Translation: [-0.000, -0.000, 0.000]
+- Rotation: in Quaternion (xyzw) [0.000, 0.000, 0.000, 1.000]
+- Rotation: in RPY (radian) [0.000, -0.000, 0.000]
+- Rotation: in RPY (degree) [0.000, -0.000, 0.000]
+- Matrix:
+  1.000 -0.000  0.000 -0.000
+  0.000  1.000  0.000 -0.000
+  0.000  0.000  1.000  0.000
+  0.000  0.000  0.000  1.000
+At time 55.114000000
+- Translation: [-0.000, -0.000, 0.000]
+- Rotation: in Quaternion (xyzw) [0.000, 0.000, 0.000, 1.000]
+- Rotation: in RPY (radian) [0.000, -0.000, 0.000]
+- Rotation: in RPY (degree) [0.000, -0.000, 0.000]
+- Matrix:
+  1.000 -0.000  0.000 -0.000
+  0.000  1.000  0.000 -0.000
+  0.000  0.000  1.000  0.000
+  0.000  0.000  0.000  1.000
+At time 56.100000000
+- Translation: [-0.000, -0.000, 0.000]
+- Rotation: in Quaternion (xyzw) [0.000, 0.000, 0.000, 1.000]
+- Rotation: in RPY (radian) [0.000, -0.000, 0.000]
+- Rotation: in RPY (degree) [0.000, -0.000, 0.000]
+- Matrix:
+  1.000 -0.000  0.000 -0.000
+  0.000  1.000  0.000 -0.000
+  0.000  0.000  1.000  0.000
+  0.000  0.000  0.000  1.000
+At time 57.86000000
+- Translation: [-0.000, -0.000, 0.000]
+- Rotation: in Quaternion (xyzw) [0.000, 0.000, 0.000, 1.000]
+- Rotation: in RPY (radian) [0.000, -0.000, 0.000]
+- Rotation: in RPY (degree) [0.000, -0.000, 0.000]
+- Matrix:
+  1.000 -0.000  0.000 -0.000
+  0.000  1.000  0.000 -0.000
+  0.000  0.000  1.000  0.000
+  0.000  0.000  0.000  1.000
+[INFO] [1789881208.919169729] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[INFO] [1789881209.242075116] [tf2_echo]: Waiting for transform base_footprint ->  base_link: Invalid frame ID "base_footprint" passed to canTransform argument target_frame - frame does not exist
+At time 0.0
+- Translation: [0.000, 0.000, 0.165]
+- Rotation: in Quaternion (xyzw) [0.000, 0.000, 0.000, 1.000]
+- Rotation: in RPY (radian) [0.000, -0.000, 0.000]
+- Rotation: in RPY (degree) [0.000, -0.000, 0.000]
+- Matrix:
+  1.000  0.000  0.000  0.000
+  0.000  1.000  0.000  0.000
+  0.000  0.000  1.000  0.165
+  0.000  0.000  0.000  1.000
+At time 0.0
+- Translation: [0.000, 0.000, 0.165]
+- Rotation: in Quaternion (xyzw) [0.000, 0.000, 0.000, 1.000]
+- Rotation: in RPY (radian) [0.000, -0.000, 0.000]
+- Rotation: in RPY (degree) [0.000, -0.000, 0.000]
+- Matrix:
+  1.000  0.000  0.000  0.000
+  0.000  1.000  0.000  0.000
+  0.000  0.000  1.000  0.165
+  0.000  0.000  0.000  1.000
+At time 0.0
+- Translation: [0.000, 0.000, 0.165]
+- Rotation: in Quaternion (xyzw) [0.000, 0.000, 0.000, 1.000]
+- Rotation: in RPY (radian) [0.000, -0.000, 0.000]
+- Rotation: in RPY (degree) [0.000, -0.000, 0.000]
+- Matrix:
+  1.000  0.000  0.000  0.000
+  0.000  1.000  0.000  0.000
+  0.000  0.000  1.000  0.165
+  0.000  0.000  0.000  1.000
+At time 0.0
+- Translation: [0.000, 0.000, 0.165]
+- Rotation: in Quaternion (xyzw) [0.000, 0.000, 0.000, 1.000]
+- Rotation: in RPY (radian) [0.000, -0.000, 0.000]
+- Rotation: in RPY (degree) [0.000, -0.000, 0.000]
+- Matrix:
+  1.000  0.000  0.000  0.000
+  0.000  1.000  0.000  0.000
+  0.000  0.000  1.000  0.165
+  0.000  0.000  0.000  1.000
+At time 0.0
+- Translation: [0.000, 0.000, 0.165]
+- Rotation: in Quaternion (xyzw) [0.000, 0.000, 0.000, 1.000]
+- Rotation: in RPY (radian) [0.000, -0.000, 0.000]
+- Rotation: in RPY (degree) [0.000, -0.000, 0.000]
+- Matrix:
+  1.000  0.000  0.000  0.000
+  0.000  1.000  0.000  0.000
+  0.000  0.000  1.000  0.165
+  0.000  0.000  0.000  1.000
+At time 0.0
+- Translation: [0.000, 0.000, 0.165]
+- Rotation: in Quaternion (xyzw) [0.000, 0.000, 0.000, 1.000]
+- Rotation: in RPY (radian) [0.000, -0.000, 0.000]
+- Rotation: in RPY (degree) [0.000, -0.000, 0.000]
+- Matrix:
+  1.000  0.000  0.000  0.000
+  0.000  1.000  0.000  0.000
+  0.000  0.000  1.000  0.165
+  0.000  0.000  0.000  1.000
+At time 0.0
+- Translation: [0.000, 0.000, 0.165]
+- Rotation: in Quaternion (xyzw) [0.000, 0.000, 0.000, 1.000]
+- Rotation: in RPY (radian) [0.000, -0.000, 0.000]
+- Rotation: in RPY (degree) [0.000, -0.000, 0.000]
+- Matrix:
+  1.000  0.000  0.000  0.000
+  0.000  1.000  0.000  0.000
+  0.000  0.000  1.000  0.165
+  0.000  0.000  0.000  1.000
+[INFO] [1789881216.924046888] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[INFO] [1789881217.129305798] [tf2_echo]: Waiting for transform base_link ->  base_scan: Invalid frame ID "base_link" passed to canTransform argument target_frame - frame does not exist
+[INFO] [1789881219.100027038] [tf2_echo]: Waiting for transform base_link ->  base_scan: Invalid frame ID "base_link" passed to canTransform argument target_frame - frame does not exist
+At time 0.0
+- Translation: [0.000, 0.000, 0.085]
+- Rotation: in Quaternion (xyzw) [0.000, 0.000, 0.000, 1.000]
+- Rotation: in RPY (radian) [0.000, -0.000, 0.000]
+- Rotation: in RPY (degree) [0.000, -0.000, 0.000]
+- Matrix:
+  1.000  0.000  0.000  0.000
+  0.000  1.000  0.000  0.000
+  0.000  0.000  1.000  0.085
+  0.000  0.000  0.000  1.000
+At time 0.0
+- Translation: [0.000, 0.000, 0.085]
+- Rotation: in Quaternion (xyzw) [0.000, 0.000, 0.000, 1.000]
+- Rotation: in RPY (radian) [0.000, -0.000, 0.000]
+- Rotation: in RPY (degree) [0.000, -0.000, 0.000]
+- Matrix:
+  1.000  0.000  0.000  0.000
+  0.000  1.000  0.000  0.000
+  0.000  0.000  1.000  0.085
+  0.000  0.000  0.000  1.000
+At time 0.0
+- Translation: [0.000, 0.000, 0.085]
+- Rotation: in Quaternion (xyzw) [0.000, 0.000, 0.000, 1.000]
+- Rotation: in RPY (radian) [0.000, -0.000, 0.000]
+- Rotation: in RPY (degree) [0.000, -0.000, 0.000]
+- Matrix:
+  1.000  0.000  0.000  0.000
+  0.000  1.000  0.000  0.000
+  0.000  0.000  1.000  0.085
+  0.000  0.000  0.000  1.000
+At time 0.0
+- Translation: [0.000, 0.000, 0.085]
+- Rotation: in Quaternion (xyzw) [0.000, 0.000, 0.000, 1.000]
+- Rotation: in RPY (radian) [0.000, -0.000, 0.000]
+- Rotation: in RPY (degree) [0.000, -0.000, 0.000]
+- Matrix:
+  1.000  0.000  0.000  0.000
+  0.000  1.000  0.000  0.000
+  0.000  0.000  1.000  0.085
+  0.000  0.000  0.000  1.000
+At time 0.0
+- Translation: [0.000, 0.000, 0.085]
+- Rotation: in Quaternion (xyzw) [0.000, 0.000, 0.000, 1.000]
+- Rotation: in RPY (radian) [0.000, -0.000, 0.000]
+- Rotation: in RPY (degree) [0.000, -0.000, 0.000]
+- Matrix:
+  1.000  0.000  0.000  0.000
+  0.000  1.000  0.000  0.000
+  0.000  0.000  1.000  0.085
+  0.000  0.000  0.000  1.000
+[INFO] [1789881224.931128256] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+## map odom before slam
+[INFO] [1789881225.201812813] [tf2_echo]: Waiting for transform map ->  odom: Invalid frame ID "map" passed to canTransform argument target_frame - frame does not exist
+[INFO] [1789881227.176852526] [tf2_echo]: Waiting for transform map ->  odom: Invalid frame ID "map" passed to canTransform argument target_frame - frame does not exist
+[INFO] [1789881229.176862553] [tf2_echo]: Waiting for transform map ->  odom: Invalid frame ID "map" passed to canTransform argument target_frame - frame does not exist
+[INFO] [1789881229.937042111] [rclcpp]: signal_handler(SIGINT/SIGTERM)

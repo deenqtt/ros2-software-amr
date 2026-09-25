@@ -1,0 +1,28 @@
+[INFO] [launch]: All log files can be found below /root/.ros/log/2026-09-20-05-13-56-099176-gspe-609
+[INFO] [launch]: Default logging verbosity is set to INFO
+[INFO] [async_slam_toolbox_node-1]: process started with pid [647]
+[INFO] [map_saver_server-2]: process started with pid [648]
+[INFO] [lifecycle_manager-3]: process started with pid [649]
+[lifecycle_manager-3] [INFO] [1789881236.385297170] [lifecycle_manager_slam]: Creating
+[async_slam_toolbox_node-1] [INFO] [1789881236.395468484] [slam_toolbox]: Node using stack size 40000000
+[map_saver_server-2] [INFO] [1789881236.397204127] [map_saver]: 
+[map_saver_server-2] 	map_saver lifecycle node launched. 
+[map_saver_server-2] 	Waiting on external lifecycle transitions to activate
+[map_saver_server-2] 	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[map_saver_server-2] [INFO] [1789881236.397502652] [map_saver]: Creating
+[lifecycle_manager-3] [INFO] [1789881236.399384071] [lifecycle_manager_slam]: [34m[1mCreating and initializing lifecycle service clients[0m[0m
+[lifecycle_manager-3] [INFO] [1789881236.401088476] [lifecycle_manager_slam]: [34m[1mStarting managed nodes bringup...[0m[0m
+[lifecycle_manager-3] [INFO] [1789881236.401136956] [lifecycle_manager_slam]: [34m[1mConfiguring map_saver[0m[0m
+[async_slam_toolbox_node-1] [INFO] [1789881236.540960579] [slam_toolbox]: Configuring
+[async_slam_toolbox_node-1] [INFO] [1789881236.557043675] [slam_toolbox]: Using solver plugin solver_plugins::CeresSolver
+[async_slam_toolbox_node-1] [INFO] [1789881236.558402338] [slam_toolbox]: CeresSolver: Using SCHUR_JACOBI preconditioner.
+[map_saver_server-2] [INFO] [1789881236.563432861] [map_saver]: Configuring
+[lifecycle_manager-3] [INFO] [1789881236.573667719] [lifecycle_manager_slam]: [34m[1mActivating map_saver[0m[0m
+[map_saver_server-2] [INFO] [1789881236.574027099] [map_saver]: Activating
+[map_saver_server-2] [INFO] [1789881236.574062662] [map_saver]: Creating bond (map_saver) to lifecycle manager.
+[INFO] [launch.user]: [LifecycleLaunch] Slamtoolbox node is activating.
+[async_slam_toolbox_node-1] [INFO] [1789881236.608611594] [slam_toolbox]: Activating
+[lifecycle_manager-3] [INFO] [1789881236.686407849] [lifecycle_manager_slam]: Server map_saver connected with bond.
+[lifecycle_manager-3] [INFO] [1789881236.686544539] [lifecycle_manager_slam]: [34m[1mManaged nodes are active[0m[0m
+[lifecycle_manager-3] [INFO] [1789881236.686606451] [lifecycle_manager_slam]: [34m[1mCreating bond timer...[0m[0m
+[async_slam_toolbox_node-1] Registering sensor: [Custom Described Lidar]

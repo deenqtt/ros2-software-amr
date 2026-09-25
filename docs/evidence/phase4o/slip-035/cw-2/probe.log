@@ -1,0 +1,24 @@
+{
+  "phase": "4M",
+  "kind": "turn",
+  "model": "amr_robot",
+  "command": {
+    "linear_x": 0.0,
+    "angular_z": -0.4
+  },
+  "sample_hz_requested": 50.0,
+  "sample_count": 553,
+  "simulation_duration_s": 11.000999999999998,
+  "ground_truth_source": "gz topic --json-output /world/amr_world/dynamic_pose/info",
+  "ground_pose_age_max_s": 0.08900000000000041,
+  "event_markers": {
+    "T0": 6.8420000000000005,
+    "T1": 7.201,
+    "T2": 11.843,
+    "T3": 12.242,
+    "T4": 12.262,
+    "T5": 16.842
+  },
+  "stop_distances": null,
+  "contact_topics_ready": null
+}

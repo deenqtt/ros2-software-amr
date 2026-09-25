@@ -1,0 +1,77 @@
+services
+/map_saver/change_state
+/map_saver/describe_parameters
+/map_saver/get_available_states
+/map_saver/get_available_transitions
+/map_saver/get_parameter_types
+/map_saver/get_parameters
+/map_saver/get_state
+/map_saver/get_transition_graph
+/map_saver/get_type_description
+/map_saver/list_parameters
+/map_saver/save_map
+/map_saver/set_parameters
+/map_saver/set_parameters_atomically
+/slam_toolbox/change_state
+/slam_toolbox/describe_parameters
+/slam_toolbox/get_available_states
+/slam_toolbox/get_available_transitions
+/slam_toolbox/get_parameter_types
+/slam_toolbox/get_parameters
+/slam_toolbox/get_state
+/slam_toolbox/get_type_description
+/slam_toolbox/list_parameters
+/slam_toolbox/set_parameters
+/slam_toolbox/set_parameters_atomically
+slam parameters
+String value is: /scan
+String value is: base_footprint
+topics
+/map [nav_msgs/msg/OccupancyGrid]
+/map_metadata [nav_msgs/msg/MapMetaData]
+/map_saver/transition_event [lifecycle_msgs/msg/TransitionEvent]
+/pose [geometry_msgs/msg/PoseWithCovarianceStamped]
+[INFO] [launch]: All log files can be found below /root/.ros/log/2026-09-20-04-30-14-518682-gspe-1762
+[INFO] [launch]: Default logging verbosity is set to INFO
+[INFO] [async_slam_toolbox_node-1]: process started with pid [1779]
+[INFO] [map_saver_server-2]: process started with pid [1780]
+[INFO] [lifecycle_manager-3]: process started with pid [1781]
+[async_slam_toolbox_node-1] [INFO] [1789878614.748675558] [slam_toolbox]: Node using stack size 40000000
+[lifecycle_manager-3] [INFO] [1789878614.751829810] [lifecycle_manager_slam]: Creating
+[lifecycle_manager-3] [INFO] [1789878614.757711408] [lifecycle_manager_slam]: [34m[1mCreating and initializing lifecycle service clients[0m[0m
+[lifecycle_manager-3] [INFO] [1789878614.772848383] [lifecycle_manager_slam]: [34m[1mStarting managed nodes bringup...[0m[0m
+[lifecycle_manager-3] [INFO] [1789878614.772913605] [lifecycle_manager_slam]: [34m[1mConfiguring map_saver[0m[0m
+[map_saver_server-2] [INFO] [1789878614.776991437] [map_saver]: 
+[map_saver_server-2] 	map_saver lifecycle node launched. 
+[map_saver_server-2] 	Waiting on external lifecycle transitions to activate
+[map_saver_server-2] 	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[map_saver_server-2] [INFO] [1789878614.777228079] [map_saver]: Creating
+[async_slam_toolbox_node-1] [INFO] [1789878614.929332815] [slam_toolbox]: Configuring
+[map_saver_server-2] [INFO] [1789878614.931816915] [map_saver]: Configuring
+[async_slam_toolbox_node-1] [INFO] [1789878614.938597906] [slam_toolbox]: Using solver plugin solver_plugins::CeresSolver
+[async_slam_toolbox_node-1] [INFO] [1789878614.938859143] [slam_toolbox]: CeresSolver: Using SCHUR_JACOBI preconditioner.
+[lifecycle_manager-3] [INFO] [1789878614.940016926] [lifecycle_manager_slam]: [34m[1mActivating map_saver[0m[0m
+[map_saver_server-2] [INFO] [1789878614.940267887] [map_saver]: Activating
+[map_saver_server-2] [INFO] [1789878614.940324743] [map_saver]: Creating bond (map_saver) to lifecycle manager.
+[INFO] [launch.user]: [LifecycleLaunch] Slamtoolbox node is activating.
+[async_slam_toolbox_node-1] [INFO] [1789878614.959344898] [slam_toolbox]: Activating
+[lifecycle_manager-3] [INFO] [1789878615.048156547] [lifecycle_manager_slam]: Server map_saver connected with bond.
+[lifecycle_manager-3] [INFO] [1789878615.048289215] [lifecycle_manager_slam]: [34m[1mManaged nodes are active[0m[0m
+[lifecycle_manager-3] [INFO] [1789878615.048324925] [lifecycle_manager_slam]: [34m[1mCreating bond timer...[0m[0m
+[async_slam_toolbox_node-1] Registering sensor: [Custom Described Lidar]
+[async_slam_toolbox_node-1] [INFO] [1789878628.999219395] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[map_saver_server-2] [INFO] [1789878628.999223398] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[map_saver_server-2] [INFO] [1789878628.999357047] [map_saver]: Running Nav2 LifecycleNode rcl preshutdown (map_saver)
+[lifecycle_manager-3] [INFO] [1789878628.999222159] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[lifecycle_manager-3] [INFO] [1789878628.999356512] [lifecycle_manager_slam]: Running Nav2 LifecycleManager rcl preshutdown (lifecycle_manager_slam)
+[lifecycle_manager-3] [INFO] [1789878628.999418999] [lifecycle_manager_slam]: [34m[1mTerminating bond timer...[0m[0m
+[map_saver_server-2] [INFO] [1789878628.999456193] [map_saver]: Deactivating
+[map_saver_server-2] [INFO] [1789878628.999489969] [map_saver]: Destroying bond (map_saver) to lifecycle manager.
+[async_slam_toolbox_node-1] Unregistering sensor: Custom Described Lidar
+[map_saver_server-2] [INFO] [1789878629.009859223] [map_saver]: Cleaning up
+[map_saver_server-2] [INFO] [1789878629.009909668] [map_saver]: Destroying bond (map_saver) to lifecycle manager.
+[map_saver_server-2] [INFO] [1789878629.014146362] [map_saver]: Destroying
+[lifecycle_manager-3] [INFO] [1789878629.015621467] [lifecycle_manager_slam]: Destroying lifecycle_manager_slam
+[INFO] [lifecycle_manager-3]: process has finished cleanly [pid 1781]
+[INFO] [map_saver_server-2]: process has finished cleanly [pid 1780]
+[INFO] [async_slam_toolbox_node-1]: process has finished cleanly [pid 1779]

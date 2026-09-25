@@ -1,0 +1,7 @@
+WARNING: topic [/imu] does not appear to be published yet
+average rate: 97.182
+	min: 0.009s max: 0.014s std dev: 0.00084s window: 99
+average rate: 97.512
+	min: 0.006s max: 0.017s std dev: 0.00110s window: 197
+average rate: 96.423
+	min: 0.006s max: 0.023s std dev: 0.00147s window: 292

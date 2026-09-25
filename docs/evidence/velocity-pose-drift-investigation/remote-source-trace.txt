@@ -1,0 +1,28 @@
+Label: VERIFIED FROM SOURCE
+
+Remote launch intent:
+  src/amr_description/launch/amr_mapping_sim_launch.py:53-80 starts EKF, SLAM,
+  and includes master_control plus websocket launch. Defaults: use_sim_time=true,
+  ROS_DOMAIN_ID=10, websocket_port=8765.
+  src/amr_description/launch/amr_navigation_sim_launch.py:173-180 starts EKF;
+  lines 300-309 include websocket launch with default port 8765.
+  src/master_control/launch/websocket_launch.py:16-24 starts rosbridge_websocket
+  with the configured port.
+
+Gazebo Sim path (source-present, not active in the runtime snapshot):
+  src/amr_description/launch/amr_gz_sim_launch.py:65-84 bridges:
+    /model/gprp_robot/cmd_vel -> /cmd_vel
+    /model/gprp_robot/odometry -> /odom
+    /model/gprp_robot/tf -> /tf
+  src/amr_description/urdf/gazebo_control.xacro:9-30 configures native DiffDrive
+  to publish odom and odom->base_link TF at 50 Hz.
+
+Potential authority issue identified from source only:
+  src/amr_description/config/ekf_cfg.yaml:40-50 sets publish_tf=true for EKF
+  odom->base_link, while the Gazebo DiffDrive configuration also sets
+  publish_odom_tf=true. If both paths run together, competing dynamic TF authority
+  is possible. This is NOT confirmed at runtime because no graph was active.
+
+EKF source input:
+  ekf_cfg.yaml:53-79 consumes /odom velocities (not absolute pose) and outputs
+  filtered state; IMU yaw rate is configured at lines 82-100.

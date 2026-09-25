@@ -1,0 +1,5 @@
+CONTAINER ID   NAME      CPU %     MEM USAGE / LIMIT     MEM %     NET I/O   BLOCK I/O        PIDS
+eaf8620e7b4b   amr-sim   159.90%   785.7MiB / 15.24GiB   5.03%     0B / 0B   267MB / 3.78MB   112
+               total        used        free      shared  buff/cache   available
+Mem:            15Gi        10Gi       874Mi       2.2Gi       5.8Gi       4.6Gi
+Swap:          4.0Gi       2.9Gi       1.1Gi

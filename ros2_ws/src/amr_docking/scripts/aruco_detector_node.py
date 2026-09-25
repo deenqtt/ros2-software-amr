@@ -135,7 +135,9 @@ class ArucoDetectorNode(Node):
 
                 # Debug image
                 cv2.aruco.drawDetectedMarkers(frame, corners, ids)
-                cv2.aruco.drawAxis(
+                # OpenCV 4.6 in the Jazzy/Noble image exposes frame-axis
+                # drawing as cv2.drawFrameAxes, not cv2.aruco.drawAxis.
+                cv2.drawFrameAxes(
                     frame, self._camera_matrix, self._dist_coeffs,
                     rvec[0], tvec[0], MARKER_SIZE * 0.5)
                 cv2.putText(

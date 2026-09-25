@@ -1,0 +1,87 @@
+ M docker-compose.yml
+ M docker/Dockerfile
+ M docker/entrypoint.sh
+ M ros2_ws/src/amr_bringup/package.xml
+ M ros2_ws/src/amr_docking/package.xml
+ M ros2_ws/src/amr_docking/scripts/aruco_detector_node.py
+ M ros2_ws/src/amr_docking/scripts/docking_manager_node.py
+ M ros2_ws/src/amr_navigation/package.xml
+ M ros2_ws/src/amr_navigation/scripts/mission_manager_node.py
+ M ros2_ws/src/amr_simulation/launch/sim.launch.py
+ M ros2_ws/src/amr_simulation/models/aruco_dock/model.config
+ M ros2_ws/src/amr_simulation/models/aruco_dock/model.sdf
+ M ros2_ws/src/amr_simulation/package.xml
+ M ros2_ws/src/amr_simulation/scripts/battery_sim_node.py
+ M ros2_ws/src/custom_interfaces/CMakeLists.txt
+ M scripts/build_ws.sh
+ M scripts/docker_run.sh
+ M scripts/install_ros2.sh
+ M web-ui/src/App.vue
+ M web-ui/src/components/ControlPanel.vue
+ M web-ui/src/components/StatusPanel.vue
+ M web-ui/src/composables/useROS.js
+ M web-ui/src/stores/robot.js
+?? .phase4n-copy-test/
+?? PHASE_0_1_JAZZY_IMPLEMENTATION_REPORT.md
+?? PHASE_2_JAZZY_PACKAGE_COMPATIBILITY_REPORT.md
+?? PHASE_3_GAZEBO_HARMONIC_FOUNDATION_REPORT.md
+?? PHASE_4G_MOTION_CALIBRATION_REPORT.md
+?? PHASE_4H_PHYSICS_ISOLATION_REPORT.md
+?? PHASE_4I_DIFFDRIVE_ROOT_CAUSE_REPORT.md
+?? PHASE_4J_PRODUCTION_SUPPORT_COM_FIX_REPORT.md
+?? PHASE_4K_DIRECTIONAL_RESISTANCE_REPORT.md
+?? PHASE_4L_PRODUCTION_SUPPORT_ARCHITECTURE_REPORT.md
+?? PHASE_4M_CONTINUOUS_CONTACT_DIRECTIONAL_DYNAMICS_REPORT.md
+?? PHASE_4N_CONTACT_SLIP_CAUSAL_ISOLATION_REPORT.md
+?? PHASE_4O_SLIP1_RESPONSE_CURVE_PRODUCTION_CALIBRATION_REPORT.md
+?? PHASE_4_CAFE_AMR_ROBOT_RUNTIME_REPORT.md
+?? ROS2_JAZZY_MIGRATION_RESEARCH_AND_PLAN.md
+?? SHARED_MAP_STORAGE_NFS.md
+?? VELOCITY_POSE_DRIFT_ROOT_CAUSE_INVESTIGATION.md
+?? WEB_UI_BACKEND_END_TO_END_ARCHITECTURE.md
+?? WEB_UI_STARTUP_PLAYWRIGHT_UX_AUDIT.md
+?? docs/JAZZY_DEPENDENCY_STATUS.md
+?? docs/ODOMETRY_IMU_EKF_MAPPING_DIAGNOSTIC.md
+?? docs/ROS_INTERFACE_CONTRACT.md
+?? docs/evidence/
+?? docs/superpowers/
+?? phase4k-all-runtime.json
+?? phase4k-final-production.json
+?? phase4k-timestamped.json
+?? phase4k-turns-runtime.json
+?? ros2_ws/src/amr_simulation/config/bridge_phase4.yaml
+?? ros2_ws/src/amr_simulation/config/bridge_phase4h.yaml
+?? ros2_ws/src/amr_simulation/config/bridge_phase4i_caster.yaml
+?? ros2_ws/src/amr_simulation/config/bridge_phase4i_reference.yaml
+?? ros2_ws/src/amr_simulation/launch/phase4h_minimal.launch.py
+?? ros2_ws/src/amr_simulation/models/amr_robot_harmonic/
+?? ros2_ws/src/amr_simulation/models/amr_robot_physics_test/
+?? ros2_ws/src/amr_simulation/models/amr_robot_physics_test_caster/
+?? ros2_ws/src/amr_simulation/urdf/amr_robot_harmonic.urdf.xacro
+?? ros2_ws/src/amr_simulation/worlds/amr_physics_test.sdf
+?? ros2_ws/src/amr_simulation/worlds/amr_world.sdf
+?? scripts/phase4g_motion_metrics.py
+?? scripts/phase4g_motion_probe.py
+?? scripts/phase4k_diagnostics.py
+?? scripts/phase4k_make_candidate.py
+?? scripts/phase4k_turn_probe.py
+?? scripts/phase4l_support_analysis.py
+?? scripts/phase4m_contacts.py
+?? scripts/phase4m_diagnostics.py
+?? scripts/phase4m_make_contact_clone.py
+?? scripts/phase4m_trace_probe.py
+?? scripts/phase4n_make_slip_candidate.py
+?? scripts/phase4n_metrics.py
+?? scripts/phase4o_make_slip_candidates.py
+?? scripts/phase4o_metrics.py
+?? scripts/test_phase4g_motion_metrics.py
+?? scripts/test_phase4k_diagnostics.py
+?? scripts/test_phase4l_support_analysis.py
+?? scripts/test_phase4m_contacts.py
+?? scripts/test_phase4m_diagnostics.py
+?? scripts/test_phase4n_make_slip_candidate.py
+?? scripts/test_phase4n_metrics.py
+?? scripts/test_phase4o_make_slip_candidates.py
+?? scripts/test_phase4o_metrics.py
+?? web-ui/.env.example
+?? web-ui/src/config/

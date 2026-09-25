@@ -255,21 +255,25 @@
                     <Wifi :size="10" /> ROS Connection
                   </div>
                   <div class="flex gap-1.5 mb-4">
-                    <Input
-                      v-model="rosUrl"
-                      class="flex-1 text-xs font-data h-8"
-                      placeholder="ws://localhost:8765"
-                      @keyup.enter="toggleConnection"
-                    />
+                    <div
+                      class="flex-1 flex items-center rounded-md border border-input bg-transparent px-3 py-1 text-xs font-data min-w-0"
+                      aria-readonly="true"
+                    >
+                      <span class="truncate">{{ store.rosUrl || 'Belum dikonfigurasi' }}</span>
+                    </div>
                     <Button
                       size="sm"
                       class="text-xs h-8 px-3"
                       :variant="store.rosConnected ? 'destructive' : 'default'"
+                      :disabled="!store.rosConfigValid && !store.rosConnected"
                       @click="toggleConnection"
                     >
                       {{ store.rosConnected ? "Disc." : "Connect" }}
                     </Button>
                   </div>
+                  <p v-if="store.rosConfigError" class="text-xs text-destructive mb-4">
+                    {{ store.rosConfigError }}
+                  </p>
 
                   <Separator class="mb-4" />
 
@@ -463,7 +467,9 @@
           <span class="w-2 h-2 rounded-full bg-muted-foreground/50 shrink-0" />
           <div>
             <p class="text-xs font-semibold text-foreground leading-tight">No robot connection</p>
-            <p class="text-[10px] text-muted-foreground leading-tight mt-0.5">Enter WebSocket URL in Overview panel to connect</p>
+            <p class="text-[10px] text-muted-foreground leading-tight mt-0.5">
+              {{ store.rosConfigError || 'ROS target is configured by VITE_ROS_URL' }}
+            </p>
           </div>
           <button
             class="ml-2 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-lg bg-foreground text-background hover:bg-foreground/90 transition-colors duration-150 active:scale-[0.97]"
@@ -523,6 +529,27 @@
           <p class="text-xs text-amber-500">
             Semua misi yang sedang berjalan akan dibatalkan.
           </p>
+
+          <div v-if="pendingMode === 'navigation'" class="space-y-1.5">
+            <Label class="text-xs font-semibold">Pilih Map</Label>
+            <div v-if="mapsLoading" class="flex items-center gap-2 text-xs text-muted-foreground py-1">
+              <span class="w-3 h-3 rounded-full border-2 border-t-transparent border-current animate-spin" />
+              Memuat daftar map...
+            </div>
+            <div v-else-if="availableMaps.length === 0" class="rounded-md border border-destructive/50 bg-destructive/5 p-2 text-xs text-destructive">
+              Belum ada map tersimpan. Pilih <strong>Mapping</strong> untuk membuat peta dulu.
+            </div>
+            <select
+              v-else
+              v-model="selectedMapFile"
+              class="w-full text-xs h-8 rounded-md border border-input bg-background px-2 focus:outline-none focus:ring-1 focus:ring-ring"
+            >
+              <option value="" disabled>-- Pilih map --</option>
+              <option v-for="m in availableMaps" :key="m.id" :value="m.yaml_file">
+                {{ m.name }} ({{ m.yaml_file }})
+              </option>
+            </select>
+          </div>
         </div>
 
         <DialogFooter>
@@ -531,7 +558,7 @@
           </Button>
           <Button
             size="sm"
-            :disabled="modeSwitching"
+            :disabled="modeSwitching || (pendingMode === 'navigation' && (!selectedMapFile || mapsLoading))"
             @click="confirmSwitchMode"
           >
             <span v-if="modeSwitching" class="flex items-center gap-1.5">
@@ -555,6 +582,28 @@
         </DialogHeader>
 
         <div class="py-3 space-y-3">
+          <!-- ROS bridge target is build-time configuration and is intentionally read-only. -->
+          <div class="rounded-md border border-border bg-muted/30 p-2.5 space-y-1.5">
+            <div class="flex items-center justify-between text-[10px] uppercase tracking-widest text-muted-foreground">
+              <span>ROS Bridge</span>
+              <span
+                class="font-semibold"
+                :class="store.rosConnected ? 'text-emerald-500' : store.rosConfigError ? 'text-destructive' : 'text-amber-500'"
+              >
+                {{ store.rosConnected ? 'Connected' : store.rosConfigError ? 'Configuration error' : 'Offline' }}
+              </span>
+            </div>
+            <div class="rounded border border-input bg-background px-2 py-1.5 text-xs font-mono break-all">
+              {{ store.rosUrl || 'VITE_ROS_URL belum dikonfigurasi' }}
+            </div>
+            <p v-if="store.rosConfigError" class="text-[11px] text-destructive">
+              {{ store.rosConfigError }}
+            </p>
+            <p v-else class="text-[11px] text-muted-foreground">
+              Target ROS ditentukan melalui environment frontend.
+            </p>
+          </div>
+
           <!-- Mode selector cards -->
           <div class="grid grid-cols-2 gap-3">
             <button
@@ -690,7 +739,6 @@ const mapMode = useMapMode();
 const stats = useSystemStats();
 
 const missionPanelRef = ref(null);
-const rosUrl = ref(store.rosUrl);
 const activeTab = ref("overview");
 const sidebarCollapsed = ref(false);
 const mapMinimized = ref(false);
@@ -764,9 +812,13 @@ async function confirmSwitchMode() {
   if (!pendingMode.value) return;
   modeSwitching.value = true;
   try {
-    const rosMode = pendingMode.value === "mapping" ? "map" : "nav";
-    await ros.callRobotModeService(rosMode);
     const mode = pendingMode.value;
+    const backendMode = mode === "mapping" ? "slam" : "navigation";
+    const payload = { mode: backendMode };
+    if (backendMode === "navigation" && selectedMapFile.value) {
+      payload.map_file = `/maps/${selectedMapFile.value}`;
+    }
+    const response = await api.post("/mode/switch", payload);
     store.setAppMode(mode);
     // Reset tab kalau tab aktif tidak ada di mode baru
     const available = mode === "mapping" ? NAV_ITEMS_MAPPING : NAV_ITEMS_NAVIGATION;
@@ -774,7 +826,10 @@ async function confirmSwitchMode() {
       activeTab.value = mode === "mapping" ? "mapping" : "overview";
     }
     mapMode.setMode("view");
-    toast.success(`Mode ${mode === "mapping" ? "Mapping" : "Navigation"} aktif`);
+    toast.success(
+      response?.message ||
+        `Mode ${mode === "mapping" ? "Mapping" : "Navigation"} aktif`,
+    );
     showModeDialog.value = false;
   } catch (err) {
     toast.error(`Gagal ganti mode: ${err.message}`);
@@ -870,10 +925,8 @@ const batteryTextClass = computed(() => {
 function toggleConnection() {
   if (store.rosConnected) {
     ros.disconnect();
-  } else {
-    store.rosUrl = rosUrl.value;
-    localStorage.setItem("amr_ros_url", rosUrl.value);
-    ros.connect(rosUrl.value);
+  } else if (store.rosConfigValid) {
+    ros.connect(store.rosUrl);
   }
 }
 
@@ -1035,10 +1088,11 @@ async function confirmStartup() {
 }
 
 onMounted(async () => {
-  const savedUrl = localStorage.getItem("amr_ros_url") || "ws://localhost:8765";
-  store.rosUrl = savedUrl;
-  rosUrl.value = savedUrl;
-  ros.connect(savedUrl);
+  if (store.rosConfigValid) {
+    ros.connect(store.rosUrl);
+  } else {
+    console.warn("[App] ROS bridge is not configured:", store.rosConfigError);
+  }
   try {
     const maps = await api.get("/maps");
     store.setMaps(maps);

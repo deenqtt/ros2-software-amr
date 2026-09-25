@@ -1,0 +1,10 @@
+## slam processes before stop
+    609       0 /usr/bin/python3 /opt/ros/jazzy/bin/ros2 launch amr_simulation slam.launch.py use_sim_time:=true
+    647     609 /opt/ros/jazzy/lib/slam_toolbox/async_slam_toolbox_node --ros-args -r __node:=slam_toolbox -r __ns:=/ --params-file /ros2_ws/install/amr_simulation/share/amr_simulation/config/slam_params.yaml --params-file /tmp/launch_params_5ta72nw9
+    648     609 /opt/ros/jazzy/lib/nav2_map_server/map_saver_server --ros-args -r __node:=map_saver --params-file /tmp/launch_params_whli8kse
+    649     609 /opt/ros/jazzy/lib/nav2_lifecycle_manager/lifecycle_manager --ros-args -r __node:=lifecycle_manager_slam --params-file /tmp/launch_params_48o0lkxv
+## stop launch process
+## nodes after stop
+/phase4_bridge
+/robot_state_publisher
+## slam processes after stop

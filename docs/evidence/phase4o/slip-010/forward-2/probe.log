@@ -1,0 +1,29 @@
+{
+  "phase": "4M",
+  "kind": "stop",
+  "model": "amr_robot",
+  "command": {
+    "linear_x": 0.2,
+    "angular_z": 0.0
+  },
+  "sample_hz_requested": 50.0,
+  "sample_count": 553,
+  "simulation_duration_s": 10.998999999999999,
+  "ground_truth_source": "gz topic --json-output /world/amr_world/dynamic_pose/info",
+  "ground_pose_age_max_s": 0.09100000000000019,
+  "event_markers": {
+    "T0": 6.963,
+    "T1": 7.342,
+    "T2": 11.963000000000001,
+    "T3": 12.362,
+    "T4": 12.702,
+    "T5": 16.962
+  },
+  "stop_distances": {
+    "D1_m": 0.060649079021417474,
+    "D2_m": 0.010019466597422588,
+    "D3_m": 0.001250092720878171,
+    "D_total_m": 0.07191863833971823
+  },
+  "contact_topics_ready": null
+}

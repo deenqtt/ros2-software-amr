@@ -1,0 +1,6 @@
+    614 Z    [tf2_echo] <defunct>
+    931 Z    [tf2_echo] <defunct>
+   1210 Z    [map_saver_serve] <defunct>
+   1316 Z    [tf2_echo] <defunct>
+/phase4_bridge
+/robot_state_publisher

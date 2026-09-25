@@ -1,0 +1,38 @@
+Label: VERIFIED FROM SOURCE
+
+Velocity:
+  UI consumers: App.vue SpeedChart, Status/Control panels through robot store.
+  Pinia state: web-ui/src/stores/robot.js:47 robotVelocity = { linear, angular }.
+  ROS source: web-ui/src/composables/useROS.js:412-420, /odom nav_msgs/Odometry.
+  fields: msg.twist.twist.linear.x and msg.twist.twist.angular.z.
+  behavior: raw values are assigned; no deadband, smoothing, pose-difference calculation,
+  or velocity integration exists in this callback. Display formatting rounds later.
+
+Pose X/Y/yaw:
+  Pinia state: web-ui/src/stores/robot.js:41 robotPose = { x, y, theta }.
+  primary ROS source: /tf, web-ui/src/composables/useROS.js:346-380.
+  source frames: map->odom (or map->odom_combined) composed with
+  odom/odom_combined->base_footprint or base_link.
+  fallback sources: /amcl_pose and /pose when map->odom is unavailable,
+  useROS.js:382-409.
+  /odom.pose is NOT consumed by the frontend for robot pose.
+  /odom is used for velocity only.
+
+TF math:
+  useROS.js:48-54 converts each quaternion to yaw and stores latest tx/ty/yaw.
+  useROS.js:57-65 composes planar parent and child transforms.
+  useROS.js:69-74 and 1216-1221 use atan2(2*(w*z+x*y), 1-2*(y*y+z*z)).
+  Main conversion assumes a normalized ROS quaternion and uses radians.
+
+Rendering:
+  MapView.vue:666-693 watches robotPose, maps x/y to Leaflet, and applies
+  CSS rotation Math.PI/2 - theta in radians. It replaces an existing rotate()
+  term before appending the current angle; no accumulated yaw is present.
+
+Subscription lifecycle:
+  useROS.js:20-22 has one module-level _ros singleton shared by all useROS() calls.
+  App.vue:1037-1041 connects once on mount. connect() closes an existing singleton
+  first, then subscribes all topics on the new connection at lines 145-154.
+  disconnect() closes the Ros object but does not explicitly call topic.unsubscribe().
+  Source therefore does not prove duplicate callbacks after reconnect; runtime
+  browser/WebSocket evidence is required.

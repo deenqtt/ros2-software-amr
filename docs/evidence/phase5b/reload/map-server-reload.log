@@ -1,0 +1,19 @@
+[INFO] [1789881813.698290639] [map_server]: 
+	map_server lifecycle node launched. 
+	Waiting on external lifecycle transitions to activate
+	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[INFO] [1789881813.698396485] [map_server]: Creating
+[INFO] [1789881818.605702341] [map_server]: Configuring
+[INFO] [1789881818.605853884] [map_io]: Loading yaml file: /maps/amr_map.yaml
+[INFO] [1789881818.606389548] [map_io]: resolution: 0.05
+[INFO] [1789881818.606425844] [map_io]: origin[0]: -5.399
+[INFO] [1789881818.606442744] [map_io]: origin[1]: -5.068
+[INFO] [1789881818.606455986] [map_io]: origin[2]: 0
+[INFO] [1789881818.606470050] [map_io]: free_thresh: 0.196
+[INFO] [1789881818.606483537] [map_io]: occupied_thresh: 0.65
+[INFO] [1789881818.606498625] [map_io]: mode: trinary
+[INFO] [1789881818.606513052] [map_io]: negate: 0
+[INFO] [1789881818.606900312] [map_io]: Loading image_file: /maps/amr_map.pgm
+[INFO] [1789881818.610102999] [map_io]: Read map /maps/amr_map.pgm: 207 X 206 map @ 0.05 m/cell
+[INFO] [1789881819.501834084] [map_server]: Activating
+[INFO] [1789881819.502430205] [map_server]: Creating bond (map_server) to lifecycle manager.

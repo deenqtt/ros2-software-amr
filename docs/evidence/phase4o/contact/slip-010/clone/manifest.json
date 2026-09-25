@@ -1,0 +1,18 @@
+{
+  "source_model_sha256": "5686b4e041acdd10473f3e29d263c223d1cf8852062126b2465d62f303b7cd2f",
+  "source_world_sha256": "4c5f6c6c8e0ed89d0d69e853e30e8c3147b6e12a62ee40c626319481bdf8f649",
+  "clone_model": "docs/evidence/phase4o/contact/slip-010/clone/amr_robot_harmonic_contact.sdf",
+  "clone_world": "docs/evidence/phase4o/contact/slip-010/clone/amr_world_contact.sdf",
+  "contact_plugin": "gz::sim::systems::Contact",
+  "contact_topics": [
+    "wheel_left_link:/phase4m/contact/wheel_left",
+    "wheel_right_link:/phase4m/contact/wheel_right",
+    "caster_front_link:/phase4m/contact/caster_front",
+    "caster_rear_link:/phase4m/contact/caster_rear",
+    "stability_front_left_link:/phase4m/contact/anti_tip_front_left",
+    "stability_front_right_link:/phase4m/contact/anti_tip_front_right",
+    "stability_rear_left_link:/phase4m/contact/anti_tip_rear_left",
+    "stability_rear_right_link:/phase4m/contact/anti_tip_rear_right"
+  ],
+  "physics_or_controller_changes": []
+}

@@ -3,17 +3,18 @@
 <package format="3">
   <name>amr_docking</name>
   <version>0.1.0</version>
-  <description>AMR auto-docking configuration using opennav_docking</description>
+  <description>AMR custom Python auto-docking and ArUco nodes</description>
   <maintainer email="dev@amr.local">AMR Dev Team</maintainer>
   <license>Apache-2.0</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
 
-  <exec_depend>opennav_docking</exec_depend>
-  <exec_depend>opennav_docking_msgs</exec_depend>
   <exec_depend>custom_interfaces</exec_depend>
   <exec_depend>rclpy</exec_depend>
   <exec_depend>cv_bridge</exec_depend>
+  <exec_depend>geometry_msgs</exec_depend>
+  <exec_depend>lifecycle_msgs</exec_depend>
+  <exec_depend>nav_msgs</exec_depend>
   <exec_depend>sensor_msgs</exec_depend>
   <exec_depend>std_msgs</exec_depend>
   <exec_depend>nav2_msgs</exec_depend>

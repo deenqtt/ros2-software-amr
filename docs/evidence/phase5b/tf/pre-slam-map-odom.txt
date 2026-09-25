@@ -1,0 +1,10 @@
+## nodes
+/phase4_bridge
+/robot_state_publisher
+/tf2_echo
+/transform_listener_impl_5b8a719a66f0
+## map topic before SLAM
+## map->odom before SLAM
+[INFO] [1789881223.102278571] [tf2_echo]: Waiting for transform map ->  odom: Invalid frame ID "map" passed to canTransform argument target_frame - frame does not exist
+[INFO] [1789881225.082050845] [tf2_echo]: Waiting for transform map ->  odom: Invalid frame ID "map" passed to canTransform argument target_frame - frame does not exist
+[INFO] [1789881226.871735785] [rclcpp]: signal_handler(SIGINT/SIGTERM)

@@ -1,0 +1,7 @@
+WARNING: topic [/odom] does not appear to be published yet
+average rate: 27.334
+	min: 0.033s max: 0.056s std dev: 0.00671s window: 10
+average rate: 28.950
+	min: 0.031s max: 0.038s std dev: 0.00171s window: 10
+average rate: 28.203
+	min: 0.033s max: 0.042s std dev: 0.00269s window: 10

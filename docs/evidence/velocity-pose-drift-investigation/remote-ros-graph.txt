@@ -1,0 +1,26 @@
+Investigation date: 2026-09-18 Asia/Jakarta
+Label: VERIFIED AT RUNTIME
+
+Computer B: gspe-ai3-MS-7E32 /home/gspe-ai3/ros2_gprp_amr_ws
+Environment: ROS_DISTRO=jazzy, ROS_DOMAIN_ID=10.
+
+Current process/runtime inventory:
+  Isaac Sim process exists (PID 39534, isaacsim_env/bin/isaacsim).
+  No active AMR ROS launch nodes were listed.
+  No AMR ROS bridge endpoint was listening on TCP 8765.
+  Docker containers listed were unrelated OCR/activity services; no AMR ROS container.
+
+Bounded ROS graph query with --no-daemon:
+  ros2 node list: no AMR node output.
+  ros2 topic list: /parameter_events, /rosout only.
+
+Consequences:
+  /cmd_vel was not present in the current graph.
+  /odom was not present in the current graph.
+  /tf and /tf_static were not present in the current graph.
+  Runtime publisher counts and QoS for the reproduction state were NOT VERIFIED.
+  Idle, motion, post-release, timestamp, frequency, and TF samples were NOT COLLECTED.
+
+Note: diagnostic ros2 CLI/daemon processes were observed while inspecting the stalled
+queries. They were not treated as application nodes and no production process was
+restarted or intentionally terminated.

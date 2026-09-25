@@ -1,0 +1,17 @@
+/phase4_bridge
+/robot_state_publisher
+Type: rosgraph_msgs/msg/Clock
+Publisher count: 1
+Subscription count: 2
+Type: sensor_msgs/msg/LaserScan
+Publisher count: 1
+Subscription count: 1
+Type: nav_msgs/msg/Odometry
+Publisher count: 1
+Subscription count: 0
+Type: tf2_msgs/msg/TFMessage
+Publisher count: 2
+Subscription count: 0
+Type: tf2_msgs/msg/TFMessage
+Publisher count: 1
+Subscription count: 0

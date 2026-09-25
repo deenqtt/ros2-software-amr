@@ -1,0 +1,35 @@
+EDGE odom base_footprint
+At time 1544.76000000
+- Translation: [0.158, 0.000, 0.000]
+- Rotation: in RPY (radian) [0.000, -0.000, 0.000]
+- Rotation: in RPY (degree) [0.000, -0.000, 0.000]
+EDGE base_footprint base_link
+At time 0.0
+- Translation: [0.000, 0.000, 0.165]
+- Rotation: in RPY (radian) [0.000, -0.000, 0.000]
+- Rotation: in RPY (degree) [0.000, -0.000, 0.000]
+EDGE base_link base_scan
+At time 0.0
+- Translation: [0.000, 0.000, 0.085]
+- Rotation: in RPY (radian) [0.000, -0.000, 0.000]
+- Rotation: in RPY (degree) [0.000, -0.000, 0.000]
+EDGE base_link imu_link
+At time 0.0
+- Translation: [0.000, 0.000, 0.085]
+- Rotation: in RPY (radian) [0.000, -0.000, 0.000]
+- Rotation: in RPY (degree) [0.000, -0.000, 0.000]
+EDGE base_link camera_link
+At time 0.0
+- Translation: [0.255, 0.000, 0.815]
+- Rotation: in RPY (radian) [0.000, -0.000, 0.000]
+- Rotation: in RPY (degree) [0.000, -0.000, 0.000]
+EDGE camera_link camera_rgb_frame
+At time 0.0
+- Translation: [0.000, 0.000, 0.000]
+- Rotation: in RPY (radian) [0.000, -0.000, 0.000]
+- Rotation: in RPY (degree) [0.000, -0.000, 0.000]
+EDGE camera_rgb_frame camera_rgb_optical_frame
+At time 0.0
+- Translation: [0.000, 0.000, 0.000]
+- Rotation: in RPY (radian) [-1.571, 0.000, -1.571]
+- Rotation: in RPY (degree) [-90.000, 0.000, -90.000]

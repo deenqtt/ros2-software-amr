@@ -1,0 +1,21 @@
+/opt/ros/jazzy
+/opt/ros/jazzy
+/opt/ros/jazzy
+slam_toolbox async_slam_toolbox_node
+slam_toolbox lifelong_slam_toolbox_node
+slam_toolbox localization_slam_toolbox_node
+slam_toolbox map_and_localization_slam_toolbox_node
+slam_toolbox merge_maps_kinematic
+slam_toolbox sync_slam_toolbox_node
+ros-jazzy-slam-toolbox:
+  Installed: 2.8.5-1noble.20260905.070219
+  Candidate: 2.8.5-1noble.20260905.070219
+  Version table:
+ *** 2.8.5-1noble.20260905.070219 100
+        100 /var/lib/dpkg/status
+ros-jazzy-nav2-map-server:
+  Installed: 1.3.13-1noble.20260903.025026
+  Candidate: 1.3.13-1noble.20260903.025026
+  Version table:
+ *** 1.3.13-1noble.20260903.025026 100
+        100 /var/lib/dpkg/status

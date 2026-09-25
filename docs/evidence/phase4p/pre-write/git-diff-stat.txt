@@ -1,0 +1,24 @@
+ docker-compose.yml                                 |  29 ++-
+ docker/Dockerfile                                  |  66 ++++---
+ docker/entrypoint.sh                               |   8 +-
+ ros2_ws/src/amr_bringup/package.xml                |   3 +
+ ros2_ws/src/amr_docking/package.xml                |   7 +-
+ .../src/amr_docking/scripts/aruco_detector_node.py |   4 +-
+ .../amr_docking/scripts/docking_manager_node.py    |  28 ++-
+ ros2_ws/src/amr_navigation/package.xml             |  11 ++
+ .../amr_navigation/scripts/mission_manager_node.py |   0
+ ros2_ws/src/amr_simulation/launch/sim.launch.py    | 202 +++++++++++----------
+ .../amr_simulation/models/aruco_dock/model.config  |   2 +-
+ .../src/amr_simulation/models/aruco_dock/model.sdf |  11 +-
+ ros2_ws/src/amr_simulation/package.xml             |  17 +-
+ .../src/amr_simulation/scripts/battery_sim_node.py |   0
+ ros2_ws/src/custom_interfaces/CMakeLists.txt       |   1 +
+ scripts/build_ws.sh                                |  12 +-
+ scripts/docker_run.sh                              |  51 +++---
+ scripts/install_ros2.sh                            | 142 ++-------------
+ web-ui/src/App.vue                                 |  58 ++++--
+ web-ui/src/components/ControlPanel.vue             |  16 +-
+ web-ui/src/components/StatusPanel.vue              |  13 +-
+ web-ui/src/composables/useROS.js                   |  21 +--
+ web-ui/src/stores/robot.js                         |   8 +-
+ 23 files changed, 352 insertions(+), 358 deletions(-)

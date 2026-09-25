@@ -1,0 +1,8 @@
+/launch_ros_1193
+/lifecycle_manager_slam
+/map_saver
+/phase4_bridge
+/robot_state_publisher
+/tf2_echo
+/transform_listener_impl_59decf8fa6e0
+/map_saver/transition_event [lifecycle_msgs/msg/TransitionEvent]

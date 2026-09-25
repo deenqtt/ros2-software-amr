@@ -1015,7 +1015,7 @@ export function useROS() {
   // ── Map saver ───────────────────────────────────────────────────────────────
 
   /**
-   * Save the current map via nav2_map_server service.
+   * Save the current map via the SLAM Toolbox save service.
    * @param {string} filename - base name (no extension) for the saved map
    * @param {{ onSuccess?: () => void, onError?: (err: string) => void }} callbacks
    */
@@ -1024,26 +1024,25 @@ export function useROS() {
 
     const service = new ROSLIB.Service({
       ros: _ros,
-      name: "/map_saver/save_map",
-      serviceType: "nav2_msgs/srv/SaveMap",
+      name: "/slam_toolbox/save_map",
+      serviceType: "slam_toolbox/srv/SaveMap",
     });
 
     const request = new ROSLIB.ServiceRequest({
-      map_topic: "/map",
-      map_url: `/maps/${filename}`,
-      image_format: "pgm",
-      free_thresh: 0.25,
-      occupied_thresh: 0.65,
+      name: { data: `/maps/${filename}` },
     });
 
     service.callService(
       request,
       (result) => {
-        if (result.result) {
+        // SLAM Toolbox uses result code 0 for success.
+        if (Number(result?.result) === 0) {
           onSuccess?.();
         } else {
-          console.error("[useROS] Map save failed");
-          onError?.("Map save failed");
+          const resultCode = result?.result ?? "unknown";
+          const message = `Map save failed (result code ${resultCode})`;
+          console.error("[useROS]", message);
+          onError?.(message);
         }
       },
       (err) => {

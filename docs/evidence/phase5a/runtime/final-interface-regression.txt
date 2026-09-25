@@ -1,0 +1,11 @@
+/phase4_bridge
+/robot_state_publisher
+/camera/camera_info [sensor_msgs/msg/CameraInfo]
+/camera/image_raw [sensor_msgs/msg/Image]
+/clock [rosgraph_msgs/msg/Clock]
+/cmd_vel [geometry_msgs/msg/Twist]
+/imu [sensor_msgs/msg/Imu]
+/odom [nav_msgs/msg/Odometry]
+/scan [sensor_msgs/msg/LaserScan]
+/tf [tf2_msgs/msg/TFMessage]
+/tf_static [tf2_msgs/msg/TFMessage]

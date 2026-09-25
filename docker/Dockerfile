@@ -1,59 +1,71 @@
 # ═══════════════════════════════════════════════════════════════════════════════
-# AMR Simulation — ROS2 Humble + Gazebo Classic + Nav2
-# Base: Ubuntu 22.04 (Jammy) — official Humble target
+# AMR Simulation foundation — ROS 2 Jazzy + Ubuntu Noble + Gazebo Harmonic
+# Gazebo Classic assets remain only as rollback/reference material.
 # ═══════════════════════════════════════════════════════════════════════════════
 
-FROM ros:humble-ros-base-jammy
+FROM ros:jazzy-ros-base-noble
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TURTLEBOT3_MODEL=waffle_pi
 ENV ROS_DOMAIN_ID=0
-ENV GAZEBO_MODEL_PATH=/opt/ros/humble/share/turtlebot3_gazebo/models
+ENV GZ_SIM_RESOURCE_PATH=/ros2_ws/src/amr_simulation/models:/opt/ros/jazzy/share:/opt/ros/jazzy/share/turtlebot3_gazebo/models
 
 SHELL ["/bin/bash", "-c"]
 
 # ── System dependencies ───────────────────────────────────────────────────────
 RUN apt-get update && apt-get install -y \
-    # ROS2 core tools
+    # ROS 2 core tools
     python3-colcon-common-extensions \
     python3-rosdep \
     python3-vcstool \
-    ros-humble-desktop \
-    # Simulation
-    ros-humble-gazebo-ros-pkgs \
-    ros-humble-gazebo-ros2-control \
-    ros-humble-turtlebot3 \
-    ros-humble-turtlebot3-gazebo \
-    ros-humble-turtlebot3-simulations \
+    ros-jazzy-desktop \
+    # Modern Gazebo foundation for the later simulation migration phase
+    ros-jazzy-ros-gz-sim \
+    ros-jazzy-ros-gz-bridge \
+    ros-jazzy-ros-gz-image \
+    ros-jazzy-turtlebot3 \
+    ros-jazzy-turtlebot3-gazebo \
+    ros-jazzy-turtlebot3-simulations \
     # SLAM
-    ros-humble-slam-toolbox \
+    ros-jazzy-slam-toolbox \
     # Navigation
-    ros-humble-navigation2 \
-    ros-humble-nav2-bringup \
+    ros-jazzy-navigation2 \
+    ros-jazzy-nav2-bringup \
     # Web bridges
-    ros-humble-rosbridge-suite \
-    ros-humble-web-video-server \
+    ros-jazzy-rosbridge-suite \
+    ros-jazzy-web-video-server \
+    # Robot description and custom-node runtime dependencies
+    ros-jazzy-robot-state-publisher \
+    ros-jazzy-xacro \
+    ros-jazzy-cv-bridge \
+    ros-jazzy-tf2-ros \
+    ros-jazzy-teleop-twist-keyboard \
+    python3-opencv \
+    python3-numpy \
     # Utilities
     git \
     wget \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# NOTE: opennav_docking main branch tidak kompatibel dengan Humble
-# (butuh behaviortree-cpp v4 & nav2_ros_common yang belum ada di Humble apt).
-# Docking di simulasi diimplementasi via navigate_to_pose ke koordinat dock.
-# Akan diaktifkan saat robot fisik siap dengan versi yang kompatibel.
+# NOTE: OpenNav docking is deliberately not activated in Phase 0/1.
+# The current simulator runtime uses custom Python docking logic. Its package
+# dependency remains subject to the separate docking validation phase.
 
 # ── AMR workspace ─────────────────────────────────────────────────────────────
 WORKDIR /ros2_ws
 COPY ros2_ws/src ./src
 
-RUN apt-get update \
-    && source /opt/ros/humble/setup.bash \
-    && rosdep install --from-paths src -i -y --rosdistro humble \
-    && colcon build --symlink-install \
-    && rm -rf build/*/CMakeFiles \
-    && rm -rf /var/lib/apt/lists/*
+# Phase 3 has removed the active Classic dependency, so the image build is a
+# real full-workspace gate rather than a discovery-only foundation check.
+ARG BUILD_WORKSPACE=true
+RUN source /opt/ros/jazzy/setup.bash \
+    && colcon list \
+    && if [[ "${BUILD_WORKSPACE}" == "true" ]]; then \
+         rosdep update --rosdistro jazzy; \
+         rosdep install --from-paths src --ignore-src -y --rosdistro jazzy; \
+         colcon build --symlink-install; \
+       fi
 
 # ── Entrypoint ────────────────────────────────────────────────────────────────
 COPY docker/entrypoint.sh /entrypoint.sh

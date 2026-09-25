@@ -1,0 +1,12 @@
+Starting >>> custom_interfaces
+Starting >>> amr_simulation
+Finished <<< amr_simulation [3.10s]
+Finished <<< custom_interfaces [24.4s]
+Starting >>> amr_docking
+Starting >>> amr_navigation
+Finished <<< amr_docking [2.38s]
+Finished <<< amr_navigation [2.55s]
+Starting >>> amr_bringup
+Finished <<< amr_bringup [2.52s]
+
+Summary: 5 packages finished [29.9s]

@@ -1,0 +1,2 @@
+maps/amr_map.pgm PGM 207x206 207x206+0+0 8-bit Grayscale Gray 42657B 0.000u 0:00.001
+/tmp/phase5b-amr-map.png PNG 207x206 207x206+0+0 8-bit Grayscale Gray 256c 1191B 0.000u 0:00.000

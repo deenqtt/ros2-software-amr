@@ -1,0 +1,32 @@
+{
+  "repeat_count": 1,
+  "mean_D1_m": 0.0739137918164251,
+  "mean_D2_m": 0.07029101298718732,
+  "mean_D3_m": 0.0041309075158284525,
+  "mean_D_total_m": 0.14833571231944087,
+  "worst_D_total_m": 0.14833571231944087,
+  "mean_translation_error_percent": 10.658631734940762,
+  "worst_translation_error_percent": 10.658631734940762,
+  "traces": [
+    {
+      "kind": "stop",
+      "model": "amr_robot",
+      "sample_count": 552,
+      "ground_pose_age_max_s": 0.019999999999999574,
+      "ground_displacement_m": 0.8520486291358748,
+      "odom_displacement_m": 0.9536999999910509,
+      "translation_error_m": 0.1016513708551762,
+      "translation_error_percent": 10.658631734940762,
+      "physical_yaw_deg": 2.5626305255856984e-07,
+      "odom_yaw_deg": 1.4289241797734493e-18,
+      "ground_yaw_signed_deg": -2.5626305255856984e-07,
+      "odom_yaw_signed_deg": 1.4289241797734493e-18,
+      "yaw_error_deg": 2.562630525599988e-07,
+      "yaw_ratio": null,
+      "D1_m": 0.0739137918164251,
+      "D2_m": 0.07029101298718732,
+      "D3_m": 0.0041309075158284525,
+      "D_total_m": 0.14833571231944087
+    }
+  ]
+}

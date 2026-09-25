@@ -12,6 +12,7 @@
 
 import { defineStore } from "pinia";
 import { ref, computed } from "vue";
+import { resolveRosConfig } from "@/config/ros";
 
 export const useRobotStore = defineStore("robot", () => {
   // ── App mode ──────────────────────────────────────────────────────────────
@@ -27,7 +28,10 @@ export const useRobotStore = defineStore("robot", () => {
 
   // ── ROS connection ────────────────────────────────────────────────────────
   const rosConnected = ref(false);
-  const rosUrl = ref("ws://localhost:8765");
+  const rosConfig = resolveRosConfig(import.meta.env.VITE_ROS_URL);
+  const rosUrl = ref(rosConfig.url);
+  const rosConfigError = ref(rosConfig.error);
+  const rosConfigValid = computed(() => rosConfig.valid);
 
   // ── Map ───────────────────────────────────────────────────────────────────
   /** Raw OccupancyGrid message from /map topic */
@@ -356,6 +360,8 @@ export const useRobotStore = defineStore("robot", () => {
     autoDockTargetId,
     rosConnected,
     rosUrl,
+    rosConfigError,
+    rosConfigValid,
     mapData,
     robotPose,
     robotVelocity,

@@ -1,0 +1,142 @@
+{
+  "body": "AMR Control\nNavigation\nMapping\nX\n0.00\nY\n0.00\n\u03b8\n0.0\u00b0\nAVAILABLE\nIDLE\nOFFLINE\nE-STOP\nNAVIGATION\nOverview\nMission\nDocking\nSetup\nOffline\nMAP VIEW\nAuto\n+\n\u2212\nNAV\nPan / View\nNavigate\nAdd Waypoint\nAdd Destination\nPlace Dock\nInit Pose (AMCL)\nToggle Costmap\nToggle Robot\nToggle Camera\n\nWaiting for map data\n\nSubscribing to /map topic\n\nSTOP\nROS CONNECTION\nConnect\nROBOT POSE\nX\n0.00\nm\nY\n0.00\nm\n\u0398\n0.0\ndeg\nSTATUS\nNavigation\nIDLE\nDocking\nIDLE\nAMCL INIT POSE\nVELOCITY\nSYSTEM\nCPU\n\u2014\nMEMORY\n\u2014\nLATENCY\n\u2014\n\nNo robot connection\n\nEnter WebSocket URL in Overview panel to connect\n\nCONNECT\nPilih Mode Operasi\nMapping\nBuat peta baru dengan SLAM\nNavigation\nNavigasi dengan peta tersimpan\nMulai\nClose",
+  "storage": {
+    "localStorage": {},
+    "sessionStorage": {}
+  },
+  "network": [
+    {
+      "url": "http://localhost:3001/api/maps",
+      "method": "GET",
+      "type": "Fetch"
+    },
+    {
+      "url": "http://localhost:3001/api/mode",
+      "method": "GET",
+      "type": "Fetch"
+    },
+    {
+      "url": "http://localhost:3001/api/stats",
+      "method": "GET",
+      "type": "Fetch"
+    }
+  ],
+  "failures": [
+    {
+      "url": null,
+      "errorText": "net::ERR_CONNECTION_REFUSED",
+      "type": "Fetch"
+    },
+    {
+      "url": null,
+      "errorText": "net::ERR_CONNECTION_REFUSED",
+      "type": "Fetch"
+    },
+    {
+      "url": null,
+      "errorText": "net::ERR_CONNECTION_REFUSED",
+      "type": "Fetch"
+    }
+  ],
+  "console": [
+    {
+      "level": "debug",
+      "args": [
+        "[vite] connecting..."
+      ]
+    },
+    {
+      "level": "debug",
+      "args": [
+        "[vite] connected."
+      ]
+    },
+    {
+      "level": "warning",
+      "args": [
+        "[Vue warn]: Extraneous non-props attributes (closeable) were passed to component but could not be automatically inherited because component renders fragment or text or teleport root nodes.",
+        "\n",
+        " at <Teleport",
+        "disabled=false",
+        "defer=false",
+        "forceMount=false",
+        " ...",
+        ">",
+        "\n",
+        " at <DialogPortal",
+        "closeable=false",
+        ">",
+        "\n",
+        " at <DialogContent",
+        "class=\"sm:max-w-[420px]\"",
+        "closeable=false",
+        ">",
+        "\n",
+        " at <DialogRoot",
+        "open=false",
+        "onUpdate:open=fn",
+        ">",
+        "\n",
+        " at <Dialog",
+        "open=false",
+        "onUpdate:open=fn",
+        ">",
+        "\n",
+        " at <App>"
+      ]
+    },
+    {
+      "level": "error",
+      "args": [
+        "Failed to load resource: net::ERR_CONNECTION_REFUSED"
+      ]
+    },
+    {
+      "level": "warning",
+      "args": [
+        "[App] Could not fetch maps:",
+        "Failed to fetch"
+      ]
+    },
+    {
+      "level": "error",
+      "args": [
+        "WebSocket connection to 'ws://localhost:8765/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED"
+      ]
+    },
+    {
+      "level": "error",
+      "args": [
+        "Failed to load resource: net::ERR_CONNECTION_REFUSED"
+      ]
+    },
+    {
+      "level": "warning",
+      "args": [
+        "Warning: Missing `Description` or `aria-describedby=\"undefined\"` for DialogContent."
+      ]
+    },
+    {
+      "level": "error",
+      "args": [
+        "%c[ROS] WebSocket Error!",
+        "color:#ef4444;font-weight:bold",
+        "Event"
+      ]
+    },
+    {
+      "level": "warning",
+      "args": [
+        "%c[ROS] Connection Closed",
+        "color:#f59e0b;font-weight:bold"
+      ]
+    },
+    {
+      "level": "error",
+      "args": [
+        "Failed to load resource: net::ERR_CONNECTION_REFUSED"
+      ]
+    }
+  ],
+  "screenshot": "/tmp/amr-webui-startup-audit/19-backend-offline-1440x900.png"
+}

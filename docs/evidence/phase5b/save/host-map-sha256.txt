@@ -1,0 +1,2 @@
+21101cbedbc1a2c171b1b1654debc24ff98bdf2a3c8bb635bbb4260ed91af391  maps/amr_map.yaml
+602fdce689ba138449eddbbbb051b4341736987c154decf7e2c319d9843816f7  maps/amr_map.pgm

@@ -1,0 +1,2 @@
+CONTAINER ID   NAME      CPU %     MEM USAGE / LIMIT   MEM %     NET I/O   BLOCK I/O        PIDS
+c64057add084   amr-sim   198.99%   686MiB / 15.24GiB   4.40%     0B / 0B   10.9MB / 684kB   198

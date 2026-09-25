@@ -1,0 +1,22 @@
+## lifecycle deactivate
+waiting for service to become available...
+requester: making request: lifecycle_msgs.srv.ChangeState_Request(transition=lifecycle_msgs.msg.Transition(id=4, label=''))
+
+response:
+lifecycle_msgs.srv.ChangeState_Response(success=True)
+
+## lifecycle cleanup
+waiting for service to become available...
+requester: making request: lifecycle_msgs.srv.ChangeState_Request(transition=lifecycle_msgs.msg.Transition(id=2, label=''))
+
+response:
+lifecycle_msgs.srv.ChangeState_Response(success=True)
+
+## nodes after map reload shutdown
+/map_server
+/phase4_bridge
+/robot_state_publisher
+## map topic after shutdown
+## map server process
+   2583       0 /usr/bin/python3 /opt/ros/jazzy/bin/ros2 run nav2_map_server map_server --ros-args -p yaml_filename:=/maps/amr_map.yaml -p use_sim_time:=true
+   2608    2583 /opt/ros/jazzy/lib/nav2_map_server/map_server --ros-args -p yaml_filename:=/maps/amr_map.yaml -p use_sim_time:=true

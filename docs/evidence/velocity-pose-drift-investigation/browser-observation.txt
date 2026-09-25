@@ -1,0 +1,6 @@
+Label: NOT VERIFIED
+
+Computer A had no active Vite/Web UI, FastAPI, Docker, or rosbridge process at the
+time of local process/socket inspection. Browser WebSocket frames, Pinia runtime
+values, raw rosbridge messages, and rendered MapView behavior were therefore not
+available for this run.

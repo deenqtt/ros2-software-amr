@@ -1,0 +1,79 @@
+nodes
+/launch_ros_1193
+/lifecycle_manager_slam
+/map_saver
+/phase4_bridge
+/robot_state_publisher
+/slam_toolbox
+/tf2_echo
+/transform_listener_impl_59decf8fa6e0
+/transform_listener_impl_600eed2ba2a0
+topics
+/clock [rosgraph_msgs/msg/Clock]
+/map [nav_msgs/msg/OccupancyGrid]
+/map_metadata [nav_msgs/msg/MapMetaData]
+/map_saver/transition_event [lifecycle_msgs/msg/TransitionEvent]
+/pose [geometry_msgs/msg/PoseWithCovarianceStamped]
+/scan [sensor_msgs/msg/LaserScan]
+/tf [tf2_msgs/msg/TFMessage]
+/tf_static [tf2_msgs/msg/TFMessage]
+tf map odom
+At time 199.300000000
+- Translation: [0.000, 0.000, 0.000]
+- Rotation: in Quaternion (xyzw) [0.000, 0.000, 0.000, 1.000]
+- Rotation: in RPY (radian) [0.000, -0.000, 0.000]
+- Rotation: in RPY (degree) [0.000, -0.000, 0.000]
+- Matrix:
+  1.000  0.000  0.000  0.000
+  0.000  1.000  0.000  0.000
+  0.000  0.000  1.000  0.000
+  0.000  0.000  0.000  1.000
+At time 200.300000000
+- Translation: [0.000, 0.000, 0.000]
+- Rotation: in Quaternion (xyzw) [0.000, 0.000, 0.000, 1.000]
+- Rotation: in RPY (radian) [0.000, -0.000, 0.000]
+- Rotation: in RPY (degree) [0.000, -0.000, 0.000]
+- Matrix:
+  1.000  0.000  0.000  0.000
+  0.000  1.000  0.000  0.000
+  0.000  0.000  1.000  0.000
+  0.000  0.000  0.000  1.000
+At time 201.300000000
+- Translation: [0.000, 0.000, 0.000]
+- Rotation: in Quaternion (xyzw) [0.000, 0.000, 0.000, 1.000]
+- Rotation: in RPY (radian) [0.000, -0.000, 0.000]
+- Rotation: in RPY (degree) [0.000, -0.000, 0.000]
+- Matrix:
+  1.000  0.000  0.000  0.000
+  0.000  1.000  0.000  0.000
+  0.000  0.000  1.000  0.000
+  0.000  0.000  0.000  1.000
+slam log
+[INFO] [launch]: All log files can be found below /root/.ros/log/2026-09-20-04-27-54-860177-gspe-1193
+[INFO] [launch]: Default logging verbosity is set to INFO
+[INFO] [async_slam_toolbox_node-1]: process started with pid [1209]
+[INFO] [map_saver_server-2]: process started with pid [1210]
+[INFO] [lifecycle_manager-3]: process started with pid [1211]
+[lifecycle_manager-3] [INFO] [1789878475.119981435] [lifecycle_manager_slam]: Creating
+[lifecycle_manager-3] [INFO] [1789878475.133063072] [lifecycle_manager_slam]: [34m[1mCreating and initializing lifecycle service clients[0m[0m
+[async_slam_toolbox_node-1] [INFO] [1789878475.153972508] [slam_toolbox]: Node using stack size 40000000
+[lifecycle_manager-3] [INFO] [1789878475.165748106] [lifecycle_manager_slam]: [34m[1mStarting managed nodes bringup...[0m[0m
+[lifecycle_manager-3] [INFO] [1789878475.166486396] [lifecycle_manager_slam]: [34m[1mConfiguring map_saver[0m[0m
+[map_saver_server-2] [INFO] [1789878475.166627583] [map_saver]: 
+[map_saver_server-2] 	map_saver lifecycle node launched. 
+[map_saver_server-2] 	Waiting on external lifecycle transitions to activate
+[map_saver_server-2] 	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[map_saver_server-2] [INFO] [1789878475.166741817] [map_saver]: Creating
+[map_saver_server-2] [INFO] [1789878475.333854993] [map_saver]: Configuring
+[lifecycle_manager-3] [INFO] [1789878475.341710463] [lifecycle_manager_slam]: [34m[1mActivating map_saver[0m[0m
+[map_saver_server-2] [INFO] [1789878475.341941238] [map_saver]: Activating
+[map_saver_server-2] [INFO] [1789878475.341979948] [map_saver]: Creating bond (map_saver) to lifecycle manager.
+[async_slam_toolbox_node-1] [INFO] [1789878475.453780396] [slam_toolbox]: Configuring
+[lifecycle_manager-3] [INFO] [1789878475.454988061] [lifecycle_manager_slam]: Server map_saver connected with bond.
+[lifecycle_manager-3] [INFO] [1789878475.455055710] [lifecycle_manager_slam]: [34m[1mManaged nodes are active[0m[0m
+[lifecycle_manager-3] [INFO] [1789878475.455074173] [lifecycle_manager_slam]: [34m[1mCreating bond timer...[0m[0m
+[async_slam_toolbox_node-1] [INFO] [1789878475.473340581] [slam_toolbox]: Using solver plugin solver_plugins::CeresSolver
+[async_slam_toolbox_node-1] [INFO] [1789878475.473530568] [slam_toolbox]: CeresSolver: Using SCHUR_JACOBI preconditioner.
+[INFO] [launch.user]: [LifecycleLaunch] Slamtoolbox node is activating.
+[async_slam_toolbox_node-1] [INFO] [1789878475.497233210] [slam_toolbox]: Activating
+[async_slam_toolbox_node-1] Registering sensor: [Custom Described Lidar]

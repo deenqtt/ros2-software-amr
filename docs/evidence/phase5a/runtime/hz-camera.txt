@@ -1,0 +1,9 @@
+WARNING: topic [/camera/image_raw] does not appear to be published yet
+average rate: 9.065
+	min: 0.063s max: 0.204s std dev: 0.05092s window: 5
+average rate: 14.069
+	min: 0.063s max: 0.082s std dev: 0.00728s window: 5
+average rate: 8.565
+	min: 0.074s max: 0.201s std dev: 0.04868s window: 5
+average rate: 11.400
+	min: 0.066s max: 0.149s std dev: 0.03119s window: 5

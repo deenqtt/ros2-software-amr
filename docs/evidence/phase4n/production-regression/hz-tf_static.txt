@@ -1,0 +1,1 @@
+WARNING: topic [/tf_static] does not appear to be published yet

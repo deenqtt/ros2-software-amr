@@ -1,0 +1,9 @@
+WARNING: topic [/clock] does not appear to be published yet
+average rate: 1068.648
+	min: 0.000s max: 0.002s std dev: 0.00044s window: 20
+average rate: 967.434
+	min: 0.000s max: 0.004s std dev: 0.00078s window: 20
+average rate: 725.732
+	min: 0.001s max: 0.007s std dev: 0.00125s window: 20
+average rate: 997.950
+	min: 0.001s max: 0.001s std dev: 0.00017s window: 20

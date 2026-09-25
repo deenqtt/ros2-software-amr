@@ -1,0 +1,56 @@
+{
+  "actions": {
+    "close_startup": true,
+    "set_url": "ws://localhost:8766",
+    "connect": true
+  },
+  "initial": {
+    "body": "AMR Control\nNavigation\nMapping\nX\n0.00\nY\n0.00\n\u03b8\n0.0\u00b0\nAVAILABLE\nIDLE\nOFFLINE\nE-STOP\nNAVIGATION\nOverview\nMission\nDocking\nSetup\nOffline\nMAP VIEW\nAuto\n+\n\u2212\nNAV\nPan / View\nNavigate\nAdd Waypoint\nAdd Destination\nPlace Dock\nInit Pose (AMCL)\nToggle Costmap\nToggle Robot\nToggle Camera\n\nWaiting for map data\n\nSubscribing to /map topic\n\nSTOP\nROS CONNECTION\nConnect\nROBOT POSE\nX\n0.00\nm\nY\n0.00\nm\n\u0398\n0.0\ndeg\nSTATUS\nNavigation\nIDLE\nDocking\nIDLE\nAMCL INIT POSE\nVELOCITY\nSYSTEM\nCPU\n\u2014\nMEMORY\n\u2014\nLATENCY\n\u2014\n\nNo robot connection\n\nEnter WebSocket URL in Overview panel to connect\n\nCONNECT\nPilih Mode Operasi\nMapping\nBuat peta baru dengan SLAM\nNavigation\nNavigasi dengan peta tersimpan\nMulai\nClose",
+    "inputs": [
+      {
+        "type": "text",
+        "value": "ws://localhost:8765",
+        "placeholder": "ws://localhost:8765"
+      }
+    ],
+    "storage": {
+      "localStorage": {},
+      "sessionStorage": {}
+    },
+    "screenshot": "/tmp/amr-webui-startup-audit/16-ros-initial.png"
+  },
+  "after": {
+    "body": "AMR Control\nNavigation\nMapping\nX\n0.00\nY\n0.00\n\u03b8\n0.0\u00b0\nAVAILABLE\nIDLE\nOFFLINE\nE-STOP\nNAVIGATION\nOverview\nMission\nDocking\nSetup\nOffline\nMAP VIEW\nAuto\n+\n\u2212\nNAV\nPan / View\nNavigate\nAdd Waypoint\nAdd Destination\nPlace Dock\nInit Pose (AMCL)\nToggle Costmap\nToggle Robot\nToggle Camera\n\nWaiting for map data\n\nSubscribing to /map topic\n\nSTOP\nROS CONNECTION\nConnect\nROBOT POSE\nX\n0.00\nm\nY\n0.00\nm\n\u0398\n0.0\ndeg\nSTATUS\nNavigation\nIDLE\nDocking\nIDLE\nAMCL INIT POSE\nVELOCITY\nSYSTEM\nCPU\n\u2014\nMEMORY\n\u2014\nLATENCY\n\u2014\n\nNo robot connection\n\nEnter WebSocket URL in Overview panel to connect\n\nCONNECT",
+    "inputs": [
+      {
+        "type": "text",
+        "value": "ws://localhost:8766",
+        "placeholder": "ws://localhost:8765"
+      }
+    ],
+    "storage": {
+      "localStorage": {
+        "amr_ros_url": "ws://localhost:8766"
+      },
+      "sessionStorage": {}
+    },
+    "screenshot": "/tmp/amr-webui-startup-audit/17-ros-custom-url-offline.png"
+  },
+  "reload": {
+    "body": "AMR Control\nNavigation\nMapping\nX\n0.00\nY\n0.00\n\u03b8\n0.0\u00b0\nAVAILABLE\nIDLE\nOFFLINE\nE-STOP\nNAVIGATION\nOverview\nMission\nDocking\nSetup\nOffline\nMAP VIEW\nAuto\n+\n\u2212\nNAV\nPan / View\nNavigate\nAdd Waypoint\nAdd Destination\nPlace Dock\nInit Pose (AMCL)\nToggle Costmap\nToggle Robot\nToggle Camera\n\nWaiting for map data\n\nSubscribing to /map topic\n\nSTOP\nROS CONNECTION\nConnect\nROBOT POSE\nX\n0.00\nm\nY\n0.00\nm\n\u0398\n0.0\ndeg\nSTATUS\nNavigation\nIDLE\nDocking\nIDLE\nAMCL INIT POSE\nVELOCITY\nSYSTEM\nCPU\n\u2014\nMEMORY\n\u2014\nLATENCY\n\u2014\n\nNo robot connection\n\nEnter WebSocket URL in Overview panel to connect\n\nCONNECT\nPilih Mode Operasi\nMapping\nBuat peta baru dengan SLAM\nNavigation\nNavigasi dengan peta tersimpan\nMulai\nClose",
+    "inputs": [
+      {
+        "type": "text",
+        "value": "ws://localhost:8766",
+        "placeholder": "ws://localhost:8765"
+      }
+    ],
+    "storage": {
+      "localStorage": {
+        "amr_ros_url": "ws://localhost:8766"
+      },
+      "sessionStorage": {}
+    },
+    "screenshot": "/tmp/amr-webui-startup-audit/18-ros-custom-url-reload.png"
+  }
+}

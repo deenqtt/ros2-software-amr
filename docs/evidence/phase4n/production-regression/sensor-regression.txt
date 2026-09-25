@@ -1,0 +1,36 @@
+TOPIC /clock
+rosgraph_msgs/msg/Clock
+ECHO_RC /clock 1
+HZ_RC /clock 124
+TOPIC /cmd_vel
+geometry_msgs/msg/Twist
+ECHO_RC /cmd_vel 124
+HZ_RC /cmd_vel 124
+TOPIC /odom
+nav_msgs/msg/Odometry
+ECHO_RC /odom 0
+HZ_RC /odom 124
+TOPIC /tf
+tf2_msgs/msg/TFMessage
+ECHO_RC /tf 1
+HZ_RC /tf 124
+TOPIC /tf_static
+tf2_msgs/msg/TFMessage
+ECHO_RC /tf_static 1
+HZ_RC /tf_static 124
+TOPIC /scan
+sensor_msgs/msg/LaserScan
+ECHO_RC /scan 0
+HZ_RC /scan 124
+TOPIC /imu
+sensor_msgs/msg/Imu
+ECHO_RC /imu 0
+HZ_RC /imu 124
+TOPIC /camera/image_raw
+sensor_msgs/msg/Image
+ECHO_RC /camera/image_raw 1
+HZ_RC /camera/image_raw 1
+TOPIC /camera/camera_info
+sensor_msgs/msg/CameraInfo
+ECHO_RC /camera/camera_info 1
+HZ_RC /camera/camera_info 1

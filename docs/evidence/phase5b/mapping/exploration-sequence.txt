@@ -1,0 +1,27 @@
+BEGIN east_3p2 linear=0.15 angular=0.0 times=214
+END east_3p2 pub_exit=0
+BEGIN turn_north linear=0.0 angular=0.2 times=79
+END turn_north pub_exit=0
+BEGIN north_3p2 linear=0.15 angular=0.0 times=214
+END north_3p2 pub_exit=0
+BEGIN turn_west linear=0.0 angular=0.2 times=79
+END turn_west pub_exit=0
+BEGIN west_6p4 linear=0.15 angular=0.0 times=427
+END west_6p4 pub_exit=0
+BEGIN turn_south linear=0.0 angular=0.2 times=79
+END turn_south pub_exit=0
+BEGIN south_6p4 linear=0.15 angular=0.0 times=427
+END south_6p4 pub_exit=0
+BEGIN turn_east linear=0.0 angular=0.2 times=79
+END turn_east pub_exit=0
+BEGIN east_6p4 linear=0.15 angular=0.0 times=427
+END east_6p4 pub_exit=0
+BEGIN turn_north_return linear=0.0 angular=0.2 times=79
+END turn_north_return pub_exit=0
+BEGIN north_3p2_return linear=0.15 angular=0.0 times=214
+END north_3p2_return pub_exit=0
+BEGIN turn_west_return linear=0.0 angular=0.2 times=79
+END turn_west_return pub_exit=0
+BEGIN west_3p2_return linear=0.15 angular=0.0 times=214
+END west_3p2_return pub_exit=0
+EXPLORATION_COMPLETE

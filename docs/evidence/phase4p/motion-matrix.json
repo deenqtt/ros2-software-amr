@@ -1,0 +1,595 @@
+{
+  "production_model_sha256": "dd34b08457d696e6f1cb9702dc1d4119174d4c042eea56ded3d892f7fe4abc37",
+  "runs": {
+    "ccw": [
+      {
+        "kind": "turn",
+        "model": "amr_robot",
+        "sample_count": 503,
+        "ground_pose_age_max_s": 0.0,
+        "ground_displacement_m": 0.031153908810605552,
+        "odom_displacement_m": 4.324831926374803e-13,
+        "translation_error_m": 0.031153908810944313,
+        "translation_error_percent": 100.00000000108737,
+        "physical_yaw_deg": 87.63635997962423,
+        "odom_yaw_deg": 87.26061272682387,
+        "ground_yaw_signed_deg": 87.63635997962423,
+        "odom_yaw_signed_deg": 87.26061272682387,
+        "yaw_error_deg": 0.3757472528003661,
+        "yaw_ratio": 1.004306035003177,
+        "D1_m": null,
+        "D2_m": null,
+        "D3_m": null,
+        "D_total_m": null,
+        "file": "docs/evidence/phase4p/production/ccw-1/trace.json",
+        "event_markers": {
+          "T0": 4.691,
+          "T1": 5.059,
+          "T2": 8.721,
+          "T3": 9.104,
+          "T4": 9.104,
+          "T5": 13.707
+        },
+        "wheel": {
+          "target_left_rad_s": -0.9333333333333335,
+          "target_right_rad_s": 0.9333333333333335,
+          "max_active_velocity_error_rad_s": 3.347340182813241e-10,
+          "position_change_left_rad": -3.5706999985795393,
+          "position_change_right_rad": 3.5706999985890238,
+          "signs_valid": true
+        }
+      },
+      {
+        "kind": "turn",
+        "model": "amr_robot",
+        "sample_count": 503,
+        "ground_pose_age_max_s": 0.022999999999999687,
+        "ground_displacement_m": 0.030916945872151543,
+        "odom_displacement_m": 4.330070048576472e-13,
+        "translation_error_m": 0.03091694587249523,
+        "translation_error_percent": 100.00000000111164,
+        "physical_yaw_deg": 86.80287763638776,
+        "odom_yaw_deg": 86.52808618587662,
+        "ground_yaw_signed_deg": 86.80287763638776,
+        "odom_yaw_signed_deg": 86.52808618587662,
+        "yaw_error_deg": 0.27479145051114534,
+        "yaw_ratio": 1.003175748622486,
+        "D1_m": null,
+        "D2_m": null,
+        "D3_m": null,
+        "D_total_m": null,
+        "file": "docs/evidence/phase4p/production/ccw-2/trace.json",
+        "event_markers": {
+          "T0": 6.565,
+          "T1": 6.944,
+          "T2": 10.565,
+          "T3": 10.964,
+          "T4": 10.984,
+          "T5": 15.564
+        },
+        "wheel": {
+          "target_left_rad_s": -0.9333333333333335,
+          "target_right_rad_s": 0.9333333333333335,
+          "max_active_velocity_error_rad_s": 3.347274679654788e-10,
+          "position_change_left_rad": -3.546199998572608,
+          "position_change_right_rad": 3.546199998582606,
+          "signs_valid": true
+        }
+      },
+      {
+        "kind": "turn",
+        "model": "amr_robot",
+        "sample_count": 503,
+        "ground_pose_age_max_s": 0.018000000000000682,
+        "ground_displacement_m": 0.03090386670365619,
+        "odom_displacement_m": 4.332214831035585e-13,
+        "translation_error_m": 0.03090386670400033,
+        "translation_error_percent": 100.00000000111358,
+        "physical_yaw_deg": 86.75704111971342,
+        "odom_yaw_deg": 86.82602423926475,
+        "ground_yaw_signed_deg": 86.75704111971342,
+        "odom_yaw_signed_deg": 86.82602423926475,
+        "yaw_error_deg": 0.06898311955133352,
+        "yaw_ratio": 0.9992055018048364,
+        "D1_m": null,
+        "D2_m": null,
+        "D3_m": null,
+        "D_total_m": null,
+        "file": "docs/evidence/phase4p/production/ccw-3/trace.json",
+        "event_markers": {
+          "T0": 6.686,
+          "T1": 7.065,
+          "T2": 10.686,
+          "T3": 11.085,
+          "T4": 11.105,
+          "T5": 15.685
+        },
+        "wheel": {
+          "target_left_rad_s": -0.9333333333333335,
+          "target_right_rad_s": 0.9333333333333335,
+          "max_active_velocity_error_rad_s": 3.3472313809568277e-10,
+          "position_change_left_rad": -3.5433999985733484,
+          "position_change_right_rad": 3.5433999985833498,
+          "signs_valid": true
+        }
+      }
+    ],
+    "cw": [
+      {
+        "kind": "turn",
+        "model": "amr_robot",
+        "sample_count": 503,
+        "ground_pose_age_max_s": 0.0,
+        "ground_displacement_m": 0.031174405674337505,
+        "odom_displacement_m": 3.6088387997885896e-13,
+        "translation_error_m": 0.031174405674578427,
+        "translation_error_percent": 100.00000000077281,
+        "physical_yaw_deg": 87.70872402699929,
+        "odom_yaw_deg": 87.35280163600855,
+        "ground_yaw_signed_deg": -87.70872402699929,
+        "odom_yaw_signed_deg": -87.35280163600855,
+        "yaw_error_deg": 0.35592239099074163,
+        "yaw_ratio": 1.0040745389309187,
+        "D1_m": null,
+        "D2_m": null,
+        "D3_m": null,
+        "D_total_m": null,
+        "file": "docs/evidence/phase4p/production/cw-1/trace.json",
+        "event_markers": {
+          "T0": 4.793,
+          "T1": 5.156,
+          "T2": 8.822,
+          "T3": 9.202,
+          "T4": 9.202,
+          "T5": 13.8
+        },
+        "wheel": {
+          "target_left_rad_s": 0.9333333333333335,
+          "target_right_rad_s": -0.9333333333333335,
+          "max_active_velocity_error_rad_s": 3.3472757898778127e-10,
+          "position_change_left_rad": 3.5736609985783128,
+          "position_change_right_rad": -3.57366099858543,
+          "signs_valid": true
+        }
+      },
+      {
+        "kind": "turn",
+        "model": "amr_robot",
+        "sample_count": 503,
+        "ground_pose_age_max_s": 0.08800000000000008,
+        "ground_displacement_m": 0.03098879344657566,
+        "odom_displacement_m": 3.6098355941402974e-13,
+        "translation_error_m": 0.030988793446820578,
+        "translation_error_percent": 100.00000000079035,
+        "physical_yaw_deg": 87.05497846623216,
+        "odom_yaw_deg": 87.00937073365779,
+        "ground_yaw_signed_deg": -87.05497846623216,
+        "odom_yaw_signed_deg": -87.00937073365779,
+        "yaw_error_deg": 0.04560773257436779,
+        "yaw_ratio": 1.0005241703530299,
+        "D1_m": null,
+        "D2_m": null,
+        "D3_m": null,
+        "D_total_m": null,
+        "file": "docs/evidence/phase4p/production/cw-2/trace.json",
+        "event_markers": {
+          "T0": 5.013,
+          "T1": 5.392,
+          "T2": 9.013,
+          "T3": 9.412,
+          "T4": 9.432,
+          "T5": 14.012
+        },
+        "wheel": {
+          "target_left_rad_s": 0.9333333333333335,
+          "target_right_rad_s": -0.9333333333333335,
+          "max_active_velocity_error_rad_s": 3.347325749913921e-10,
+          "position_change_left_rad": 3.5452666652407197,
+          "position_change_right_rad": -3.545266665248311,
+          "signs_valid": true
+        }
+      },
+      {
+        "kind": "turn",
+        "model": "amr_robot",
+        "sample_count": 503,
+        "ground_pose_age_max_s": 0.019000000000000128,
+        "ground_displacement_m": 0.03098226810171021,
+        "odom_displacement_m": 3.6093982442298283e-13,
+        "translation_error_m": 0.030982268101955424,
+        "translation_error_percent": 100.00000000079146,
+        "physical_yaw_deg": 87.0320602088227,
+        "odom_yaw_deg": 86.45933125047935,
+        "ground_yaw_signed_deg": -87.0320602088227,
+        "odom_yaw_signed_deg": -86.45933125047935,
+        "yaw_error_deg": 0.5727289583433475,
+        "yaw_ratio": 1.0066242584815295,
+        "D1_m": null,
+        "D2_m": null,
+        "D3_m": null,
+        "D_total_m": null,
+        "file": "docs/evidence/phase4p/production/cw-3/trace.json",
+        "event_markers": {
+          "T0": 6.705,
+          "T1": 7.084,
+          "T2": 10.705,
+          "T3": 11.104,
+          "T4": 11.124,
+          "T5": 15.704
+        },
+        "wheel": {
+          "target_left_rad_s": 0.9333333333333335,
+          "target_right_rad_s": -0.9333333333333335,
+          "max_active_velocity_error_rad_s": 3.347340182813241e-10,
+          "position_change_left_rad": 3.548066665239976,
+          "position_change_right_rad": -3.548066665247566,
+          "signs_valid": true
+        }
+      }
+    ],
+    "forward": [
+      {
+        "kind": "stop",
+        "model": "amr_robot",
+        "sample_count": 503,
+        "ground_pose_age_max_s": 0.0,
+        "ground_displacement_m": 0.7652399570748256,
+        "odom_displacement_m": 0.7616999999901298,
+        "translation_error_m": 0.0035399570846957884,
+        "translation_error_percent": 0.4625943865016512,
+        "physical_yaw_deg": 2.1338140312186744e-10,
+        "odom_yaw_deg": 2.8152453467908284e-10,
+        "ground_yaw_signed_deg": 2.1338140312186744e-10,
+        "odom_yaw_signed_deg": 2.8152453467908284e-10,
+        "yaw_error_deg": 6.81431315572154e-11,
+        "yaw_ratio": null,
+        "D1_m": 0.03695954269630741,
+        "D2_m": 2.500222965218235e-06,
+        "D3_m": 2.500222965218235e-06,
+        "D_total_m": 0.03696454314223785,
+        "file": "docs/evidence/phase4p/production/forward-1/trace.json",
+        "event_markers": {
+          "T0": 4.067,
+          "T1": 4.448,
+          "T2": 8.095,
+          "T3": 8.495,
+          "T4": 8.476,
+          "T5": 13.076
+        },
+        "wheel": {
+          "target_left_rad_s": 2.2222222222222223,
+          "target_right_rad_s": 2.2222222222222223,
+          "max_active_velocity_error_rad_s": 4.39808189867108e-11,
+          "position_change_left_rad": 8.504799999882918,
+          "position_change_right_rad": 8.504799999905874,
+          "signs_valid": true
+        },
+        "stability": {
+          "lateral_drift_m": 1.2173774492853329e-12,
+          "yaw_drift_deg": 2.1338140312186744e-10
+        }
+      },
+      {
+        "kind": "stop",
+        "model": "amr_robot",
+        "sample_count": 503,
+        "ground_pose_age_max_s": 0.09299999999999997,
+        "ground_displacement_m": 0.7596999554062134,
+        "odom_displacement_m": 0.7594999999901355,
+        "translation_error_m": 0.00019995541607786826,
+        "translation_error_percent": 0.0263203143102663,
+        "physical_yaw_deg": 2.1212388943767592e-10,
+        "odom_yaw_deg": 2.8046434804986067e-10,
+        "ground_yaw_signed_deg": 2.1212388943767592e-10,
+        "odom_yaw_signed_deg": 2.8046434804986067e-10,
+        "yaw_error_deg": 6.834045861218475e-11,
+        "yaw_ratio": null,
+        "D1_m": 0.04009504403047903,
+        "D2_m": 0.0,
+        "D3_m": 4.500334447765653e-06,
+        "D_total_m": 0.0400995443649268,
+        "file": "docs/evidence/phase4p/production/forward-2/trace.json",
+        "event_markers": {
+          "T0": 4.843,
+          "T1": 5.222,
+          "T2": 8.843,
+          "T3": 9.242,
+          "T4": 9.242,
+          "T5": 13.842
+        },
+        "wheel": {
+          "target_left_rad_s": 2.2222222222222223,
+          "target_right_rad_s": 2.2222222222222223,
+          "max_active_velocity_error_rad_s": 3.0897950864527957e-11,
+          "position_change_left_rad": 8.443333333212387,
+          "position_change_right_rad": 8.443333333235271,
+          "signs_valid": true
+        },
+        "stability": {
+          "lateral_drift_m": 1.1921706123327341e-12,
+          "yaw_drift_deg": 2.1212388943767592e-10
+        }
+      },
+      {
+        "kind": "stop",
+        "model": "amr_robot",
+        "sample_count": 503,
+        "ground_pose_age_max_s": 0.019000000000000128,
+        "ground_displacement_m": 0.7590999554062314,
+        "odom_displacement_m": 0.7566999999901576,
+        "translation_error_m": 0.002399955416073851,
+        "translation_error_percent": 0.31615802358854284,
+        "physical_yaw_deg": 2.1179294968596593e-10,
+        "odom_yaw_deg": 2.785711565286934e-10,
+        "ground_yaw_signed_deg": 2.1179294968596593e-10,
+        "odom_yaw_signed_deg": 2.785711565286934e-10,
+        "yaw_error_deg": 6.677820684272746e-11,
+        "yaw_ratio": null,
+        "D1_m": 0.04088604369602933,
+        "D2_m": 0.0,
+        "D3_m": 1.3500668895605195e-05,
+        "D_total_m": 0.040899544364924934,
+        "file": "docs/evidence/phase4p/production/forward-3-rerun/trace.json",
+        "event_markers": {
+          "T0": 6.727,
+          "T1": 7.106,
+          "T2": 10.727,
+          "T3": 11.126,
+          "T4": 11.126,
+          "T5": 15.726
+        },
+        "wheel": {
+          "target_left_rad_s": 2.2222222222222223,
+          "target_right_rad_s": 2.2222222222222223,
+          "max_active_velocity_error_rad_s": 3.0889957258750655e-11,
+          "position_change_left_rad": 8.441111110990388,
+          "position_change_right_rad": 8.441111111013184,
+          "signs_valid": true
+        },
+        "stability": {
+          "lateral_drift_m": 1.185584925821059e-12,
+          "yaw_drift_deg": 2.1179294968596593e-10
+        }
+      }
+    ],
+    "reverse": [
+      {
+        "kind": "stop",
+        "model": "amr_robot",
+        "sample_count": 503,
+        "ground_pose_age_max_s": 0.019000000000000128,
+        "ground_displacement_m": 0.7574999554054557,
+        "odom_displacement_m": 0.757499999989343,
+        "translation_error_m": 4.4583887361722665e-08,
+        "translation_error_percent": 5.8856616979999865e-06,
+        "physical_yaw_deg": 1.0883484591461186e-10,
+        "odom_yaw_deg": 1.8027686791137362e-10,
+        "ground_yaw_signed_deg": -1.0883484591461186e-10,
+        "odom_yaw_signed_deg": -1.8027686791137362e-10,
+        "yaw_error_deg": 7.144202199676176e-11,
+        "yaw_ratio": null,
+        "D1_m": 0.04186704325011115,
+        "D2_m": 0.0,
+        "D3_m": 3.2501114826000155e-05,
+        "D_total_m": 0.04189954436493715,
+        "file": "docs/evidence/phase4p/production/reverse-1-rerun/trace.json",
+        "event_markers": {
+          "T0": 7.468,
+          "T1": 7.847,
+          "T2": 11.468,
+          "T3": 11.867,
+          "T4": 11.867,
+          "T5": 16.467
+        },
+        "wheel": {
+          "target_left_rad_s": -2.2222222222222223,
+          "target_right_rad_s": -2.2222222222222223,
+          "max_active_velocity_error_rad_s": 3.5477709658948697e-10,
+          "position_change_left_rad": -8.436666666541054,
+          "position_change_right_rad": -8.436666666555784,
+          "signs_valid": true
+        },
+        "stability": {
+          "lateral_drift_m": 8.036944425549957e-13,
+          "yaw_drift_deg": 1.0883484591461186e-10
+        }
+      },
+      {
+        "kind": "stop",
+        "model": "amr_robot",
+        "sample_count": 503,
+        "ground_pose_age_max_s": 0.018000000000000682,
+        "ground_displacement_m": 0.758499955405476,
+        "odom_displacement_m": 0.755499999989358,
+        "translation_error_m": 0.002999955416117972,
+        "translation_error_percent": 0.3955116140401442,
+        "physical_yaw_deg": 1.1557889430803768e-10,
+        "odom_yaw_deg": 1.8612302859273466e-10,
+        "ground_yaw_signed_deg": -1.1557889430803768e-10,
+        "odom_yaw_signed_deg": -1.8612302859273466e-10,
+        "yaw_error_deg": 7.054413428469699e-11,
+        "yaw_ratio": null,
+        "D1_m": 0.04187254336159407,
+        "D2_m": 0.0,
+        "D3_m": 2.7001003343407604e-05,
+        "D_total_m": 0.04189954436493748,
+        "file": "docs/evidence/phase4p/production/reverse-2/trace.json",
+        "event_markers": {
+          "T0": 6.902,
+          "T1": 7.282,
+          "T2": 10.904,
+          "T3": 11.303,
+          "T4": 11.303,
+          "T5": 15.903
+        },
+        "wheel": {
+          "target_left_rad_s": -2.2222222222222223,
+          "target_right_rad_s": -2.2222222222222223,
+          "max_active_velocity_error_rad_s": 1.4370522549711495e-09,
+          "position_change_left_rad": -8.447777777652083,
+          "position_change_right_rad": -8.447777777667394,
+          "signs_valid": true
+        },
+        "stability": {
+          "lateral_drift_m": 8.38002336571357e-13,
+          "yaw_drift_deg": 1.1557889430803768e-10
+        }
+      },
+      {
+        "kind": "stop",
+        "model": "amr_robot",
+        "sample_count": 503,
+        "ground_pose_age_max_s": 0.021000000000000796,
+        "ground_displacement_m": 0.7592999554054627,
+        "odom_displacement_m": 0.7542999999893489,
+        "translation_error_m": 0.004999955416113755,
+        "translation_error_percent": 0.6584954181175741,
+        "physical_yaw_deg": 1.1184509403793791e-10,
+        "odom_yaw_deg": 1.8294247322325012e-10,
+        "ground_yaw_signed_deg": -1.1184509403793791e-10,
+        "odom_yaw_signed_deg": -1.8294247322325012e-10,
+        "yaw_error_deg": 7.109737918531221e-11,
+        "yaw_ratio": null,
+        "D1_m": 0.040699544364932505,
+        "D2_m": 0.0,
+        "D3_m": 0.0,
+        "D_total_m": 0.040699544364932505,
+        "file": "docs/evidence/phase4p/production/reverse-3-rerun/trace.json",
+        "event_markers": {
+          "T0": 6.705,
+          "T1": 7.084,
+          "T2": 10.705,
+          "T3": 11.104,
+          "T4": 11.124,
+          "T5": 15.704
+        },
+        "wheel": {
+          "target_left_rad_s": -2.2222222222222223,
+          "target_right_rad_s": -2.2222222222222223,
+          "max_active_velocity_error_rad_s": 1.4370544754171988e-09,
+          "position_change_left_rad": -8.443333333207626,
+          "position_change_right_rad": -8.44333333322259,
+          "signs_valid": true
+        },
+        "stability": {
+          "lateral_drift_m": 8.252696221314689e-13,
+          "yaw_drift_deg": 1.1184509403793791e-10
+        }
+      }
+    ]
+  },
+  "aggregates": {
+    "ccw": {
+      "yaw_error_deg": {
+        "mean": 0.2398406076209483,
+        "worst": 0.3757472528003661,
+        "spread": 0.30676413324903257
+      },
+      "max_ground_pose_age_s": 0.022999999999999687,
+      "max_wheel_velocity_error_rad_s": 3.347340182813241e-10,
+      "all_wheel_signs_valid": true
+    },
+    "cw": {
+      "yaw_error_deg": {
+        "mean": 0.32475302730281896,
+        "worst": 0.5727289583433475,
+        "spread": 0.5271212257689797
+      },
+      "max_ground_pose_age_s": 0.08800000000000008,
+      "max_wheel_velocity_error_rad_s": 3.347340182813241e-10,
+      "all_wheel_signs_valid": true
+    },
+    "forward": {
+      "translation_error_percent": {
+        "mean": 0.26835757480015343,
+        "worst": 0.4625943865016512,
+        "spread": 0.43627407219138487
+      },
+      "D1_m": {
+        "mean": 0.03931354347427193,
+        "worst": 0.04088604369602933,
+        "spread": 0.003926500999721916
+      },
+      "D2_m": {
+        "mean": 8.334076550727451e-07,
+        "worst": 2.500222965218235e-06,
+        "spread": 2.500222965218235e-06
+      },
+      "D3_m": {
+        "mean": 6.833742102863027e-06,
+        "worst": 1.3500668895605195e-05,
+        "spread": 1.100044593038696e-05
+      },
+      "max_ground_pose_age_s": 0.09299999999999997,
+      "max_wheel_velocity_error_rad_s": 4.39808189867108e-11,
+      "all_wheel_signs_valid": true,
+      "lateral_drift_m": {
+        "mean": 1.1983776624797087e-12,
+        "worst": 1.2173774492853329e-12
+      },
+      "yaw_drift_deg": {
+        "mean": 2.1243274741516976e-10,
+        "worst": 2.1338140312186744e-10
+      }
+    },
+    "reverse": {
+      "translation_error_percent": {
+        "mean": 0.3513376392731387,
+        "worst": 0.6584954181175741,
+        "spread": 0.658489532455876
+      },
+      "D1_m": {
+        "mean": 0.041479710325545906,
+        "worst": 0.04187254336159407,
+        "spread": 0.0011729989966615673
+      },
+      "D2_m": {
+        "mean": 0.0,
+        "worst": 0.0,
+        "spread": 0.0
+      },
+      "D3_m": {
+        "mean": 1.9834039389802587e-05,
+        "worst": 3.2501114826000155e-05,
+        "spread": 3.2501114826000155e-05
+      },
+      "max_ground_pose_age_s": 0.021000000000000796,
+      "max_wheel_velocity_error_rad_s": 1.4370544754171988e-09,
+      "all_wheel_signs_valid": true,
+      "lateral_drift_m": {
+        "mean": 8.223221337526073e-13,
+        "worst": 8.38002336571357e-13
+      },
+      "yaw_drift_deg": {
+        "mean": 1.1208627808686249e-10,
+        "worst": 1.1557889430803768e-10
+      }
+    }
+  },
+  "symmetry": [
+    {
+      "max_left_velocity_mismatch_rad_s": 0.025666666666623317,
+      "max_right_velocity_mismatch_rad_s": 0.025666666666494642,
+      "max_yaw_symmetry_error_deg": 0.32085579429223143,
+      "max_translation_symmetry_error_m": 0.04639044062844561
+    },
+    {
+      "max_left_velocity_mismatch_rad_s": 0.009333333333390342,
+      "max_right_velocity_mismatch_rad_s": 0.009333333333374522,
+      "max_yaw_symmetry_error_deg": 0.36669231008368874,
+      "max_translation_symmetry_error_m": 0.04628250251749308
+    },
+    {
+      "max_left_velocity_mismatch_rad_s": 0.011666666666541814,
+      "max_right_velocity_mismatch_rad_s": 0.011666666666005687,
+      "max_yaw_symmetry_error_deg": 0.38961058638643553,
+      "max_translation_symmetry_error_m": 0.04630049249128445
+    }
+  ],
+  "symmetry_summary": {
+    "max_left_velocity_mismatch_rad_s": 0.025666666666623317,
+    "max_right_velocity_mismatch_rad_s": 0.025666666666494642,
+    "max_yaw_symmetry_error_deg": 0.38961058638643553,
+    "max_translation_symmetry_error_m": 0.04639044062844561
+  }
+}

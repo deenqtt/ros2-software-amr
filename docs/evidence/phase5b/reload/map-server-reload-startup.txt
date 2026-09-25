@@ -1,0 +1,54 @@
+## map server node
+/map_server
+/phase4_bridge
+/robot_state_publisher
+## initial lifecycle state
+waiting for service to become available...
+requester: making request: lifecycle_msgs.srv.GetState_Request()
+
+response:
+lifecycle_msgs.srv.GetState_Response(current_state=lifecycle_msgs.msg.State(id=1, label='unconfigured'))
+
+## configure
+waiting for service to become available...
+requester: making request: lifecycle_msgs.srv.ChangeState_Request(transition=lifecycle_msgs.msg.Transition(id=1, label=''))
+
+response:
+lifecycle_msgs.srv.ChangeState_Response(success=True)
+
+## activate
+waiting for service to become available...
+requester: making request: lifecycle_msgs.srv.ChangeState_Request(transition=lifecycle_msgs.msg.Transition(id=3, label=''))
+
+response:
+lifecycle_msgs.srv.ChangeState_Response(success=True)
+
+## final lifecycle state
+waiting for service to become available...
+requester: making request: lifecycle_msgs.srv.GetState_Request()
+
+response:
+lifecycle_msgs.srv.GetState_Response(current_state=lifecycle_msgs.msg.State(id=3, label='active'))
+
+## map info
+Type: nav_msgs/msg/OccupancyGrid
+
+Publisher count: 1
+
+Node name: map_server
+Node namespace: /
+Topic type: nav_msgs/msg/OccupancyGrid
+Topic type hash: RIHS01_8d348150c12913a31ee0ec170fbf25089e4745d17035792a1ba94d6f0bc0cfc7
+Endpoint type: PUBLISHER
+GID: 01.0f.9f.73.30.0a.50.49.00.00.00.00.00.00.22.03
+QoS profile:
+  Reliability: RELIABLE
+  History (Depth): UNKNOWN
+  Durability: TRANSIENT_LOCAL
+  Lifespan: Infinite
+  Deadline: Infinite
+  Liveliness: AUTOMATIC
+  Liveliness lease duration: Infinite
+
+Subscription count: 0
+

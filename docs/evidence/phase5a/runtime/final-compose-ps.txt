@@ -1,0 +1,2 @@
+NAME      IMAGE           COMMAND                  SERVICE   CREATED         STATUS                   PORTS
+amr-sim   amr-sim:jazzy   "bash /entrypoint.sh…"   amr-sim   8 minutes ago   Up 8 minutes (healthy)   

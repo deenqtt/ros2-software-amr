@@ -3,7 +3,7 @@
 docking_manager_node — State machine docking AMR (simulasi, ArUco-guided).
 
 Service /dock_command (custom_interfaces/srv/DockCommand):
-  Request : { action, station_id, station_name }
+  Request : { action, station_id }
   Response: { result: string }
 
 Service /station_config (custom_interfaces/srv/StationConfig):
@@ -67,6 +67,7 @@ ANGULAR_KP           = 1.2    # proportional gain for lateral correction
 MAX_ANGULAR          = 0.4    # rad/s clamp
 REVERSE_TIMEOUT      = 30.0   # seconds hard limit
 ARUCO_LOST_TIMEOUT   = 3.0    # seconds — fallback to odom if marker unseen
+APPROACH_DISTANCE    = 0.5    # metres; StationConfig has no approach fields
 
 
 class DockingManagerNode(Node):
@@ -193,22 +194,31 @@ class DockingManagerNode(Node):
         return response
 
     def _on_station_config(self, request: StationConfig.Request, response: StationConfig.Response):
+        station_id = request.station_id
         action_str = 'save' if request.action == 1 else 'delete'
 
         if request.action == 1:
-            self._station_registry[request.id] = {
-                'target':   {'x': request.x_pose,     'y': request.y_pose,     'yaw': request.yaw_pose},
-                'approach': {'x': request.x_approach,  'y': request.y_approach,  'yaw': request.yaw_approach},
+            # The committed StationConfig contract contains one target pose.
+            # Derive an approach pose behind it instead of reading stale
+            # x_approach/y_approach/name fields from the old implementation.
+            approach_x = request.x_pose - math.cos(request.yaw_pose) * APPROACH_DISTANCE
+            approach_y = request.y_pose - math.sin(request.yaw_pose) * APPROACH_DISTANCE
+            self._station_registry[station_id] = {
+                'target':   {'x': request.x_pose, 'y': request.y_pose, 'yaw': request.yaw_pose},
+                'approach': {'x': approach_x, 'y': approach_y, 'yaw': request.yaw_pose},
             }
             self.get_logger().info(
-                f'[docking_manager] station_config save: id={request.id} name="{request.name}"'
+                f'[docking_manager] station_config save: id={station_id}'
                 f' pos=({request.x_pose:.2f},{request.y_pose:.2f})')
-        else:
-            self._station_registry.pop(request.id, None)
+        elif request.action == 0:
+            self._station_registry.pop(station_id, None)
             self.get_logger().info(
-                f'[docking_manager] station_config delete: id={request.id}')
+                f'[docking_manager] station_config delete: id={station_id}')
+        else:
+            response.result = f'ERROR: unknown station_config action {request.action}'
+            return response
 
-        response.result = f'OK: {action_str} "{request.name}"'
+        response.result = f'OK: {action_str} "{station_id}"'
         return response
 
     # ── Docking phases ────────────────────────────────────────────────────────

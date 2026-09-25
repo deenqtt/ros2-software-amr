@@ -1,11 +1,13 @@
 services:
 
-  # ── AMR Simulation (ROS2 Humble + Gazebo + Nav2) ────────────────────────────
+  # ── AMR Simulation foundation (ROS 2 Jazzy + Noble) ─────────────────────────
   amr-sim:
     build:
       context: .
       dockerfile: docker/Dockerfile
-    image: amr-sim:humble
+      args:
+        BUILD_WORKSPACE: ${BUILD_WORKSPACE:-true}
+    image: amr-sim:jazzy
     container_name: amr-sim
     restart: unless-stopped
 
@@ -14,6 +16,11 @@ services:
       - TURTLEBOT3_MODEL=waffle_pi
       - ROS_DOMAIN_ID=42
       - USE_SLAM=${USE_SLAM:-true}
+      # Phase 3 defaults to headless Gazebo Sim; set SIM_GUI=true explicitly
+      # when a development display is available.
+      - SIM_GUI=${SIM_GUI:-false}
+      - SIM_HEADLESS=${SIM_HEADLESS:-true}
+      - FOUNDATION_ONLY=${FOUNDATION_ONLY:-false}
 
     volumes:
       # X11 for Gazebo GUI
@@ -24,7 +31,7 @@ services:
       - ./ros2_ws/src:/ros2_ws/src:ro
 
     ports:
-      - "8765:8765"   # Foxglove Bridge (WebSocket → web UI)
+      - "8765:8765"   # rosbridge WebSocket → web UI
       - "8080:8080"   # web_video_server (camera stream)
 
     network_mode: host   # Simplifies ROS2 DDS discovery
@@ -35,10 +42,18 @@ services:
 
     privileged: true
 
-    command: ros2 launch amr_bringup bringup.launch.py use_slam:=${USE_SLAM:-true}
+    command:
+      - bash
+      - -lc
+      - >-
+        if [[ "$${FOUNDATION_ONLY:-false}" == "true" ]]; then
+          printf "ROS 2 Jazzy + Gazebo Harmonic foundation smoke mode\\n";
+          exec tail -f /dev/null;
+        fi;
+        exec ros2 launch amr_simulation sim.launch.py gui:=$${SIM_GUI:-false} headless:=$${SIM_HEADLESS:-true} use_sim_time:=true
 
     healthcheck:
-      test: ["CMD", "ros2", "node", "list"]
+      test: ["CMD-SHELL", "bash -lc 'source /opt/ros/jazzy/setup.bash && test \"$$ROS_DISTRO\" = jazzy && ros2 --help >/dev/null'"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -63,7 +78,7 @@ services:
 
   # ── Teleop (optional — keyboard control for manual SLAM mapping) ────────────
   teleop:
-    image: amr-sim:humble
+    image: amr-sim:jazzy
     container_name: amr-teleop
     profiles: ["teleop"]   # Only starts with: docker compose --profile teleop up
     depends_on: [amr-sim]
@@ -73,7 +88,7 @@ services:
     stdin_open: true
     tty: true
     command: >
-      bash -c "source /opt/ros/humble/setup.bash &&
+      bash -c "source /opt/ros/jazzy/setup.bash &&
                source /ros2_ws/install/setup.bash &&
                ros2 run teleop_twist_keyboard teleop_twist_keyboard"
 

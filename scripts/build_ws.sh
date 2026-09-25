@@ -16,11 +16,11 @@ if [[ "${1:-}" == "--clean" ]]; then
   rm -rf "$WS_DIR/build" "$WS_DIR/install" "$WS_DIR/log"
 fi
 
-# Source ROS2
-if [[ -f /opt/ros/humble/setup.bash ]]; then
-  source /opt/ros/humble/setup.bash
+# Source ROS 2 Jazzy
+if [[ -f /opt/ros/jazzy/setup.bash ]]; then
+  source /opt/ros/jazzy/setup.bash
 else
-  echo "ERROR: /opt/ros/humble/setup.bash not found. Install ROS2 Humble first."
+  echo "ERROR: /opt/ros/jazzy/setup.bash not found. Use the Jazzy Docker foundation first."
   exit 1
 fi
 
@@ -31,8 +31,8 @@ info "Building workspace: $WS_DIR"
 cd "$WS_DIR"
 
 # Install dependencies
-rosdep update --rosdistro humble 2>/dev/null || true
-rosdep install --from-paths src -i -y --rosdistro humble
+rosdep update --rosdistro jazzy 2>/dev/null || true
+rosdep install --from-paths src --ignore-src -y --rosdistro jazzy
 
 colcon build \
   --symlink-install \

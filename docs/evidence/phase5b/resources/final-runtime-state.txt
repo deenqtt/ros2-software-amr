@@ -1,0 +1,5 @@
+## final nodes after resource probe
+/phase4_bridge
+/robot_state_publisher
+## final slam processes
+## final stop

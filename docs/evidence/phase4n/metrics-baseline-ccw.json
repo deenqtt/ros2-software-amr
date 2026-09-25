@@ -1,0 +1,29 @@
+{
+  "repeat_count": 1,
+  "mean_yaw_error_deg": 17.753464136977044,
+  "worst_yaw_error_deg": 17.753464136977044,
+  "mean_yaw_ratio": 0.7952039637295505,
+  "worst_translation_error_percent": 100.00000000106432,
+  "traces": [
+    {
+      "kind": "turn",
+      "model": "amr_robot",
+      "sample_count": 502,
+      "ground_pose_age_max_s": 0.01699999999999946,
+      "ground_displacement_m": 0.015581037470336642,
+      "odom_displacement_m": 1.9503592900079077e-13,
+      "translation_error_m": 0.015581037470502474,
+      "translation_error_percent": 100.00000000106432,
+      "physical_yaw_deg": 68.93505025171052,
+      "odom_yaw_deg": 86.68851438868757,
+      "ground_yaw_signed_deg": 68.93505025171052,
+      "odom_yaw_signed_deg": 86.68851438868757,
+      "yaw_error_deg": 17.753464136977044,
+      "yaw_ratio": 0.7952039637295505,
+      "D1_m": null,
+      "D2_m": null,
+      "D3_m": null,
+      "D_total_m": null
+    }
+  ]
+}

@@ -64,14 +64,14 @@
     <!-- ROS URL + connect/disconnect -->
     <div class="flex gap-1.5">
       <input
-        v-model="rosUrl"
+        :value="store.rosUrl || 'VITE_ROS_URL belum dikonfigurasi'"
+        readonly
         class="input flex-1 text-xs font-mono"
-        placeholder="ws://localhost:8765"
-        @keyup.enter="toggleConnection"
       />
       <button
         class="btn text-xs px-2 py-1"
         :class="store.rosConnected ? 'btn-danger' : 'btn-success'"
+        :disabled="!store.rosConfigValid && !store.rosConnected"
         @click="toggleConnection"
       >
         {{ store.rosConnected ? 'Disc.' : 'Connect' }}
@@ -112,7 +112,6 @@ const store = useRobotStore()
 const ros   = useROS()
 const toast = useToast()
 
-const rosUrl     = ref(store.rosUrl)
 const mapFilename = ref('amr_map')
 const savingMap  = ref(false)
 
@@ -125,10 +124,8 @@ const pose = computed(() => ({
 function toggleConnection() {
   if (store.rosConnected) {
     ros.disconnect()
-  } else {
-    store.rosUrl = rosUrl.value
-    localStorage.setItem('amr_ros_url', rosUrl.value)
-    ros.connect(rosUrl.value)
+  } else if (store.rosConfigValid) {
+    ros.connect(store.rosUrl)
   }
 }
 

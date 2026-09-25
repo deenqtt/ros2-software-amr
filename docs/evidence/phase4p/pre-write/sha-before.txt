@@ -1,0 +1,1 @@
+56c347599eb0f078aa4b0107578655fe98681d034e0a88e945269cbfc92b89fb  ros2_ws/src/amr_simulation/models/amr_robot_harmonic/model.sdf

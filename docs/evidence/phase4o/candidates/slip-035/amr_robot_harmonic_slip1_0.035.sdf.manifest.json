@@ -1,0 +1,20 @@
+{
+  "source": "ros2_ws/src/amr_simulation/models/amr_robot_harmonic/model.sdf",
+  "output": "docs/evidence/phase4o/candidates/slip-035/amr_robot_harmonic_slip1_0.035.sdf",
+  "source_sha256": "56c347599eb0f078aa4b0107578655fe98681d034e0a88e945269cbfc92b89fb",
+  "output_sha256": "56c347599eb0f078aa4b0107578655fe98681d034e0a88e945269cbfc92b89fb",
+  "candidate_slip1": "0.035",
+  "changed_fields": 2,
+  "changes": [
+    {
+      "link": "wheel_left_link",
+      "old": "0.035",
+      "new": "0.035"
+    },
+    {
+      "link": "wheel_right_link",
+      "old": "0.035",
+      "new": "0.035"
+    }
+  ]
+}

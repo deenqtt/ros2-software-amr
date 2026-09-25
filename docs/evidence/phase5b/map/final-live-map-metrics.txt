@@ -1,0 +1,71 @@
+{"frame_id": "map", "free": 36799, "free_pct": 86.29754701937057, "height": 206, "max_value": 100, "min_value": -1, "occupied": 3135, "occupied_pct": 7.351906570986351, "origin": [-5.399187246009865, -5.067681677387469, 0.0], "physical_height_m": 10.30000015348196, "physical_width_m": 10.350000154227018, "resolution": 0.05000000074505806, "status": "OK", "total": 42642, "unknown": 2708, "unknown_pct": 6.350546409643075, "width": 207}
+## scan_hz
+WARNING: topic [/scan] does not appear to be published yet
+average rate: 11.991
+	min: 0.007s max: 0.111s std dev: 0.03689s window: 13
+average rate: 10.778
+	min: 0.007s max: 0.144s std dev: 0.03098s window: 23
+## odom_hz
+WARNING: topic [/odom] does not appear to be published yet
+average rate: 28.988
+	min: 0.033s max: 0.040s std dev: 0.00133s window: 30
+average rate: 29.157
+	min: 0.029s max: 0.041s std dev: 0.00150s window: 60
+average rate: 29.015
+	min: 0.029s max: 0.044s std dev: 0.00205s window: 89
+## map_hz
+WARNING: topic [/map] does not appear to be published yet
+## pose_map_base
+At time 545.632000000
+- Translation: [1.899, -1.239, 0.000]
+- Rotation: in Quaternion (xyzw) [0.000, 0.000, 0.713, 0.702]
+- Rotation: in RPY (radian) [0.000, -0.000, 1.586]
+- Rotation: in RPY (degree) [0.000, -0.000, 90.892]
+- Matrix:
+ -0.016 -1.000  0.000  1.899
+  1.000 -0.016  0.000 -1.239
+  0.000  0.000  1.000  0.000
+  0.000  0.000  0.000  1.000
+At time 546.618000000
+- Translation: [1.899, -1.239, 0.000]
+- Rotation: in Quaternion (xyzw) [0.000, 0.000, 0.713, 0.702]
+- Rotation: in RPY (radian) [0.000, -0.000, 1.586]
+- Rotation: in RPY (degree) [0.000, -0.000, 90.892]
+- Matrix:
+ -0.016 -1.000  0.000  1.899
+  1.000 -0.016  0.000 -1.239
+  0.000  0.000  1.000  0.000
+  0.000  0.000  0.000  1.000
+At time 547.604000000
+- Translation: [1.899, -1.239, 0.000]
+- Rotation: in Quaternion (xyzw) [0.000, 0.000, 0.713, 0.702]
+- Rotation: in RPY (radian) [0.000, -0.000, 1.586]
+- Rotation: in RPY (degree) [0.000, -0.000, 90.892]
+- Matrix:
+ -0.016 -1.000  0.000  1.899
+  1.000 -0.016  0.000 -1.239
+  0.000  0.000  1.000  0.000
+  0.000  0.000  0.000  1.000
+At time 548.590000000
+- Translation: [1.899, -1.239, 0.000]
+- Rotation: in Quaternion (xyzw) [0.000, 0.000, 0.713, 0.702]
+- Rotation: in RPY (radian) [0.000, -0.000, 1.586]
+- Rotation: in RPY (degree) [0.000, -0.000, 90.892]
+- Matrix:
+ -0.016 -1.000  0.000  1.899
+  1.000 -0.016  0.000 -1.239
+  0.000  0.000  1.000  0.000
+  0.000  0.000  0.000  1.000
+At time 549.576000000
+- Translation: [1.899, -1.239, 0.000]
+- Rotation: in Quaternion (xyzw) [0.000, 0.000, 0.713, 0.702]
+- Rotation: in RPY (radian) [0.000, -0.000, 1.586]
+- Rotation: in RPY (degree) [0.000, -0.000, 90.892]
+- Matrix:
+ -0.016 -1.000  0.000  1.899
+  1.000 -0.016  0.000 -1.239
+  0.000  0.000  1.000  0.000
+  0.000  0.000  0.000  1.000
+## final_nodes
+/slam_toolbox
+/transform_listener_impl_5c8e6076f550

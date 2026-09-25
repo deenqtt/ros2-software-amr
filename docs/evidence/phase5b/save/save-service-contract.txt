@@ -1,0 +1,22 @@
+## save-related services
+/map_saver/change_state [lifecycle_msgs/srv/ChangeState]
+/map_saver/describe_parameters [rcl_interfaces/srv/DescribeParameters]
+/map_saver/get_available_states [lifecycle_msgs/srv/GetAvailableStates]
+/map_saver/get_available_transitions [lifecycle_msgs/srv/GetAvailableTransitions]
+/map_saver/get_parameter_types [rcl_interfaces/srv/GetParameterTypes]
+/map_saver/get_parameters [rcl_interfaces/srv/GetParameters]
+/map_saver/get_state [lifecycle_msgs/srv/GetState]
+/map_saver/get_transition_graph [lifecycle_msgs/srv/GetAvailableTransitions]
+/map_saver/get_type_description [type_description_interfaces/srv/GetTypeDescription]
+/map_saver/list_parameters [rcl_interfaces/srv/ListParameters]
+/map_saver/save_map [nav2_msgs/srv/SaveMap]
+/map_saver/set_parameters [rcl_interfaces/srv/SetParameters]
+/map_saver/set_parameters_atomically [rcl_interfaces/srv/SetParametersAtomically]
+/slam_toolbox/deserialize_map [slam_toolbox/srv/DeserializePoseGraph]
+/slam_toolbox/dynamic_map [nav_msgs/srv/GetMap]
+/slam_toolbox/save_map [slam_toolbox/srv/SaveMap]
+/slam_toolbox/serialize_map [slam_toolbox/srv/SerializePoseGraph]
+## UI endpoint type check
+slam_toolbox/srv/SaveMap
+## runtime endpoint type
+nav2_msgs/srv/SaveMap

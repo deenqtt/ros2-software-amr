@@ -1,111 +1,170 @@
 #!/usr/bin/env bash
-# Helper script untuk build dan run AMR simulation di Docker.
-#
-# Usage:
-#   bash scripts/docker_run.sh build    # build image
-#   bash scripts/docker_run.sh up       # start simulation
-#   bash scripts/docker_run.sh slam     # start in SLAM/mapping mode
-#   bash scripts/docker_run.sh nav      # start in navigation mode (need map)
-#   bash scripts/docker_run.sh teleop   # start + keyboard teleop
-#   bash scripts/docker_run.sh down     # stop semua container
-#   bash scripts/docker_run.sh logs     # lihat logs
-#   bash scripts/docker_run.sh shell    # buka bash di container
+# Simple host entry point for the Cafe Service AMR ROS 2 Jazzy simulation.
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m'
 info() { echo -e "${GREEN}[AMR]${NC} $*"; }
 warn() { echo -e "${YELLOW}[WARN]${NC} $*"; }
 
-# Update database mode agar Web UI sinkron dengan CLI
-update_db_mode() {
-  local mode=$1
-  local map_file=${2:-""}
-  local db_file="data/amr.db"
-  
-  if [[ -f "$db_file" ]]; then
-    # Menggunakan sqlite3 jika terinstall di host, atau biarkan saja jika tidak ada
-    if command -v sqlite3 >/dev/null 2>&1; then
-      sqlite3 "$db_file" "INSERT OR REPLACE INTO settings (key, value) VALUES ('ros_mode', '$mode');"
-      if [[ -n "$map_file" ]]; then
-        sqlite3 "$db_file" "INSERT OR REPLACE INTO settings (key, value) VALUES ('ros_map_file', '$map_file');"
-      fi
-    fi
+usage() {
+  cat <<'EOF'
+Usage:
+  bash scripts/docker_run.sh build                 Build ROS 2 Jazzy image
+  bash scripts/docker_run.sh gazebo                Gazebo Harmonic GUI only
+  bash scripts/docker_run.sh headless              Gazebo server-only
+  bash scripts/docker_run.sh slam                  Full simulation + SLAM + rosbridge
+  bash scripts/docker_run.sh nav [map.yaml]        Full simulation + Nav2 + rosbridge
+  bash scripts/docker_run.sh teleop                Keyboard teleoperation
+  bash scripts/docker_run.sh save-map [maps/name]  Save the current /map
+  bash scripts/docker_run.sh down                   Stop AMR simulation containers
+  bash scripts/docker_run.sh logs                   Follow named simulation logs
+  bash scripts/docker_run.sh shell                  Open a shell in the image
+
+The Web UI and backend are separate services. Start them from web-ui/ and
+backend/ as documented in docs/runbooks/AMR_SIMULATION_COMMANDS.md.
+The SLAM/Nav2 commands stay in the foreground; press Ctrl-C to stop them.
+EOF
+}
+
+allow_x11() {
+  if [[ "${OSTYPE:-}" == linux-gnu* ]] && command -v xhost >/dev/null 2>&1; then
+    xhost +local:root >/dev/null 2>&1 || true
+    xhost +local:"$(id -un)" >/dev/null 2>&1 || true
+  fi
+  export DISPLAY="${DISPLAY:-:0}"
+}
+
+stop_sim_containers() {
+  # docker compose scopes this lookup to the current project directory, so a
+  # second checkout or unrelated Compose project cannot be stopped.
+  local ids
+  ids="$(docker compose ps -q --status running --all amr-sim)"
+  if [[ -n "$ids" ]]; then
+    docker stop $ids >/dev/null
   fi
 }
 
-CMD="${1:-up}"
+map_container_path() {
+  local requested="${1:-maps/amr_map.yaml}"
+  local filename
+  case "$requested" in
+    /maps/*.yaml|/maps/*.yml)
+      filename="${requested##*/}"
+      ;;
+    maps/*.yaml|maps/*.yml|*.yaml|*.yml)
+      filename="${requested##*/}"
+      ;;
+    *)
+      warn "Map harus berupa file .yaml/.yml, contoh: maps/amr_map.yaml"
+      return 2
+      ;;
+  esac
+  if [[ ! -f "maps/$filename" ]]; then
+    warn "Map tidak ditemukan di host: maps/$filename"
+    return 2
+  fi
+  printf '/maps/%s' "$filename"
+}
 
-# Allow X11 from Docker
-if [[ "$OSTYPE" == "linux-gnu"* ]]; then
-  xhost +local:root >/dev/null 2>&1 || true
-  xhost +local:$(id -un) >/dev/null 2>&1 || true
-fi
+map_output_path() {
+  local requested="${1:-maps/amr_map}"
+  local filename="${requested##*/}"
+  if [[ "$filename" != *.yaml && "$filename" != *.yml ]]; then
+    filename="${filename}.yaml"
+  fi
+  if [[ "$filename" == .* || "$filename" == */* || "$filename" == *..* ]]; then
+    warn "Nama output map tidak valid: $requested"
+    return 2
+  fi
+  printf '/maps/%s' "$filename"
+}
 
-export DISPLAY="${DISPLAY:-:0}"
+run_bringup() {
+  local use_slam="$1"
+  local map_path="${2:-}"
+  local gui="${SIM_GUI:-false}"
+  local headless="${SIM_HEADLESS:-true}"
+  local map_arg=()
 
+  if [[ "$use_slam" == false ]]; then
+    map_arg=("map:=$map_path")
+  fi
+
+  stop_sim_containers
+  allow_x11
+  info "Starting Cafe AMR runtime: $([[ "$use_slam" == true ]] && echo SLAM || echo NAVIGATION)"
+  info "Gazebo GUI=$gui, headless=$headless"
+
+  docker compose run --rm --no-deps --service-ports \
+    -e "SIM_GUI=$gui" \
+    -e "SIM_HEADLESS=$headless" \
+    -e FOUNDATION_ONLY=false \
+    amr-sim \
+    ros2 launch amr_bringup bringup.launch.py \
+      "use_slam:=$use_slam" \
+      "gui:=$gui" \
+      "headless:=$headless" \
+      "use_sim_time:=true" \
+      "${map_arg[@]}"
+}
+
+CMD="${1:-help}"
 case "$CMD" in
+  help|-h|--help)
+    usage
+    ;;
   build)
-    info "Building AMR Docker image (ROS2 Humble)..."
-    docker compose build --progress=plain
+    info "Building AMR Docker image (ROS 2 Jazzy / Ubuntu Noble)..."
+    docker compose --progress=plain build
     ;;
-
-  up|slam)
-    info "Starting AMR simulation (SLAM mode)..."
-    update_db_mode "slam"
-    USE_SLAM=true docker compose up
+  gazebo)
+    allow_x11
+    info "Starting Gazebo Harmonic GUI only..."
+    SIM_GUI=true SIM_HEADLESS=false FOUNDATION_ONLY=false \
+      docker compose up --force-recreate amr-sim
     ;;
-
-  nav)
-    MAP="${2:-/maps/amr_map.yaml}"
-    LOCAL_MAP="maps/$(basename "$MAP")"
-    if [[ ! -f "$LOCAL_MAP" ]]; then
-      warn "Map file not found: $LOCAL_MAP"
-      warn "Run SLAM mode first, save the map, then use nav mode."
-      exit 1
-    fi
-    info "Starting AMR simulation (Navigation mode, map: $MAP)..."
-    update_db_mode "navigation" "$MAP"
-    USE_SLAM=false docker compose run --rm \
-      -e MAP_FILE="/maps/$(basename "$MAP")" \
-      amr-sim \
-      ros2 launch amr_bringup bringup.launch.py use_slam:=false map:="/maps/$(basename "$MAP")"
+  headless|up|foundation)
+    info "Starting Gazebo Harmonic server-only..."
+    SIM_GUI=false SIM_HEADLESS=true FOUNDATION_ONLY=false \
+      docker compose up --force-recreate amr-sim
     ;;
-
+  slam|mapping)
+    run_bringup true
+    ;;
+  nav|navigation)
+    map_path="$(map_container_path "${2:-maps/amr_map.yaml}")"
+    run_bringup false "$map_path"
+    ;;
   teleop)
-    info "Starting simulation + teleop keyboard..."
-    USE_SLAM=true docker compose --profile teleop up
+    info "Starting keyboard teleoperation (Ctrl-C to stop)..."
+    docker compose run --rm --no-deps --service-ports teleop
     ;;
-
+  save-map)
+    output_path="$(map_output_path "${2:-maps/amr_map}")"
+    output_path="${output_path%.yaml}"
+    output_path="${output_path%.yml}"
+    info "Saving /map to $output_path..."
+    docker compose run --rm --no-deps amr-sim \
+      ros2 run nav2_map_server map_saver_cli -f "$output_path"
+    ;;
   down)
-    info "Stopping all containers..."
-    docker compose down
-    # Stop juga container dari 'docker compose run' yang tidak ter-stop oleh 'down'
-    docker ps -q --filter "name=ros-software-amr-sim" | xargs -r docker stop
-    docker ps -aq --filter "name=ros-software-amr-sim" | xargs -r docker rm
+    info "Stopping AMR simulation containers..."
+    stop_sim_containers
     ;;
-
   logs)
     docker compose logs -f amr-sim
     ;;
-
   shell)
-    info "Opening shell in amr-sim container..."
-    docker compose exec amr-sim bash --rcfile /entrypoint.sh || \
-      docker compose run --rm amr-sim bash --rcfile /entrypoint.sh
+    info "Opening shell in amr-sim image..."
+    docker compose run --rm --no-deps amr-sim bash
     ;;
-
-  save-map)
-    NAME="${2:-amr_map}"
-    info "Saving map as maps/${NAME}..."
-    docker compose exec amr-sim bash -c \
-      "source /opt/ros/humble/setup.bash && source /ros2_ws/install/setup.bash && \
-       ros2 run nav2_map_server map_saver_cli -f /maps/${NAME}"
-    ;;
-
   *)
-    echo "Usage: $0 {build|up|slam|nav [map.yaml]|teleop|down|logs|shell|save-map [name]}"
-    exit 1
+    warn "Unknown command: $CMD"
+    usage
+    exit 2
     ;;
 esac

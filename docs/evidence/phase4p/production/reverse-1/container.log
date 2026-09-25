@@ -1,0 +1,12 @@
+Traceback (most recent call last):
+  File "/phase4p/repo/scripts/phase4m_trace_probe.py", line 244, in <module>
+    raise SystemExit(main())
+                     ^^^^^^
+  File "/phase4p/repo/scripts/phase4m_trace_probe.py", line 237, in main
+    result = run_trace(args)
+             ^^^^^^^^^^^^^^^
+  File "/phase4p/repo/scripts/phase4m_trace_probe.py", line 172, in run_trace
+    node.wait_ready()
+  File "/phase4p/repo/scripts/phase4m_trace_probe.py", line 81, in wait_ready
+    raise RuntimeError("Timed out waiting for Gazebo simulation time and /odom")
+RuntimeError: Timed out waiting for Gazebo simulation time and /odom

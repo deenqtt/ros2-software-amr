@@ -2,19 +2,12 @@
 Mode router — switch AMR antara SLAM (mapping) dan Navigation mode.
 Mode disimpan ke DB supaya survive backend restart.
 """
-import subprocess
-import threading
-from pathlib import Path
-
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from database import get_db
 
 router = APIRouter(prefix="/api/mode", tags=["mode"])
-
-SCRIPT = Path(__file__).parent.parent.parent / "scripts" / "docker_run.sh"
-
 
 class SwitchRequest(BaseModel):
     mode: str           # "slam" | "navigation"
@@ -55,26 +48,12 @@ def switch_mode(req: SwitchRequest):
     if req.mode not in ("slam", "navigation"):
         raise HTTPException(status_code=400, detail="mode harus 'slam' atau 'navigation'")
 
-    if not SCRIPT.exists():
-        raise HTTPException(status_code=500, detail=f"Script tidak ditemukan: {SCRIPT}")
-
     if req.mode == "slam":
-        cmd = ["bash", str(SCRIPT), "slam"]
         label = "Mapping (SLAM)"
         map_file = ""
     else:
         map_file = req.map_file or "/maps/amr_map.yaml"
-        cmd = ["bash", str(SCRIPT), "nav", map_file]
         label = f"Navigation (map: {map_file})"
-
-    def _run():
-        try:
-            subprocess.run(["bash", str(SCRIPT), "down"], check=False, capture_output=True)
-            subprocess.run(cmd, check=False, capture_output=True)
-        except Exception:
-            pass
-
-    threading.Thread(target=_run, daemon=True).start()
 
     # Persist ke DB — survive backend restart
     _save_mode(req.mode, map_file)
@@ -82,5 +61,8 @@ def switch_mode(req: SwitchRequest):
     return SwitchResponse(
         mode=req.mode,
         map_file=map_file,
-        message=f"Switching ke {label}...",
+        message=(
+            f"{label} disimpan. Jalankan command runtime di terminal host: "
+            f"bash scripts/docker_run.sh {'slam' if req.mode == 'slam' else f'nav {map_file}'}"
+        ),
     )

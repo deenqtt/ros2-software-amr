@@ -1,0 +1,3 @@
+WARNING: topic [/clock] does not appear to be published yet
+average rate: 974.796
+	min: 0.001s max: 0.001s std dev: 0.00004s window: 10

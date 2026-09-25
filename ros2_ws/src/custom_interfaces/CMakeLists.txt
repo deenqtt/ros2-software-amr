@@ -8,6 +8,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/RobotStatus.msg"
   "srv/DockCommand.srv"
   "srv/StationConfig.srv"
+  "srv/RobotMode.srv"
   "action/MissionPlan.action"
 )
 

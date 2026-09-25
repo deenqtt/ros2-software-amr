@@ -1,0 +1,16 @@
+ROS_DISTRO=jazzy
+ROS_DOMAIN_ID=42
+GZ_SIM_RESOURCE_PATH=/ros2_ws/src/amr_simulation/models:/opt/ros/jazzy/share:/opt/ros/jazzy/share/turtlebot3_gazebo/models
+/camera/camera_info [sensor_msgs/msg/CameraInfo]
+/camera/image_raw [sensor_msgs/msg/Image]
+/clock [rosgraph_msgs/msg/Clock]
+/cmd_vel [geometry_msgs/msg/Twist]
+/imu [sensor_msgs/msg/Imu]
+/joint_states [sensor_msgs/msg/JointState]
+/odom [nav_msgs/msg/Odometry]
+/parameter_events [rcl_interfaces/msg/ParameterEvent]
+/robot_description [std_msgs/msg/String]
+/rosout [rcl_interfaces/msg/Log]
+/scan [sensor_msgs/msg/LaserScan]
+/tf [tf2_msgs/msg/TFMessage]
+/tf_static [tf2_msgs/msg/TFMessage]

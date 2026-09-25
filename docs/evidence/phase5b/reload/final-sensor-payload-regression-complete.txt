@@ -1,0 +1,130 @@
+## clock
+clock:
+  sec: 769
+  nanosec: 474000000
+---
+## odom
+header:
+  stamp:
+    sec: 771
+    nanosec: 52000000
+  frame_id: odom
+child_frame_id: base_footprint
+pose:
+  pose:
+    position:
+      x: 0.7511495780036279
+      y: -0.8530596035980954
+      z: 0.0
+    orientation:
+      x: 0.0
+      y: 0.0
+      z: -0.8173343582624758
+      w: 0.5761636458539074
+  covariance:
+## tf
+transforms:
+- header:
+    stamp:
+      sec: 772
+      nanosec: 344000000
+    frame_id: odom
+  child_frame_id: base_footprint
+  transform:
+    translation:
+      x: 0.7511495780258615
+      y: -0.8530596035358414
+      z: 0.0
+    rotation:
+      x: 0.0
+      y: 0.0
+      z: -0.8173343583530562
+      w: 0.5761636457254119
+---
+## tf_static
+transforms:
+- header:
+    stamp:
+      sec: 0
+      nanosec: 0
+    frame_id: base_footprint
+  child_frame_id: base_link
+  transform:
+    translation:
+      x: 0.0
+      y: 0.0
+      z: 0.165
+    rotation:
+      x: 0.0
+      y: 0.0
+      z: 0.0
+      w: 1.0
+- header:
+    stamp:
+      sec: 0
+      nanosec: 0
+    frame_id: base_link
+  child_frame_id: camera_link
+  transform:
+## scan
+header:
+  stamp:
+    sec: 775
+    nanosec: 600000000
+  frame_id: base_scan
+angle_min: -2.356194496154785
+angle_max: 2.356194496154785
+angle_increment: 0.006554087623953819
+time_increment: 0.0
+scan_time: 0.0
+range_min: 0.11999999731779099
+range_max: 12.0
+ranges:
+- 0.2602265775203705
+## imu
+header:
+  stamp:
+    sec: 776
+    nanosec: 760000000
+  frame_id: imu_link
+orientation:
+  x: 0.0008761275711600928
+  y: 1.767842943950871e-05
+  z: 0.7101283713836047
+  w: 0.7040716783424976
+orientation_covariance:
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+## camera_info
+header:
+  stamp:
+    sec: 777
+    nanosec: 877000000
+  frame_id: camera_rgb_optical_frame
+height: 480
+width: 640
+distortion_model: plumb_bob
+d:
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+k:
+- 457.00756072998047
+- 0.0
+- 320.0
+- 0.0
+- 457.007532119751
+## image dimensions
+480
+---
+640
+---
+rgb8
+---

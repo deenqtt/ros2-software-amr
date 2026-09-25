@@ -1,0 +1,4 @@
+Traceback (most recent call last):
+  File "/phase4o/repo/scripts/phase4m_trace_probe.py", line 17, in <module>
+    import rclpy
+ModuleNotFoundError: No module named 'rclpy'

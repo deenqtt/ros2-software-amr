@@ -1,0 +1,28 @@
+### /clock
+clock:
+  sec: 718
+  nanosec: 331000000
+---
+### /odom
+header:
+  stamp:
+    sec: 719
+    nanosec: 508000000
+  frame_id: odom
+child_frame_id: base_footprint
+pose:
+  pose:
+    position:
+      x: 0.7511495771166359
+### /tf
+transforms:
+- header:
+    stamp:
+      sec: 720
+      nanosec: 596000000
+    frame_id: odom
+  child_frame_id: base_footprint
+  transform:
+    translation:
+      x: 0.7511495771353585
+### /tf_static

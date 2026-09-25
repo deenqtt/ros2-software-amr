@@ -1,0 +1,24 @@
+std_msgs/String name
+	string data
+---
+# Result code defintions
+uint8 RESULT_SUCCESS=0
+uint8 RESULT_NO_MAP_RECEIEVD=1
+uint8 RESULT_UNDEFINED_FAILURE=255
+
+uint8 result
+--- nav2 ---
+# URL of map resource
+# Can be an absolute path to a file: file:///path/to/maps/floor1.yaml
+# Or, relative to a ROS package: package://my_ros_package/maps/floor2.yaml
+string map_topic
+string map_url
+# Constants for image_format. Supported formats: pgm, png, bmp
+string image_format
+# Map modes: trinary, scale or raw
+string map_mode
+# Thresholds. Values in range of [0.0 .. 1.0]
+float32 free_thresh
+float32 occupied_thresh
+---
+bool result

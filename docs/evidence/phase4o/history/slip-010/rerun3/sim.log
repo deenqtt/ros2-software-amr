@@ -1,0 +1,25 @@
+[INFO] [launch]: All log files can be found below /root/.ros/log/2026-09-19-19-07-32-339384-gspe-1395
+[INFO] [launch]: Default logging verbosity is set to INFO
+[INFO] [gazebo-1]: process started with pid [1402]
+[INFO] [parameter_bridge-2]: process started with pid [1403]
+[INFO] [robot_state_publisher-3]: process started with pid [1404]
+[robot_state_publisher-3] [INFO] [1789844853.301145880] [robot_state_publisher]: Robot initialized
+[parameter_bridge-2] [INFO] [1789844854.380726694] [phase4_bridge]: Creating GZ->ROS Bridge: [/clock (gz.msgs.Clock) -> /clock (rosgraph_msgs/msg/Clock)] (Lazy 0)
+[parameter_bridge-2] [INFO] [1789844854.388318060] [phase4_bridge]: Creating ROS->GZ Bridge: [/cmd_vel (geometry_msgs/msg/Twist) -> /model/amr_robot/cmd_vel (gz.msgs.Twist)] (Lazy 0)
+[parameter_bridge-2] [INFO] [1789844854.395914660] [phase4_bridge]: Creating GZ->ROS Bridge: [/model/amr_robot/odometry (gz.msgs.Odometry) -> /odom (nav_msgs/msg/Odometry)] (Lazy 0)
+[parameter_bridge-2] [INFO] [1789844854.404653340] [phase4_bridge]: Creating GZ->ROS Bridge: [/model/amr_robot/tf (gz.msgs.Pose_V) -> /tf (tf2_msgs/msg/TFMessage)] (Lazy 0)
+[parameter_bridge-2] [INFO] [1789844854.410782016] [phase4_bridge]: Creating GZ->ROS Bridge: [/model/amr_robot/scan (gz.msgs.LaserScan) -> /scan (sensor_msgs/msg/LaserScan)] (Lazy 0)
+[parameter_bridge-2] [INFO] [1789844854.417645458] [phase4_bridge]: Creating GZ->ROS Bridge: [/model/amr_robot/imu (gz.msgs.IMU) -> /imu (sensor_msgs/msg/Imu)] (Lazy 0)
+[parameter_bridge-2] [INFO] [1789844854.420829858] [phase4_bridge]: Creating GZ->ROS Bridge: [/model/amr_robot/camera/image_raw (gz.msgs.Image) -> /camera/image_raw (sensor_msgs/msg/Image)] (Lazy 0)
+[parameter_bridge-2] [INFO] [1789844854.423093730] [phase4_bridge]: Creating GZ->ROS Bridge: [/model/amr_robot/camera/camera_info (gz.msgs.CameraInfo) -> /camera/camera_info (sensor_msgs/msg/CameraInfo)] (Lazy 0)
+[INFO] [create-4]: process started with pid [1449]
+[create-4] [INFO] [1789844855.554781428] [ros_gz_sim]: Entity creation successful.
+[gazebo-1] [1;33mWarning [Utils.cc:132][0m [/sdf/model[@name="amr_robot"]/link[@name="base_scan"]/sensor[@name="front_lidar"]/gz_frame_id:/tmp/phase4o_ws/install/amr_simulation/share/amr_simulation/models/amr_robot_harmonic/model.sdf:L258]: XML Element[gz_frame_id], child of element[sensor], not defined in SDF. Copying[gz_frame_id] as children of [sensor].
+[gazebo-1] [1;33mWarning [Utils.cc:132][0m [/sdf/model[@name="amr_robot"]/link[@name="imu_link"]/sensor[@name="imu_sensor"]/gz_frame_id:/tmp/phase4o_ws/install/amr_simulation/share/amr_simulation/models/amr_robot_harmonic/model.sdf:L288]: XML Element[gz_frame_id], child of element[sensor], not defined in SDF. Copying[gz_frame_id] as children of [sensor].
+[gazebo-1] [1;33mWarning [Utils.cc:132][0m [/sdf/model[@name="amr_robot"]/link[@name="camera_link"]/sensor[@name="front_rgb_camera"]/gz_frame_id:/tmp/phase4o_ws/install/amr_simulation/share/amr_simulation/models/amr_robot_harmonic/model.sdf:L305]: XML Element[gz_frame_id], child of element[sensor], not defined in SDF. Copying[gz_frame_id] as children of [sensor].
+[INFO] [create-4]: process has finished cleanly [pid 1449]
+[gazebo-1] Authorization required, but no authorization protocol specified
+[gazebo-1] 
+[gazebo-1] Authorization required, but no authorization protocol specified
+[gazebo-1] 
+[parameter_bridge-2] [INFO] [1789844863.095798642] [phase4_bridge]: Passing message from ROS geometry_msgs/msg/Twist to Gazebo gz.msgs.Twist (showing msg only once per type)

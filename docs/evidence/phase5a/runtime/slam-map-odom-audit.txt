@@ -1,0 +1,79 @@
+[INFO] [1789878789.622850120] [tf2_echo]: Waiting for transform map ->  odom: Invalid frame ID "map" passed to canTransform argument target_frame - frame does not exist
+At time 496.400000000
+- Translation: [0.000, 0.000, 0.000]
+- Rotation: in Quaternion (xyzw) [0.000, 0.000, 0.000, 1.000]
+- Rotation: in RPY (radian) [0.000, -0.000, 0.000]
+- Rotation: in RPY (degree) [0.000, -0.000, 0.000]
+- Matrix:
+  1.000  0.000  0.000  0.000
+  0.000  1.000  0.000  0.000
+  0.000  0.000  1.000  0.000
+  0.000  0.000  0.000  1.000
+At time 497.300000000
+- Translation: [0.000, 0.000, 0.000]
+- Rotation: in Quaternion (xyzw) [0.000, 0.000, 0.000, 1.000]
+- Rotation: in RPY (radian) [0.000, -0.000, 0.000]
+- Rotation: in RPY (degree) [0.000, -0.000, 0.000]
+- Matrix:
+  1.000  0.000  0.000  0.000
+  0.000  1.000  0.000  0.000
+  0.000  0.000  1.000  0.000
+  0.000  0.000  0.000  1.000
+At time 498.300000000
+- Translation: [0.000, 0.000, 0.000]
+- Rotation: in Quaternion (xyzw) [0.000, 0.000, 0.000, 1.000]
+- Rotation: in RPY (radian) [0.000, -0.000, 0.000]
+- Rotation: in RPY (degree) [0.000, -0.000, 0.000]
+- Matrix:
+  1.000  0.000  0.000  0.000
+  0.000  1.000  0.000  0.000
+  0.000  0.000  1.000  0.000
+  0.000  0.000  0.000  1.000
+At time 499.100000000
+- Translation: [0.000, 0.000, 0.000]
+- Rotation: in Quaternion (xyzw) [0.000, 0.000, 0.000, 1.000]
+- Rotation: in RPY (radian) [0.000, -0.000, 0.000]
+- Rotation: in RPY (degree) [0.000, -0.000, 0.000]
+- Matrix:
+  1.000  0.000  0.000  0.000
+  0.000  1.000  0.000  0.000
+  0.000  0.000  1.000  0.000
+  0.000  0.000  0.000  1.000
+[INFO] [1789878794.269016119] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[INFO] [launch]: All log files can be found below /root/.ros/log/2026-09-20-04-33-02-766903-gspe-2355
+[INFO] [launch]: Default logging verbosity is set to INFO
+[INFO] [async_slam_toolbox_node-1]: process started with pid [2372]
+[INFO] [map_saver_server-2]: process started with pid [2373]
+[INFO] [lifecycle_manager-3]: process started with pid [2374]
+[lifecycle_manager-3] [INFO] [1789878783.092408381] [lifecycle_manager_slam]: Creating
+[lifecycle_manager-3] [INFO] [1789878783.100535285] [lifecycle_manager_slam]: [34m[1mCreating and initializing lifecycle service clients[0m[0m
+[async_slam_toolbox_node-1] [INFO] [1789878783.118959292] [slam_toolbox]: Node using stack size 40000000
+[map_saver_server-2] [INFO] [1789878783.130006660] [map_saver]: 
+[map_saver_server-2] 	map_saver lifecycle node launched. 
+[map_saver_server-2] 	Waiting on external lifecycle transitions to activate
+[map_saver_server-2] 	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[map_saver_server-2] [INFO] [1789878783.130162656] [map_saver]: Creating
+[lifecycle_manager-3] [INFO] [1789878783.284018963] [lifecycle_manager_slam]: [34m[1mStarting managed nodes bringup...[0m[0m
+[lifecycle_manager-3] [INFO] [1789878783.284094668] [lifecycle_manager_slam]: [34m[1mConfiguring map_saver[0m[0m
+[map_saver_server-2] [INFO] [1789878783.432508830] [map_saver]: Configuring
+[lifecycle_manager-3] [INFO] [1789878783.439492538] [lifecycle_manager_slam]: [34m[1mActivating map_saver[0m[0m
+[map_saver_server-2] [INFO] [1789878783.439580918] [map_saver]: Activating
+[map_saver_server-2] [INFO] [1789878783.439611500] [map_saver]: Creating bond (map_saver) to lifecycle manager.
+[async_slam_toolbox_node-1] [INFO] [1789878783.529874784] [slam_toolbox]: Configuring
+[async_slam_toolbox_node-1] [INFO] [1789878783.543502229] [slam_toolbox]: Using solver plugin solver_plugins::CeresSolver
+[lifecycle_manager-3] [INFO] [1789878783.543595225] [lifecycle_manager_slam]: Server map_saver connected with bond.
+[lifecycle_manager-3] [INFO] [1789878783.543669995] [lifecycle_manager_slam]: [34m[1mManaged nodes are active[0m[0m
+[lifecycle_manager-3] [INFO] [1789878783.543690451] [lifecycle_manager_slam]: [34m[1mCreating bond timer...[0m[0m
+[async_slam_toolbox_node-1] [INFO] [1789878783.543862991] [slam_toolbox]: CeresSolver: Using SCHUR_JACOBI preconditioner.
+[INFO] [launch.user]: [LifecycleLaunch] Slamtoolbox node is activating.
+[async_slam_toolbox_node-1] [INFO] [1789878783.576688357] [slam_toolbox]: Activating
+[async_slam_toolbox_node-1] Registering sensor: [Custom Described Lidar]
+[lifecycle_manager-3] [INFO] [1789878798.286532274] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[lifecycle_manager-3] [INFO] [1789878798.286733185] [lifecycle_manager_slam]: Running Nav2 LifecycleManager rcl preshutdown (lifecycle_manager_slam)
+[async_slam_toolbox_node-1] [INFO] [1789878798.286535530] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[map_saver_server-2] [INFO] [1789878798.286540281] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[map_saver_server-2] [INFO] [1789878798.286740968] [map_saver]: Running Nav2 LifecycleNode rcl preshutdown (map_saver)
+[lifecycle_manager-3] [INFO] [1789878798.286817820] [lifecycle_manager_slam]: [34m[1mTerminating bond timer...[0m[0m
+[map_saver_server-2] [INFO] [1789878798.286913793] [map_saver]: Deactivating
+[map_saver_server-2] [INFO] [1789878798.286959255] [map_saver]: Destroying bond (map_saver) to lifecycle manager.
+[async_slam_toolbox_node-1] Unregistering sensor: Custom Described Lidar

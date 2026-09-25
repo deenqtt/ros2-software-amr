@@ -1,0 +1,233 @@
+## nodes
+/launch_ros_609
+/lifecycle_manager_slam
+/map_saver
+/phase4_bridge
+/robot_state_publisher
+/slam_toolbox
+/transform_listener_impl_5c8e6076f550
+## map info
+Type: nav_msgs/msg/OccupancyGrid
+
+Publisher count: 1
+
+Node name: slam_toolbox
+Node namespace: /
+Topic type: nav_msgs/msg/OccupancyGrid
+Topic type hash: RIHS01_8d348150c12913a31ee0ec170fbf25089e4745d17035792a1ba94d6f0bc0cfc7
+Endpoint type: PUBLISHER
+GID: 01.0f.9f.73.87.02.9c.a5.00.00.00.00.00.00.38.03
+QoS profile:
+  Reliability: RELIABLE
+  History (Depth): UNKNOWN
+  Durability: TRANSIENT_LOCAL
+  Lifespan: Infinite
+  Deadline: Infinite
+  Liveliness: AUTOMATIC
+  Liveliness lease duration: Infinite
+
+Subscription count: 1
+
+Node name: slam_toolbox
+Node namespace: /
+Topic type: nav_msgs/msg/OccupancyGrid
+Topic type hash: RIHS01_8d348150c12913a31ee0ec170fbf25089e4745d17035792a1ba94d6f0bc0cfc7
+Endpoint type: SUBSCRIPTION
+GID: 01.0f.9f.73.87.02.9c.a5.00.00.00.00.00.00.29.04
+QoS profile:
+  Reliability: RELIABLE
+  History (Depth): UNKNOWN
+  Durability: VOLATILE
+  Lifespan: Infinite
+  Deadline: Infinite
+  Liveliness: AUTOMATIC
+  Liveliness lease duration: Infinite
+
+## map sample
+header:
+  stamp:
+    sec: 89
+    nanosec: 700000000
+  frame_id: map
+info:
+  map_load_time:
+    sec: 0
+    nanosec: 0
+  resolution: 0.05000000074505806
+  width: 193
+  height: 197
+  origin:
+    position:
+      x: -4.762606276901663
+      y: -4.916472761270376
+      z: 0.0
+    orientation:
+      x: 0.0
+      y: 0.0
+      z: 0.0
+      w: 1.0
+data:
+- -1
+- -1
+- -1
+- -1
+- -1
+- -1
+- -1
+- -1
+- -1
+- -1
+- -1
+- -1
+- -1
+- -1
+- -1
+- -1
+- -1
+- -1
+- -1
+- -1
+- -1
+- -1
+- -1
+- -1
+- -1
+- -1
+- -1
+- -1
+- -1
+- -1
+- -1
+- -1
+- -1
+- -1
+- 100
+- -1
+- -1
+- -1
+- -1
+- -1
+- 100
+- -1
+- -1
+- -1
+- -1
+- 100
+- -1
+- -1
+- -1
+- 100
+- -1
+- -1
+- 100
+- -1
+- -1
+- -1
+- -1
+- -1
+- 100
+- -1
+- -1
+- 100
+- -1
+- -1
+- 100
+- -1
+- -1
+- -1
+- 100
+- -1
+- 100
+- -1
+- 100
+- -1
+- 100
+- -1
+- -1
+- 100
+- 100
+- -1
+- 100
+- -1
+- 100
+- -1
+- -1
+- -1
+- 100
+- -1
+- 100
+- -1
+- 100
+- -1
+- 100
+- 100
+- -1
+- 100
+- -1
+- -1
+- -1
+- -1
+- -1
+- 100
+- 100
+- -1
+- 100
+- -1
+- 100
+- -1
+- 100
+- -1
+- 100
+- -1
+- 100
+- -1
+- 100
+- -1
+- 100
+- -1
+- 100
+- -1
+- 100
+- -1
+- 100
+- -1
+- 100
+- -1
+- -1
+- 100
+- '...'
+---
+## map->odom
+[INFO] [1789881246.520915065] [tf2_echo]: Waiting for transform map ->  odom: Invalid frame ID "map" passed to canTransform argument target_frame - frame does not exist
+[INFO] [1789881248.503521240] [tf2_echo]: Waiting for transform map ->  odom: Invalid frame ID "map" passed to canTransform argument target_frame - frame does not exist
+At time 97.500000000
+- Translation: [0.000, 0.000, 0.000]
+- Rotation: in Quaternion (xyzw) [0.000, 0.000, 0.000, 1.000]
+- Rotation: in RPY (radian) [0.000, -0.000, 0.000]
+- Rotation: in RPY (degree) [0.000, -0.000, 0.000]
+- Matrix:
+  1.000  0.000  0.000  0.000
+  0.000  1.000  0.000  0.000
+  0.000  0.000  1.000  0.000
+  0.000  0.000  0.000  1.000
+At time 98.500000000
+- Translation: [0.000, 0.000, 0.000]
+- Rotation: in Quaternion (xyzw) [0.000, 0.000, 0.000, 1.000]
+- Rotation: in RPY (radian) [0.000, -0.000, 0.000]
+- Rotation: in RPY (degree) [0.000, -0.000, 0.000]
+- Matrix:
+  1.000  0.000  0.000  0.000
+  0.000  1.000  0.000  0.000
+  0.000  0.000  1.000  0.000
+  0.000  0.000  0.000  1.000
+At time 99.500000000
+- Translation: [0.000, 0.000, 0.000]
+- Rotation: in Quaternion (xyzw) [0.000, 0.000, 0.000, 1.000]
+- Rotation: in RPY (radian) [0.000, -0.000, 0.000]
+- Rotation: in RPY (degree) [0.000, -0.000, 0.000]
+- Matrix:
+  1.000  0.000  0.000  0.000
+  0.000  1.000  0.000  0.000
+  0.000  0.000  1.000  0.000
+  0.000  0.000  0.000  1.000
+[INFO] [1789881252.219363829] [rclcpp]: signal_handler(SIGINT/SIGTERM)

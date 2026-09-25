@@ -1,0 +1,1 @@
+phase4n-resource-snapshot CPU=147.34% MEM=467MiB / 15.24GiB MEM_PCT=2.99% PIDS=76 NET=0B / 0B BLOCK=0B / 2.44MB

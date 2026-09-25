@@ -1,0 +1,5 @@
+stamp:
+  sec: 28
+  nanosec: 356000000
+frame_id: odom
+---

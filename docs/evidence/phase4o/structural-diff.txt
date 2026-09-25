@@ -1,0 +1,64 @@
+=== docs/evidence/phase4o/candidates/slip-000 ===
+--- ros2_ws/src/amr_simulation/models/amr_robot_harmonic/model.sdf	2026-09-18 00:02:23.905165834 +0700
++++ docs/evidence/phase4o/candidates/slip-000/amr_robot_harmonic_slip1_0.000.sdf	2026-09-20 01:22:03.287063002 +0700
+@@ -165,7 +165,7 @@
+       <visual name="visual"><geometry><cylinder><radius>0.09</radius><length>0.045</length></cylinder></geometry><material><ambient>0.025 0.025 0.03 1</ambient><diffuse>0.04 0.04 0.05 1</diffuse></material></visual>
+       <collision name="collision">
+         <geometry><cylinder><radius>0.09</radius><length>0.045</length></cylinder></geometry>
+-        <surface><friction><ode><mu>1.0</mu><mu2>1.0</mu2><slip1>0.035</slip1><slip2>0.0</slip2></ode></friction></surface>
++        <surface><friction><ode><mu>1.0</mu><mu2>1.0</mu2><slip1>0.0</slip1><slip2>0.0</slip2></ode></friction></surface>
+       </collision>
+       <inertial><mass>0.35</mass><inertia><ixx>0.00142</ixx><iyy>0.00142</iyy><izz>0.00284</izz><ixy>0</ixy><ixz>0</ixz><iyz>0</iyz></inertia></inertial>
+     </link>
+@@ -179,7 +179,7 @@
+       <visual name="visual"><geometry><cylinder><radius>0.09</radius><length>0.045</length></cylinder></geometry><material><ambient>0.025 0.025 0.03 1</ambient><diffuse>0.04 0.04 0.05 1</diffuse></material></visual>
+       <collision name="collision">
+         <geometry><cylinder><radius>0.09</radius><length>0.045</length></cylinder></geometry>
+-        <surface><friction><ode><mu>1.0</mu><mu2>1.0</mu2><slip1>0.035</slip1><slip2>0.0</slip2></ode></friction></surface>
++        <surface><friction><ode><mu>1.0</mu><mu2>1.0</mu2><slip1>0.0</slip1><slip2>0.0</slip2></ode></friction></surface>
+       </collision>
+       <inertial><mass>0.35</mass><inertia><ixx>0.00142</ixx><iyy>0.00142</iyy><izz>0.00284</izz><ixy>0</ixy><ixz>0</ixz><iyz>0</iyz></inertia></inertial>
+     </link>
+=== docs/evidence/phase4o/candidates/slip-010 ===
+--- ros2_ws/src/amr_simulation/models/amr_robot_harmonic/model.sdf	2026-09-18 00:02:23.905165834 +0700
++++ docs/evidence/phase4o/candidates/slip-010/amr_robot_harmonic_slip1_0.010.sdf	2026-09-20 01:22:03.287480162 +0700
+@@ -165,7 +165,7 @@
+       <visual name="visual"><geometry><cylinder><radius>0.09</radius><length>0.045</length></cylinder></geometry><material><ambient>0.025 0.025 0.03 1</ambient><diffuse>0.04 0.04 0.05 1</diffuse></material></visual>
+       <collision name="collision">
+         <geometry><cylinder><radius>0.09</radius><length>0.045</length></cylinder></geometry>
+-        <surface><friction><ode><mu>1.0</mu><mu2>1.0</mu2><slip1>0.035</slip1><slip2>0.0</slip2></ode></friction></surface>
++        <surface><friction><ode><mu>1.0</mu><mu2>1.0</mu2><slip1>0.01</slip1><slip2>0.0</slip2></ode></friction></surface>
+       </collision>
+       <inertial><mass>0.35</mass><inertia><ixx>0.00142</ixx><iyy>0.00142</iyy><izz>0.00284</izz><ixy>0</ixy><ixz>0</ixz><iyz>0</iyz></inertia></inertial>
+     </link>
+@@ -179,7 +179,7 @@
+       <visual name="visual"><geometry><cylinder><radius>0.09</radius><length>0.045</length></cylinder></geometry><material><ambient>0.025 0.025 0.03 1</ambient><diffuse>0.04 0.04 0.05 1</diffuse></material></visual>
+       <collision name="collision">
+         <geometry><cylinder><radius>0.09</radius><length>0.045</length></cylinder></geometry>
+-        <surface><friction><ode><mu>1.0</mu><mu2>1.0</mu2><slip1>0.035</slip1><slip2>0.0</slip2></ode></friction></surface>
++        <surface><friction><ode><mu>1.0</mu><mu2>1.0</mu2><slip1>0.01</slip1><slip2>0.0</slip2></ode></friction></surface>
+       </collision>
+       <inertial><mass>0.35</mass><inertia><ixx>0.00142</ixx><iyy>0.00142</iyy><izz>0.00284</izz><ixy>0</ixy><ixz>0</ixz><iyz>0</iyz></inertia></inertial>
+     </link>
+=== docs/evidence/phase4o/candidates/slip-020 ===
+--- ros2_ws/src/amr_simulation/models/amr_robot_harmonic/model.sdf	2026-09-18 00:02:23.905165834 +0700
++++ docs/evidence/phase4o/candidates/slip-020/amr_robot_harmonic_slip1_0.020.sdf	2026-09-20 01:22:03.288154645 +0700
+@@ -165,7 +165,7 @@
+       <visual name="visual"><geometry><cylinder><radius>0.09</radius><length>0.045</length></cylinder></geometry><material><ambient>0.025 0.025 0.03 1</ambient><diffuse>0.04 0.04 0.05 1</diffuse></material></visual>
+       <collision name="collision">
+         <geometry><cylinder><radius>0.09</radius><length>0.045</length></cylinder></geometry>
+-        <surface><friction><ode><mu>1.0</mu><mu2>1.0</mu2><slip1>0.035</slip1><slip2>0.0</slip2></ode></friction></surface>
++        <surface><friction><ode><mu>1.0</mu><mu2>1.0</mu2><slip1>0.02</slip1><slip2>0.0</slip2></ode></friction></surface>
+       </collision>
+       <inertial><mass>0.35</mass><inertia><ixx>0.00142</ixx><iyy>0.00142</iyy><izz>0.00284</izz><ixy>0</ixy><ixz>0</ixz><iyz>0</iyz></inertia></inertial>
+     </link>
+@@ -179,7 +179,7 @@
+       <visual name="visual"><geometry><cylinder><radius>0.09</radius><length>0.045</length></cylinder></geometry><material><ambient>0.025 0.025 0.03 1</ambient><diffuse>0.04 0.04 0.05 1</diffuse></material></visual>
+       <collision name="collision">
+         <geometry><cylinder><radius>0.09</radius><length>0.045</length></cylinder></geometry>
+-        <surface><friction><ode><mu>1.0</mu><mu2>1.0</mu2><slip1>0.035</slip1><slip2>0.0</slip2></ode></friction></surface>
++        <surface><friction><ode><mu>1.0</mu><mu2>1.0</mu2><slip1>0.02</slip1><slip2>0.0</slip2></ode></friction></surface>
+       </collision>
+       <inertial><mass>0.35</mass><inertia><ixx>0.00142</ixx><iyy>0.00142</iyy><izz>0.00284</izz><ixy>0</ixy><ixz>0</ixz><iyz>0</iyz></inertia></inertial>
+     </link>
+=== docs/evidence/phase4o/candidates/slip-035 ===
