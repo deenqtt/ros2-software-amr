@@ -23,3 +23,9 @@ dist/
 install/
 build/
 log/
+
+# Large/generated files
+*.log
+*.snap.partial
+figma-linux_197.snap.partial
+docs/evidence/phase4o/semantics/runtime-engine.log
