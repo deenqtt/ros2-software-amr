@@ -40,10 +40,10 @@ def generate_launch_description():
         }.items(),
     )
 
-    keepout_mask_server = Node(
+    zone_mask_server = Node(
         package='amr_navigation',
-        executable='keepout_mask_server.py',
-        name='keepout_mask_server',
+        executable='zone_mask_server.py',
+        name='zone_mask_server',
         output='screen',
         parameters=[{'use_sim_time': LaunchConfiguration('use_sim_time')}],
     )
@@ -52,5 +52,5 @@ def generate_launch_description():
         declare_use_sim_time,
         declare_map,
         nav2,
-        keepout_mask_server,
+        zone_mask_server,
     ])

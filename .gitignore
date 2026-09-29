@@ -29,3 +29,17 @@ log/
 *.snap.partial
 figma-linux_197.snap.partial
 docs/evidence/phase4o/semantics/runtime-engine.log
+
+# Working backups taken before an edit. Recovery aids, not source: the history
+# is the real safety net once a file is tracked.
+*.bak.*
+
+# A robot's own copy of the maps it has been assigned. Fetched from the
+# registry on demand and verified by hash, so a stale one in git is worse than
+# none at all.
+maps/cache/
+
+# Backend runtime state: the registry database and the map files it serves.
+# Written by the running service, different on every machine, and restored by
+# migrations rather than by checkout.
+new_webui/backend/data/

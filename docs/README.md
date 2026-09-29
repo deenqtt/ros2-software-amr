@@ -18,6 +18,7 @@ Documents describing how the system works today. Keep these updated.
 | [JAZZY_DEPENDENCY_STATUS.md](JAZZY_DEPENDENCY_STATUS.md) | ROS 2 Jazzy package availability and compatibility |
 | [SHARED_MAP_STORAGE_NFS.md](SHARED_MAP_STORAGE_NFS.md) | Shared map storage over NFS |
 | [INTEGRASI_ROBOT.txt](INTEGRASI_ROBOT.txt) | Checklist of what the web UI needs from the robot hardware team (rosbridge, topics, services) |
+| [INTEGRASI_ISAAC_SIM.md](INTEGRASI_ISAAC_SIM.md) | Rencana integrasi simulasi Isaac Sim milik tim simulasi: temuan survei, blocker, dan langkah membuat map lewat Web UI |
 
 ## Runbooks
 

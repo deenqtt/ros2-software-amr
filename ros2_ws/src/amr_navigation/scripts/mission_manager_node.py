@@ -89,9 +89,15 @@ class MissionManagerNode(Node):
         self.STS_CHARGING   = 4
         self.STS_ERROR      = 5
 
+        # How often the last status is repeated. Fast enough that a page feels
+        # live, slow enough to be invisible next to the rest of the traffic.
+        self.STATUS_PERIOD_SEC = 1.0
+
         # Internal state tracking untuk robot_status
         self._is_docked   = False
         self._is_charging = False
+        # The last status published, so the heartbeat has something to repeat.
+        self._last_status = None
 
         # ── Action server /mission_plan ───────────────────────────────────────
         self._action_server = ActionServer(
@@ -135,6 +141,14 @@ class MissionManagerNode(Node):
 
         self._publish_dock_status('idle')
         self._publish_robot_status(self.STS_IDLE, docked=False, undocked=True, charging=False)
+
+        # 1 Hz, so a fleet view that connects mid-shift learns this robot exists
+        # without waiting for it to do something. See _republish_robot_status.
+        self.create_timer(
+            self.STATUS_PERIOD_SEC, self._republish_robot_status,
+            callback_group=self._cb_group,
+        )
+
         self.get_logger().info(
             '[mission_manager] started — /mission_plan action + /dock_command service ready')
 
@@ -158,11 +172,33 @@ class MissionManagerNode(Node):
         msg.robot_docked      = is_docked
         msg.robot_undocked    = is_undocked
         msg.charging_state    = is_charging
+        # Battery fields are left at their defaults: nothing in the simulation
+        # measures one, and publishing a made-up percentage would be read as a
+        # real reading by anything that draws it.
+        self._last_status = msg
         self._robot_status_pub.publish(msg)
         self.get_logger().debug(
             f'[robot_status] sts={sts_code} docked={is_docked} '
             f'undocked={is_undocked} charging={is_charging}'
         )
+
+    def _republish_robot_status(self):
+        """
+        Repeat the last status at a steady rate.
+
+        /robot_status used to be published only when something changed, which
+        reads well in a log and badly on a screen: a robot that has been idle
+        since before the page opened had never published anything, so the fleet
+        view showed it as unknown until it happened to move. A dashboard cannot
+        distinguish "nothing has changed" from "nothing is there".
+
+        Repeating rather than latching, because a subscriber that joins late
+        also wants to know the robot is still alive — a latched value survives
+        the publisher dying, and would keep reporting a robot that is gone.
+        """
+        if self._last_status is None:
+            return
+        self._robot_status_pub.publish(self._last_status)
 
     def _build_nav_goal(self, station_id: str) -> NavigateToPose.Goal | None:
         if station_id not in self._stations:

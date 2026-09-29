@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
+
+    <!--
+      Typefaces. See docs/TYPOGRAPHY.md for the reasoning and sources.
+
+      Inter carries the whole interface, numbers included: it was designed for
+      screen UI, stays legible below 11px, ships tabular figures, and has a
+      disambiguation stylistic set (ss02) that separates 0/O and 1/l/I — the
+      confusion legacy HMI guidance warns about.
+
+      JetBrains Mono is kept for identifiers only: ROS topic names, TF frame
+      ids, bridge URLs, log lines. Not for telemetry numbers — a proportional
+      face with tabular figures reads better there than a full monospace.
+    -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400..700&family=JetBrains+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <title>AMR Control</title>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

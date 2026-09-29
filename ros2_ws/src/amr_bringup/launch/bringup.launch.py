@@ -22,7 +22,11 @@ from launch.actions import (
     TimerAction,
 )
 from launch.conditions import IfCondition, UnlessCondition
-from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
+from launch.substitutions import (
+    LaunchConfiguration,
+    PathJoinSubstitution,
+    PythonExpression,
+)
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
 
@@ -59,6 +63,37 @@ def generate_launch_description():
         "foxglove_port", default_value="8765"
     )
 
+    # When true, neither SLAM nor Nav2 is started at boot: the robot_agent
+    # owns them and brings up whichever mode is asked for over /robot_mode.
+    #
+    # Defaults to false so every existing command keeps behaving exactly as it
+    # does today. `docker_run.sh slam` and `docker_run.sh nav` are unaffected
+    # until they opt in.
+    # Where the agent publishes maps and reads its assignment from. Empty by
+    # default: a robot with no backend still maps and navigates, it simply
+    # publishes nowhere.
+    declare_backend_url = DeclareLaunchArgument(
+        "backend_url",
+        default_value="",
+        description="Base URL of the AMR backend, e.g. http://192.168.1.10:3002",
+    )
+    declare_robot_id = DeclareLaunchArgument(
+        "robot_id",
+        default_value="",
+        description="This robot's id in the backend registry",
+    )
+    declare_map_cache = DeclareLaunchArgument(
+        "map_cache_dir",
+        default_value="/maps/cache",
+        description="Where downloaded and saved maps live on this robot",
+    )
+
+    declare_managed_mode = DeclareLaunchArgument(
+        "managed_mode",
+        default_value="false",
+        description="Let robot_agent own SLAM/Nav2 instead of launching one at boot",
+    )
+
     # ── 1. Gazebo simulation ───────────────────────────────────────────────────
     sim = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
@@ -81,7 +116,13 @@ def generate_launch_description():
                         [pkg_amr_simulation, "launch", "slam.launch.py"]
                     )
                 ),
-                condition=IfCondition(LaunchConfiguration("use_slam")),
+                # Started at boot only when the agent is not in charge.
+                condition=IfCondition(
+                    PythonExpression([
+                        "'", LaunchConfiguration("use_slam"), "' == 'true' and ",
+                        "'", LaunchConfiguration("managed_mode"), "' != 'true'",
+                    ])
+                ),
                 launch_arguments={
                     "use_sim_time": LaunchConfiguration("use_sim_time"),
                 }.items(),
@@ -100,7 +141,12 @@ def generate_launch_description():
                         [pkg_amr_navigation, "launch", "navigation.launch.py"]
                     )
                 ),
-                condition=UnlessCondition(LaunchConfiguration("use_slam")),
+                condition=IfCondition(
+                    PythonExpression([
+                        "'", LaunchConfiguration("use_slam"), "' != 'true' and ",
+                        "'", LaunchConfiguration("managed_mode"), "' != 'true'",
+                    ])
+                ),
                 launch_arguments={
                     "use_sim_time": LaunchConfiguration("use_sim_time"),
                     "map": LaunchConfiguration("map"),
@@ -161,7 +207,35 @@ def generate_launch_description():
         output='screen',
     )
 
-    # ── 7. Mission manager — action server /mission_plan ─────────────────────
+    # ── 7. Robot agent — owns /robot_mode ────────────────────────────────────
+    robot_agent = ExecuteProcess(
+        cmd=[
+            'python3',
+            '/ros2_ws/src/amr_bringup/scripts/robot_agent_node.py',
+            '--ros-args',
+            '-p', ['managed_mode:=', LaunchConfiguration('managed_mode')],
+            '-p', ['use_sim_time_arg:=', LaunchConfiguration('use_sim_time')],
+            # `map` declares an empty default, and `-p default_map:=` is not a
+            # valid parameter override — rcl refuses to start at all. Substitute
+            # a usable path so the agent always has something to fall back on.
+            '-p', PythonExpression([
+                "'default_map:=' + ('", LaunchConfiguration('map'),
+                "' or '/maps/amr_map.yaml')",
+            ]),
+            # Quoted: an empty value is a valid setting here (no backend), but
+            # an empty parameter override is not — rcl refuses to start at all.
+            '-p', PythonExpression([
+                '"backend_url:=" + repr("', LaunchConfiguration('backend_url'), '")',
+            ]),
+            '-p', PythonExpression([
+                '"robot_id:=" + repr("', LaunchConfiguration('robot_id'), '")',
+            ]),
+            '-p', ['map_cache_dir:=', LaunchConfiguration('map_cache_dir')],
+        ],
+        output='screen',
+    )
+
+    # ── 8. Mission manager — action server /mission_plan ─────────────────────
     mission_manager = ExecuteProcess(
         cmd=[
             'python3',
@@ -178,6 +252,10 @@ def generate_launch_description():
             declare_gui,
             declare_headless,
             declare_foxglove_port,
+            declare_managed_mode,
+            declare_backend_url,
+            declare_robot_id,
+            declare_map_cache,
             sim,
             slam,
             navigation,
@@ -186,6 +264,7 @@ def generate_launch_description():
             battery_sim,
             docking_manager,
             aruco_detector,
+            robot_agent,
             mission_manager,
         ]
     )

@@ -1,9 +1,37 @@
 # Nav2 parameters for AMR simulation (TurtleBot3 Waffle Pi)
-# Compatible with Navigation2 Humble
+#
+# Navigation2 Jazzy. Plugin classes are named with `::`, not the `/` Humble
+# used — pluginlib reports the mismatch as "class ... does not exist" and lists
+# what it does have, which reads as a missing package rather than a renamed one.
 
 amcl:
   ros__parameters:
     use_sim_time: true
+
+    # Where the robot believes it is when navigation starts.
+    #
+    # Without this AMCL waits for an /initialpose message and publishes no
+    # map->odom transform until one arrives — so Nav2 comes up, reports itself
+    # healthy, and cannot plan anything, because nothing knows where the robot
+    # is. That failure reads as a broken robot rather than as missing
+    # configuration.
+    #
+    # (0, 0, 0) is correct *for the simulation*: the robot spawns at the world
+    # origin (sim.launch.py x_pose/y_pose default to 0.0) and the map was
+    # surveyed from there.
+    #
+    # On a real robot this is wrong, and a fixed pose is the wrong shape of
+    # answer: a robot can be anywhere when it is switched on. Two better
+    # sources, in order — the charging dock it booted on, whose pose the
+    # station registry already holds, and an operator dropping the pose on the
+    # map by hand when it is somewhere unexpected.
+    set_initial_pose: true
+    initial_pose:
+      x: 0.0
+      y: 0.0
+      z: 0.0
+      yaw: 0.0
+
     alpha1: 0.2
     alpha2: 0.2
     alpha3: 0.2
@@ -54,9 +82,9 @@ bt_navigator:
     action_server_result_timeout: 900.0
     navigators: ["navigate_to_pose", "navigate_through_poses"]
     navigate_to_pose:
-      plugin: "nav2_bt_navigator/NavigateToPoseNavigator"
+      plugin: "nav2_bt_navigator::NavigateToPoseNavigator"
     navigate_through_poses:
-      plugin: "nav2_bt_navigator/NavigateThroughPosesNavigator"
+      plugin: "nav2_bt_navigator::NavigateThroughPosesNavigator"
     error_code_names:
       - compute_path_error_code
       - follow_path_error_code
@@ -164,7 +192,9 @@ global_costmap:
       robot_radius: 0.22
       resolution: 0.05
       track_unknown_space: true
-      plugins: ["static_layer", "obstacle_layer", "keepout_filter", "inflation_layer"]
+      # Filters before inflation: a keepout has to be inflated like any other
+      # obstacle, or a robot clips its corner by its own radius.
+      plugins: ["static_layer", "obstacle_layer", "keepout_filter", "speed_filter", "binary_filter", "inflation_layer"]
       obstacle_layer:
         plugin: "nav2_costmap_2d::ObstacleLayer"
         enabled: true
@@ -186,10 +216,22 @@ global_costmap:
         plugin: "nav2_costmap_2d::InflationLayer"
         cost_scaling_factor: 3.0
         inflation_radius: 0.55
+      # One info topic per filter. They are told apart by the `type` field in
+      # CostmapFilterInfo, so they cannot share one — see zone_mask_server.py.
       keepout_filter:
         plugin: "nav2_costmap_2d::KeepoutFilter"
         enabled: true
-        filter_info_topic: "/costmap_filter_info"
+        filter_info_topic: "/zone_keepout_filter_info"
+      speed_filter:
+        plugin: "nav2_costmap_2d::SpeedFilter"
+        enabled: true
+        filter_info_topic: "/zone_speed_filter_info"
+        speed_limit_topic: "/speed_limit"
+      binary_filter:
+        plugin: "nav2_costmap_2d::BinaryFilter"
+        enabled: true
+        filter_info_topic: "/zone_binary_filter_info"
+        binary_state_topic: "/zone_binary_state"
       always_send_full_costmap: true
 
 map_server:
@@ -212,7 +254,7 @@ planner_server:
     use_sim_time: true
     planner_plugins: ["GridBased"]
     GridBased:
-      plugin: "nav2_navfn_planner/NavfnPlanner"
+      plugin: "nav2_navfn_planner::NavfnPlanner"
       tolerance: 0.5
       use_astar: false
       allow_unknown: true
@@ -234,15 +276,15 @@ behavior_server:
     cycle_frequency: 10.0
     behavior_plugins: ["spin", "backup", "drive_on_heading", "assisted_teleop", "wait"]
     spin:
-      plugin: "nav2_behaviors/Spin"
+      plugin: "nav2_behaviors::Spin"
     backup:
-      plugin: "nav2_behaviors/BackUp"
+      plugin: "nav2_behaviors::BackUp"
     drive_on_heading:
-      plugin: "nav2_behaviors/DriveOnHeading"
+      plugin: "nav2_behaviors::DriveOnHeading<>"
     wait:
-      plugin: "nav2_behaviors/Wait"
+      plugin: "nav2_behaviors::Wait"
     assisted_teleop:
-      plugin: "nav2_behaviors/AssistedTeleop"
+      plugin: "nav2_behaviors::AssistedTeleop"
     global_frame: odom
     robot_base_frame: base_link
     transform_tolerance: 0.1

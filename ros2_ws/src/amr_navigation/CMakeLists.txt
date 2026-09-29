@@ -11,7 +11,7 @@ install(DIRECTORY launch config
   DESTINATION share/${PROJECT_NAME})
 
 install(PROGRAMS
-  scripts/keepout_mask_server.py
+  scripts/zone_mask_server.py
   scripts/mission_manager_node.py
   DESTINATION lib/${PROJECT_NAME})
 

@@ -1,0 +1,109 @@
+@import './tokens.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html,
+  body,
+  #app {
+    height: 100%;
+  }
+
+  body {
+    @apply bg-canvas font-sans text-body-md text-body antialiased;
+    /*
+     * calt is Inter's contextual alternates (on by default upstream; stated
+     * explicitly so a Google Fonts build that ships it off still gets it).
+     * cv08 puts a serif on the capital I, which is the single cheapest fix for
+     * the I/l/1 confusion legacy HMI guidance calls out.
+     */
+    font-feature-settings:
+      'calt' 1,
+      'cv08' 1;
+  }
+
+  /*
+   * Display type carries negative tracking at weight 400 — DESIGN.md's single
+   * most distinctive typographic choice. Bolding it changes the voice from
+   * calm-institutional to fintech-urgent, so display stays at 400.
+   */
+  .type-display {
+    @apply font-display text-display-sm text-ink;
+    font-weight: 400;
+  }
+
+  .type-title {
+    @apply text-title-md text-ink;
+  }
+
+  :focus-visible {
+    @apply outline-none ring-2 ring-primary/60 ring-offset-1 ring-offset-canvas;
+  }
+}
+
+@layer utilities {
+  /*
+   * Numeric readouts. Inter, not a monospace.
+   *
+   * tabular-nums fixes every digit to the same advance, so a value updating at
+   * 30 Hz never shifts its neighbours. ss02 is Inter's disambiguation set: it
+   * slashes the zero and pulls apart the characters that get misread on a
+   * glance — exactly the 0/O and 1/l/I pairs that HMI guidance flags. zero is
+   * belt-and-braces in case a build ships ss02 without it.
+   *
+   * A proportional face with tabular figures reads better here than a full
+   * monospace, and costs one CSS property instead of a second webfont.
+   */
+  .font-data {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings:
+      'tnum' 1,
+      'ss02' 1,
+      'zero' 1,
+      'calt' 1;
+  }
+
+  /*
+   * Identifiers: ROS topic names, TF frame ids, bridge URLs, log lines.
+   *
+   * This is what a monospace is actually for — strings where every character is
+   * significant, where wrapping position matters, and where the reader is
+   * scanning for a difference rather than reading a value.
+   */
+  .font-ident {
+    @apply font-mono;
+    font-feature-settings:
+      'zero' 1,
+      'calt' 0;
+  }
+
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(var(--hairline)) transparent;
+  }
+
+  .hairline-b {
+    @apply border-b border-hairline;
+  }
+
+  .hairline-r {
+    @apply border-r border-hairline;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+.leaflet-container {
+  background: rgb(var(--surface-soft));
+  font-family: inherit;
+}

@@ -1,0 +1,121 @@
+/*
+ * Design tokens — derived from DESIGN.md (Coinbase design analysis).
+ *
+ * Colours are stored as space-separated RGB channels so Tailwind's opacity
+ * modifiers (bg-primary/10) keep working.
+ *
+ * Two deliberate departures from the source, both because it documents
+ * marketing surfaces only and says so in its own Known Gaps:
+ *
+ *  1. Density is one step tighter. 44px controls and 96px section rhythm are
+ *     landing-page pacing; an operator console has to show pose, status,
+ *     battery and mission at once. Proportions and posture are unchanged.
+ *  2. accent-yellow is promoted from "illustrative-only" to a semantic
+ *     warning colour. A robotics UI needs a third signal between "fine" and
+ *     "fault" — degraded-but-running. No new hue is introduced: the five
+ *     hues below are all from the source palette.
+ */
+
+@layer base {
+  :root {
+    /* ── Brand ─────────────────────────────────────────────────────────── */
+    --primary: 0 82 255; /* #0052ff — the single voltage */
+    --primary-active: 0 62 204; /* #003ecc */
+    --primary-disabled: 168 184 204; /* #a8b8cc */
+    --on-primary: 255 255 255;
+
+    /* ── Surfaces ──────────────────────────────────────────────────────── */
+    --canvas: 255 255 255; /* page floor */
+    --surface: 255 255 255; /* cards */
+    --surface-soft: 247 247 247; /* #f7f7f7 alternating band */
+    --surface-strong: 238 240 243; /* #eef0f3 secondary buttons, plates */
+
+    /* ── Text ──────────────────────────────────────────────────────────── */
+    --ink: 10 11 13; /* #0a0b0d headings, emphasis */
+    --body: 91 97 110; /* #5b616e running text */
+    --muted: 124 130 138; /* #7c828a sub-titles */
+    --muted-soft: 168 172 179; /* #a8acb3 disabled */
+
+    /* ── Hairlines ─────────────────────────────────────────────────────── */
+    --hairline: 222 225 230; /* #dee1e6 */
+    --hairline-soft: 238 240 243; /* #eef0f3 */
+
+    /* ── Status ────────────────────────────────────────────────────────── */
+    /* Five hues, all from the source palette. */
+    --status-idle: 124 130 138; /* muted — nothing happening */
+    --status-run: 0 82 255; /* primary — autonomous operation live */
+    --status-act: 244 176 0; /* #f4b000 — operator input required */
+    --status-warn: 244 176 0; /* #f4b000 — degraded, still running */
+    --status-fault: 207 32 47; /* #cf202f — stopped, intervention needed */
+    --status-ok: 5 177 105; /* #05b169 — terminal success */
+
+    /*
+     * ── Geometry ───────────────────────────────────────────────────────
+     *
+     * DESIGN.md puts every interactive control on a 100px pill and says sharp
+     * corners are absent. That is right for a marketing page with four CTAs on
+     * screen. It is wrong here: a console shows dozens of controls at once, and
+     * when everything is a pill nothing reads as a distinct shape — the UI goes
+     * soft and the eye loses its anchors.
+     *
+     * So the pill is retired from rectangles. Full-round is kept only where the
+     * shape is genuinely a circle and the roundness carries meaning: identity
+     * marks, status dots, the emergency stop.
+     */
+    --radius-chip: 4px; /* badges, status chips, small data pills */
+    --radius-control: 8px; /* buttons, inputs, nav items */
+    --radius-surface: 12px; /* cards, dialogs, panels */
+  }
+
+  /*
+   * Dark theme.
+   *
+   * Not an inversion the source never intended — it ships a complete dark
+   * set for its full-bleed editorial heroes (surface-dark #0a0b0d,
+   * surface-dark-elevated #16181c, on-dark, on-dark-soft). Here that becomes
+   * the page floor rather than a band, which is what a machine running next
+   * to a robot at night actually needs.
+   */
+  .dark {
+    --canvas: 10 11 13; /* #0a0b0d surface-dark */
+    --surface: 22 24 28; /* #16181c surface-dark-elevated */
+    --surface-soft: 22 24 28;
+    --surface-strong: 35 38 44; /* one step above elevated */
+
+    --ink: 255 255 255; /* on-dark */
+    --body: 168 172 179; /* on-dark-soft */
+    --muted: 124 130 138;
+    --muted-soft: 91 97 110;
+
+    --hairline: 35 38 44;
+    --hairline-soft: 28 30 35;
+
+    --primary: 45 107 255; /* lifted for contrast against near-black */
+    --primary-active: 0 82 255;
+    --primary-disabled: 62 72 90;
+
+    --status-idle: 124 130 138;
+    --status-run: 45 107 255;
+    --status-ok: 6 199 118;
+    --status-fault: 232 63 77;
+  }
+}
+
+/*
+ * Per-robot accent colours. Identity only, never status.
+ *
+ * The source forbids a second brand colour, and that rule holds for anything
+ * expressing state. These express *which machine you are looking at*, which is
+ * a different axis — and with more than one robot it is the cue that stops an
+ * operator acting on the wrong one.
+ */
+:root {
+  --robot-accent-1: 0 82 255;
+  --robot-accent-2: 5 177 105;
+  --robot-accent-3: 244 176 0;
+  --robot-accent-4: 124 58 237;
+  --robot-accent-5: 207 32 47;
+  --robot-accent-6: 234 88 12;
+  --robot-accent-7: 13 148 136;
+  --robot-accent-8: 219 39 119;
+}
