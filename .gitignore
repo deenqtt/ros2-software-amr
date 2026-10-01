@@ -34,10 +34,11 @@ docs/evidence/phase4o/semantics/runtime-engine.log
 # is the real safety net once a file is tracked.
 *.bak.*
 
-# A robot's own copy of the maps it has been assigned. Fetched from the
-# registry on demand and verified by hash, so a stale one in git is worse than
-# none at all.
-maps/cache/
+# Runtime map directory: mounted into amr-sim (docker-compose.yml) and written
+# by `scripts/docker_run.sh save-map`, plus a robot's own cache of assigned maps
+# (maps/cache/). Maps live in the backend registry, not in git — a stale copy
+# here is worse than none at all.
+maps/
 
 # Backend runtime state: the registry database and the map files it serves.
 # Written by the running service, different on every machine, and restored by

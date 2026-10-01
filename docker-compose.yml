@@ -59,22 +59,8 @@ services:
       retries: 5
       start_period: 30s
 
-  # ── AMR Backend (FastAPI + SQLite) ──────────────────────────────────────────
-  amr-backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    container_name: amr-backend
-    restart: unless-stopped
-    ports:
-      - "3001:3001"
-    volumes:
-      - ./data:/data        # SQLite DB
-      - ./maps:/maps        # shared map files — same path sebagai amr-sim
-    environment:
-      - DB_PATH=/data/amr.db
-      - MAPS_DIR=/maps
-      - ROS_MAPS_PATH=/maps
+  # The web backend is new_webui/backend (run with `python -m app`, port 3002).
+  # The legacy FastAPI service that lived here was removed with ./backend.
 
   # ── Teleop (optional — keyboard control for manual SLAM mapping) ────────────
   teleop:
@@ -94,4 +80,3 @@ services:
 
 volumes:
   maps:
-  data:
