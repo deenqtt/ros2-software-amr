@@ -8,7 +8,7 @@
  * seconds, and the ones raised by the ROS layer were never rendered.
  */
 import { defineStore } from 'pinia'
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 
 export type AlarmSeverity = 'fault' | 'warning' | 'info'
 
@@ -22,8 +22,41 @@ export interface Alarm {
   acknowledgedAt: number | null
 }
 
+/**
+ * Kept in this browser so a refresh does not wipe "what happened at 14:20".
+ *
+ * Per browser, not shared: the run history on the server is the record that
+ * every operator sees. This is the operator's own inbox of it.
+ */
+const STORAGE_KEY = 'amr.alarms.v1'
+/** Enough for a shift. Oldest are dropped first. */
+const KEEP = 200
+
+function restore(): Alarm[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    const parsed: unknown = raw ? JSON.parse(raw) : []
+    return Array.isArray(parsed) ? (parsed as Alarm[]) : []
+  } catch {
+    // Blocked storage or a corrupt entry: start empty rather than not at all.
+    return []
+  }
+}
+
 export const useAlarmStore = defineStore('alarms', () => {
-  const alarms = ref<Alarm[]>([])
+  const alarms = ref<Alarm[]>(restore())
+
+  watch(
+    alarms,
+    (list) => {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(list.slice(-KEEP)))
+      } catch {
+        // Full or blocked. The alarms still work for this session.
+      }
+    },
+    { deep: true },
+  )
 
   const active = computed(() => alarms.value.filter((a) => a.acknowledgedAt === null))
   const activeCount = computed(() => active.value.length)
@@ -40,6 +73,7 @@ export const useAlarmStore = defineStore('alarms', () => {
       acknowledgedAt: null,
     }
     alarms.value.push(created)
+    if (alarms.value.length > KEEP) alarms.value.splice(0, alarms.value.length - KEEP)
     return created
   }
 

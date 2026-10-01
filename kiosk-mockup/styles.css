@@ -1,0 +1,535 @@
+/*
+ * Robot kiosk mockup.
+ *
+ * Sized in vmin so the same file works on a 7" portrait panel and a 15"
+ * landscape one: everything scales with the short side of the screen.
+ */
+
+:root {
+  --bg: #0b1220;
+  --bg-soft: #121b2e;
+  --ink: #eef3ff;
+  --muted: #8a97b4;
+  --eye: #5ce1ff;
+  --eye-glow: rgba(92, 225, 255, 0.55);
+  --accent: #1a6ef5;
+  --ok: #19c37d;
+  --warn: #f5b301;
+  --fault: #ef4444;
+  --cheek: rgba(255, 120, 160, 0.0);
+
+  /* Where the eyes look, from -1 to 1. Written by app.js. */
+  --lx: 0;
+  --ly: 0;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  --screen: var(--bg);
+  display: flex;
+  flex-direction: column;
+  background: var(--screen);
+  transition: background-color 400ms ease;
+}
+
+/* ── Status bar ─────────────────────────────────────────────────────────── */
+
+.status-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 2vmin 3vmin;
+  font-size: 2.6vmin;
+  color: var(--muted);
+  z-index: 5;
+}
+
+.status-left, .status-right { display: flex; align-items: center; gap: 2vmin; }
+
+.robot-name { font-weight: 700; color: var(--ink); letter-spacing: 0.05em; }
+
+.status-pill {
+  padding: 0.5vmin 1.8vmin;
+  border-radius: 99px;
+  background: var(--bg-soft);
+  font-size: 2.2vmin;
+  font-weight: 600;
+}
+
+.battery { display: flex; align-items: center; gap: 1vmin; }
+.battery-body {
+  position: relative;
+  width: 5.5vmin;
+  height: 2.6vmin;
+  border: 0.35vmin solid currentColor;
+  border-radius: 0.6vmin;
+}
+.battery-body::after {
+  content: "";
+  position: absolute;
+  right: -1vmin;
+  top: 0.6vmin;
+  width: 0.5vmin;
+  height: 0.9vmin;
+  background: currentColor;
+  border-radius: 0 0.3vmin 0.3vmin 0;
+}
+.battery-fill {
+  position: absolute;
+  inset: 0.3vmin;
+  width: 82%;
+  background: var(--ok);
+  border-radius: 0.2vmin;
+  transition: width 300ms ease, background-color 300ms ease;
+}
+.battery.low .battery-fill { background: var(--warn); }
+.battery.critical .battery-fill { background: var(--fault); }
+
+/* ── Stage: face + caption ──────────────────────────────────────────────── */
+
+.stage {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4vmin;
+  padding-bottom: 4vmin;
+}
+
+.face {
+  position: relative;
+  display: flex;
+  gap: 16vmin;
+  padding: 4vmin 8vmin;
+  /* A gentle float, so the robot reads as alive even when nothing happens. */
+  animation: float 5s ease-in-out infinite;
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-1.2vmin); }
+}
+
+.eye {
+  position: relative;
+  width: 17vmin;
+  height: 24vmin;
+  border-radius: 8.5vmin;
+  background: radial-gradient(circle at 50% 40%, #b8f3ff 0%, var(--eye) 55%, #24a9d6 100%);
+  box-shadow: 0 0 4vmin var(--eye-glow), 0 0 10vmin rgba(92, 225, 255, 0.25);
+  transform: translate(calc(var(--lx) * 4vmin), calc(var(--ly) * 3vmin));
+  transition:
+    transform 260ms cubic-bezier(.3, .7, .3, 1),
+    height 180ms ease,
+    border-radius 180ms ease,
+    background 300ms ease,
+    box-shadow 300ms ease;
+  overflow: hidden;
+}
+
+/* Eyelid for moods: a block of background colour sliding over the eye. */
+.eye::before {
+  content: "";
+  position: absolute;
+  left: -20%;
+  width: 140%;
+  height: 0;
+  top: -2vmin;
+  /* The screen's own colour, so a lid reads as shape, not as a dark patch. */
+  background: var(--screen);
+  transition: height 220ms ease, transform 220ms ease, background-color 400ms ease;
+}
+
+.glint {
+  position: absolute;
+  top: 18%;
+  left: 24%;
+  width: 4.2vmin;
+  height: 4.2vmin;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.85);
+  transition: opacity 200ms ease;
+}
+
+/* Blink: fast, and the only animation driven by a class toggle. */
+.face.blink .eye { height: 2.2vmin; border-radius: 2vmin; }
+.face.blink .glint { opacity: 0; }
+
+.cheek {
+  position: absolute;
+  bottom: 3vmin;
+  width: 9vmin;
+  height: 4vmin;
+  border-radius: 50%;
+  background: var(--cheek);
+  filter: blur(1vmin);
+  transition: background 300ms ease;
+}
+.cheek.left { left: 6vmin; }
+.cheek.right { right: 6vmin; }
+
+/* Mood: happy — upturned arcs ◠ ◠ and pink cheeks (after "picked up").
+   A circle with only its top border coloured: the arc, without the legs a
+   rounded box would leave. */
+body[data-mood="happy"] .eye {
+  height: 17vmin;
+  margin-top: 4vmin;
+  background: transparent;
+  box-shadow: none;
+  border-radius: 50%;
+  border: 3.4vmin solid transparent;
+  border-top-color: var(--eye);
+  filter: drop-shadow(0 0 2vmin var(--eye-glow));
+}
+body[data-mood="happy"] .eye::before { display: none; }
+/* The arcs sit high, so the cheeks come up to meet them. */
+body[data-mood="happy"] .cheek { bottom: 8vmin; }
+body[data-mood="happy"] .glint { opacity: 0; }
+body[data-mood="happy"] { --cheek: rgba(255, 120, 160, 0.55); }
+
+/* Mood: worried — inner corners lowered (blocked, asking for space). */
+body[data-mood="worried"] .eye::before { height: 45%; }
+body[data-mood="worried"] .eye.left::before { transform: rotate(-18deg); }
+body[data-mood="worried"] .eye.right::before { transform: rotate(18deg); }
+body[data-mood="worried"] { --eye: #ffd166; --eye-glow: rgba(255, 209, 102, 0.5); }
+body[data-mood="worried"] .eye {
+  background: radial-gradient(circle at 50% 40%, #fff3c4 0%, #ffd166 55%, #e0a400 100%);
+}
+
+/* Mood: sleepy — half-closed lids (charging, idle for long). */
+body[data-mood="sleepy"] .eye::before { height: 55%; }
+
+/* Mood: focused — slightly narrowed, looking ahead (driving). */
+body[data-mood="focused"] .eye::before { height: 18%; }
+
+.caption { text-align: center; padding: 0 6vmin; }
+.caption h1 {
+  margin: 0;
+  font-size: 7vmin;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+.caption p {
+  margin: 1.5vmin 0 0;
+  font-size: 3.6vmin;
+  color: var(--muted);
+}
+
+/* Route progress: where the robot has been, is going, and will go. */
+.route {
+  display: flex;
+  align-items: center;
+  gap: 1.5vmin;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 2.4vmin;
+  color: var(--muted);
+}
+.route:empty { display: none; }
+.route li { display: flex; align-items: center; gap: 1vmin; }
+.route li + li::before {
+  content: "";
+  width: 4vmin;
+  height: 0.4vmin;
+  margin-right: 0.5vmin;
+  background: var(--bg-soft);
+  border-radius: 1vmin;
+}
+.route .dot {
+  width: 2.4vmin;
+  height: 2.4vmin;
+  border-radius: 50%;
+  border: 0.4vmin solid var(--muted);
+}
+.route .done .dot { background: var(--ok); border-color: var(--ok); }
+.route .current { color: var(--ink); font-weight: 700; }
+.route .current .dot {
+  background: var(--accent);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 0.8vmin rgba(26, 110, 245, 0.3);
+  animation: pulse 1.4s ease-in-out infinite;
+}
+@keyframes pulse { 50% { box-shadow: 0 0 0 1.6vmin rgba(26, 110, 245, 0.05); } }
+
+/* Mode colouring of the whole screen. */
+body[data-mode="blocked"] { --screen: #1b1607; }
+body[data-mode="blocked"] .status-pill { background: var(--warn); color: #1b1607; }
+body[data-mode="moving"] .status-pill { background: var(--accent); color: #fff; }
+body[data-mode="idle"] .status-pill { background: var(--bg-soft); color: var(--ink); }
+body[data-mode="thanks"] .status-pill { background: var(--ok); color: #fff; }
+
+/* ── Overlays ───────────────────────────────────────────────────────────── */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  z-index: 10;
+  padding: 6vmin;
+}
+
+body[data-mode="arrived"] .arrived,
+body[data-mode="charging"] .charging,
+body[data-mode="error"] .alert,
+body[data-mode="estop"] .alert,
+body[data-mode="lowbat"] .alert,
+body.staff-open .staff { display: flex; }
+
+body[data-mode="arrived"] .stage,
+body[data-mode="charging"] .stage,
+body[data-mode="error"] .stage,
+body[data-mode="estop"] .stage,
+body[data-mode="lowbat"] .stage { visibility: hidden; }
+
+/* Arrived + confirm */
+.arrived { background: radial-gradient(circle at 50% 30%, #12305e 0%, var(--bg) 70%); }
+.arrived-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2vmin;
+  width: min(92vw, 120vmin);
+  animation: rise 420ms cubic-bezier(.2, .9, .3, 1.2);
+}
+@keyframes rise { from { transform: translateY(6vmin) scale(.96); opacity: 0; } }
+.arrived-icon { font-size: 12vmin; animation: bounce 1.6s ease-in-out infinite; }
+@keyframes bounce { 50% { transform: translateY(-1.5vmin); } }
+.arrived-kicker { margin: 0; font-size: 4.4vmin; color: #b9cdf7; font-weight: 600; }
+.arrived-place {
+  margin: 0;
+  font-size: 13vmin;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  line-height: 1;
+}
+.arrived-hint { margin: 0 0 1vmin; font-size: 3.2vmin; color: var(--muted); }
+
+.confirm-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3vmin;
+  width: 100%;
+  min-height: 22vmin;
+  border: none;
+  border-radius: 5vmin;
+  background: linear-gradient(180deg, #22d68b 0%, #12a865 100%);
+  color: #fff;
+  font: inherit;
+  font-size: 7vmin;
+  font-weight: 900;
+  letter-spacing: 0.03em;
+  box-shadow: 0 2vmin 6vmin rgba(25, 195, 125, 0.35), inset 0 -1vmin 0 rgba(0, 0, 0, 0.15);
+  cursor: pointer;
+  animation: breathe 2.2s ease-in-out infinite;
+}
+.confirm-button:active { transform: scale(0.97); filter: brightness(0.95); }
+@keyframes breathe { 50% { box-shadow: 0 2vmin 9vmin rgba(25, 195, 125, 0.55), inset 0 -1vmin 0 rgba(0, 0, 0, 0.15); } }
+.confirm-check {
+  display: grid;
+  place-items: center;
+  width: 12vmin;
+  height: 12vmin;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.22);
+  font-size: 8vmin;
+}
+
+.countdown { display: flex; align-items: center; gap: 1.5vmin; font-size: 2.8vmin; color: var(--muted); }
+.countdown-ring { width: 5vmin; height: 5vmin; transform: rotate(-90deg); }
+.ring-track, .ring-value { fill: none; stroke-width: 3.4; }
+.ring-track { stroke: var(--bg-soft); }
+.ring-value {
+  stroke: var(--accent);
+  stroke-linecap: round;
+  stroke-dasharray: 100.53;
+  stroke-dashoffset: 0;
+  transition: stroke-dashoffset 1s linear;
+}
+
+/* Charging */
+.charging { background: var(--bg); gap: 3vmin; }
+.charging h2 { margin: 2vmin 0 0; font-size: 6vmin; }
+.charging-percent { margin: 0; font-size: 10vmin; font-weight: 900; color: var(--ok); }
+.big-battery { display: flex; align-items: center; }
+.big-battery-body {
+  position: relative;
+  width: 44vmin;
+  height: 22vmin;
+  border: 1.4vmin solid var(--ink);
+  border-radius: 3vmin;
+  padding: 1.2vmin;
+}
+.big-battery-cap { width: 2.4vmin; height: 8vmin; background: var(--ink); border-radius: 0 1vmin 1vmin 0; }
+.big-battery-fill {
+  height: 100%;
+  width: 64%;
+  border-radius: 1.4vmin;
+  background: linear-gradient(90deg, #12a865, #22d68b);
+  position: relative;
+  overflow: hidden;
+  transition: width 600ms ease;
+}
+/* A sheen sweeping across: reads as "charging", not as a static gauge. */
+.big-battery-fill::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.45), transparent);
+  transform: translateX(-100%);
+  animation: sheen 1.8s ease-in-out infinite;
+}
+@keyframes sheen { to { transform: translateX(100%); } }
+
+/* Alerts */
+.alert { gap: 2vmin; }
+.alert h2 { margin: 0; font-size: 9vmin; font-weight: 900; }
+.alert p { margin: 0; font-size: 4.4vmin; opacity: 0.9; }
+.alert-icon { font-size: 16vmin; }
+body[data-mode="error"] .alert { background: #3a0d0d; }
+body[data-mode="estop"] .alert { background: #b91c1c; animation: flash 1.2s ease-in-out infinite; }
+body[data-mode="lowbat"] .alert { background: #3b2a00; }
+@keyframes flash { 50% { background: #7f1414; } }
+
+/* Staff */
+.staff-hotspot {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 12vmin;
+  height: 12vmin;
+  z-index: 20;
+}
+.staff { background: rgba(5, 8, 15, 0.92); z-index: 30; }
+.staff-card {
+  width: min(90vw, 70vmin);
+  padding: 4vmin;
+  border-radius: 4vmin;
+  background: var(--bg-soft);
+}
+.staff-card h3 { margin: 0 0 3vmin; font-size: 4vmin; }
+.staff-menu { display: none; flex-direction: column; gap: 2vmin; }
+body.staff-unlocked .staff-pin { display: none; }
+body.staff-unlocked .staff-menu { display: flex; }
+
+.pin-dots { display: flex; justify-content: center; gap: 2.5vmin; margin-bottom: 3vmin; }
+.pin-dots span {
+  width: 3vmin;
+  height: 3vmin;
+  border-radius: 50%;
+  border: 0.4vmin solid var(--muted);
+}
+.pin-dots span.filled { background: var(--ink); border-color: var(--ink); }
+.pin-dots.shake { animation: shake 360ms ease; }
+@keyframes shake { 25% { transform: translateX(-2vmin); } 75% { transform: translateX(2vmin); } }
+
+.pin-pad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2vmin; }
+.pin-pad button, .menu-button {
+  min-height: 11vmin;
+  border: none;
+  border-radius: 2.5vmin;
+  background: #1c2842;
+  color: var(--ink);
+  font: inherit;
+  font-size: 4.4vmin;
+  font-weight: 700;
+  cursor: pointer;
+}
+.pin-pad button:active, .menu-button:active { background: #2a3a60; }
+.menu-button { text-align: left; padding: 0 4vmin; font-size: 3.6vmin; }
+.text-button {
+  margin-top: 2vmin;
+  background: none;
+  border: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 3vmin;
+  cursor: pointer;
+  width: 100%;
+}
+.tech-info {
+  display: none;
+  margin: 0;
+  padding: 2vmin;
+  border-radius: 2vmin;
+  background: #0b1220;
+  color: #9fb4dd;
+  font-size: 2.4vmin;
+  white-space: pre-wrap;
+}
+.tech-info.show { display: block; }
+
+/* ── Simulation panel (not part of the real kiosk) ─────────────────────── */
+
+.dev-panel {
+  position: fixed;
+  right: 12px;
+  bottom: 12px;
+  z-index: 50;
+  font: 13px/1.4 system-ui, sans-serif;
+  color: #dfe6f5;
+}
+.dev-toggle {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 1px solid #2c3a5c;
+  background: #121b2e;
+  color: #dfe6f5;
+  font-size: 18px;
+  cursor: pointer;
+}
+.dev-body {
+  display: none;
+  width: 290px;
+  margin-bottom: 50px;
+  padding: 12px;
+  border: 1px solid #2c3a5c;
+  border-radius: 12px;
+  background: rgba(18, 27, 46, 0.97);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+}
+.dev-panel.open .dev-body { display: block; }
+.dev-title { font-weight: 700; margin-bottom: 8px; }
+.dev-title small { font-weight: 400; color: #8a97b4; }
+.dev-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.dev-grid button, .dev-row button {
+  padding: 7px 8px;
+  border: 1px solid #2c3a5c;
+  border-radius: 8px;
+  background: #1a2540;
+  color: #dfe6f5;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.dev-grid button.active { border-color: #1a6ef5; background: #1a3566; }
+.dev-row { display: flex; gap: 6px; align-items: center; margin-top: 10px; }
+.dev-row input { flex: 1; }
+.dev-note { margin: 10px 0 0; color: #8a97b4; font-size: 12px; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}

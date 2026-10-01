@@ -13,9 +13,27 @@ function required(value: string | undefined, name: string, fallback: string): st
   return fallback
 }
 
+/**
+ * Unset means the production layout: the backend behind the same origin as
+ * this page, under /backend/ (see new_webui/deploy/nginx.conf.example).
+ *
+ * The prefix is not decoration. The backend serves map images at /maps/…,
+ * which is also a page of this app; mounted at the root, one of the two
+ * would shadow the other. Relative, so one build works on any host name.
+ */
+const SAME_ORIGIN_BACKEND = '/backend'
+
 export const config = {
-  apiBaseUrl: required(import.meta.env.VITE_API_BASE_URL, 'VITE_API_BASE_URL', 'http://localhost:3001/api'),
-  apiStaticUrl: required(import.meta.env.VITE_API_STATIC_URL, 'VITE_API_STATIC_URL', 'http://localhost:3001'),
+  apiBaseUrl: required(
+    import.meta.env.VITE_API_BASE_URL,
+    'VITE_API_BASE_URL',
+    `${SAME_ORIGIN_BACKEND}/api`,
+  ),
+  apiStaticUrl: required(
+    import.meta.env.VITE_API_STATIC_URL,
+    'VITE_API_STATIC_URL',
+    SAME_ORIGIN_BACKEND,
+  ),
   defaultRosUrl: required(import.meta.env.VITE_DEFAULT_ROS_URL, 'VITE_DEFAULT_ROS_URL', 'ws://localhost:8765'),
   defaultCameraPort: Number(import.meta.env.VITE_DEFAULT_CAMERA_PORT ?? 8080),
   /**

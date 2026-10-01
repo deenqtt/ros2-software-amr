@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+  <title>Robot Kiosk — Mockup</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body data-mode="idle" data-mood="neutral">
+  <!-- Status bar: small on purpose. The screen is read from 1–2 m in about two
+       seconds, so the face and the one message own the space, not chrome. -->
+  <header class="status-bar">
+    <div class="status-left">
+      <span class="robot-name" id="robotName">AMR-02</span>
+      <span class="status-pill" id="statusPill">Siap</span>
+    </div>
+    <div class="status-right">
+      <span class="clock" id="clock">--:--</span>
+      <span class="battery" id="battery" aria-label="Baterai">
+        <span class="battery-body"><span class="battery-fill" id="batteryFill"></span></span>
+        <span class="battery-text" id="batteryText">82%</span>
+      </span>
+    </div>
+  </header>
+
+  <!-- The face. Shown for idle, moving, blocked and thanks. -->
+  <main class="stage">
+    <div class="face" id="face">
+      <div class="eye left"><span class="glint"></span></div>
+      <div class="eye right"><span class="glint"></span></div>
+      <div class="cheek left"></div>
+      <div class="cheek right"></div>
+    </div>
+
+    <div class="caption">
+      <h1 id="title">Halo! 👋</h1>
+      <p id="subtitle">Saya siap mengantar</p>
+    </div>
+
+    <ol class="route" id="route" aria-label="Rute"></ol>
+  </main>
+
+  <!-- Arrived at a "wait for confirm" step. The most important screen: one
+       message, one button, nothing else to read. -->
+  <section class="overlay arrived" id="arrived" aria-live="assertive">
+    <div class="arrived-card">
+      <div class="arrived-icon">🍽️</div>
+      <p class="arrived-kicker" id="arrivedKicker">Pesanan Anda sudah tiba!</p>
+      <h2 class="arrived-place" id="arrivedPlace">MEJA 5</h2>
+      <p class="arrived-hint" id="arrivedHint">Silakan ambil pesanan Anda, lalu tekan tombol di bawah</p>
+      <button class="confirm-button" id="confirmButton" type="button">
+        <span class="confirm-check">✓</span>
+        <span id="confirmLabel">SUDAH DIAMBIL</span>
+      </button>
+      <div class="countdown">
+        <svg viewBox="0 0 36 36" class="countdown-ring" aria-hidden="true">
+          <circle class="ring-track" cx="18" cy="18" r="16" />
+          <circle class="ring-value" id="ringValue" cx="18" cy="18" r="16" />
+        </svg>
+        <span id="countdownText">Robot lanjut otomatis dalam 45 detik</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- Charging. -->
+  <section class="overlay charging" id="charging">
+    <div class="big-battery">
+      <div class="big-battery-body"><div class="big-battery-fill" id="bigBatteryFill"></div></div>
+      <div class="big-battery-cap"></div>
+    </div>
+    <h2 id="chargingTitle">Sedang mengisi daya</h2>
+    <p class="charging-percent" id="chargingPercent">64%</p>
+  </section>
+
+  <!-- Faults. One colour per severity, readable from across the room. -->
+  <section class="overlay alert" id="alert">
+    <div class="alert-icon" id="alertIcon">⛔</div>
+    <h2 id="alertTitle">Robot berhenti</h2>
+    <p id="alertText">Mohon hubungi staf</p>
+  </section>
+
+  <!-- Staff. Long-press the top-left corner, then a PIN. Hidden from guests. -->
+  <div class="staff-hotspot" id="staffHotspot" aria-hidden="true"></div>
+  <section class="overlay staff" id="staff">
+    <div class="staff-card">
+      <div class="staff-pin" id="staffPin">
+        <h3 id="pinTitle">Masukkan PIN staf</h3>
+        <div class="pin-dots" id="pinDots"><span></span><span></span><span></span><span></span></div>
+        <div class="pin-pad" id="pinPad"></div>
+        <button class="text-button" id="pinCancel" type="button">Batal</button>
+      </div>
+      <div class="staff-menu" id="staffMenu">
+        <h3 id="menuTitle">Menu staf</h3>
+        <button class="menu-button" data-action="cancel" type="button">✕ <span data-i18n="menuCancel">Batalkan misi</span></button>
+        <button class="menu-button" data-action="charge" type="button">⚡ <span data-i18n="menuCharge">Kembali ke charger</span></button>
+        <button class="menu-button" data-action="info" type="button">ℹ <span data-i18n="menuInfo">Info teknis</span></button>
+        <pre class="tech-info" id="techInfo"></pre>
+        <button class="text-button" data-action="close" type="button" data-i18n="menuClose">Tutup</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Simulation panel: NOT part of the real kiosk. Drives the states the
+       robot agent would drive over rosbridge. Toggle with "D". -->
+  <aside class="dev-panel" id="devPanel">
+    <button class="dev-toggle" id="devToggle" type="button" title="Panel simulasi (D)">⚙</button>
+    <div class="dev-body">
+      <div class="dev-title">Simulasi state <small>(tombol 1–9, D)</small></div>
+      <div class="dev-grid" id="devButtons"></div>
+      <label class="dev-row">Baterai
+        <input type="range" min="0" max="100" value="82" id="batterySlider" />
+      </label>
+      <div class="dev-row">
+        <button type="button" id="langToggle">ID / EN</button>
+        <button type="button" id="soundToggle">🔔 Suara: on</button>
+      </div>
+      <p class="dev-note">PIN staf: <b>1234</b> — tekan lama pojok kiri atas.</p>
+    </div>
+  </aside>
+
+  <script src="app.js"></script>
+</body>
+</html>

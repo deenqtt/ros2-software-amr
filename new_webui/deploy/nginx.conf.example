@@ -1,0 +1,68 @@
+# nginx for the AMR web UI on the server — one origin for the browser.
+#
+#   /            the built frontend (new_webui/frontend/dist), SPA fallback
+#   /backend/    the FastAPI backend on this machine, prefix stripped
+#   /robot/<n>   optional: a robot's rosbridge, so browsers need not reach the
+#                Jetson directly (registry bridge_url = wss://<host>/robot/<n>)
+#
+# Copy to /etc/nginx/sites-available/amr, adjust server_name, paths and robot
+# addresses, then: ln -s ../sites-available/amr /etc/nginx/sites-enabled/ &&
+# nginx -t && systemctl reload nginx
+#
+# Build the frontend with .env.production (see .env.production.example) so it
+# calls /backend/api — relative, so the same build works under any host name.
+
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    ''      close;
+}
+
+server {
+    listen 80;
+    server_name amr.example.local;
+
+    root /opt/amr/web/dist;
+    index index.html;
+
+    # Map uploads are a PGM plus its YAML; a large warehouse map is tens of MB.
+    client_max_body_size 64m;
+
+    # ── Frontend ────────────────────────────────────────────────────────────
+    location / {
+        # Client-side routes (/robot/…/nav, /missions, …) all serve the app.
+        try_files $uri $uri/ /index.html;
+    }
+
+    # Hashed assets never change under the same name; cache them hard.
+    location /assets/ {
+        expires 30d;
+        add_header Cache-Control "public, immutable";
+        try_files $uri =404;
+    }
+
+    # ── Backend ─────────────────────────────────────────────────────────────
+    # Trailing slash on proxy_pass strips /backend: /backend/api/runs reaches
+    # the backend as /api/runs. Robots may use this too:
+    #   run_agent_gprp.sh <robot_id> http://amr.example.local/backend
+    location /backend/ {
+        proxy_pass http://127.0.0.1:3002/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 60s;
+    }
+
+    # ── Robots (optional) ───────────────────────────────────────────────────
+    # One block per robot. Without these, each browser must be able to open
+    # ws://<jetson-ip>:9090 itself (same LAN or VPN).
+    location /robot/amr-02 {
+        proxy_pass http://192.168.10.21:9090;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+        proxy_set_header Host $host;
+        # rosbridge connections live for hours; idle ones must not be cut.
+        proxy_read_timeout 1h;
+        proxy_send_timeout 1h;
+    }
+}

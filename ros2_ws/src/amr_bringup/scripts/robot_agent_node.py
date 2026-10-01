@@ -133,6 +133,7 @@ from std_srvs.srv import Trigger
 from nav2_msgs.action import NavigateToPose
 from nav2_msgs.srv import LoadMap, ReloadDockDatabase, SaveMap
 
+from agent_state import TERMINAL_STATES, AgentState
 from backend_client import BackendClient, BackendError
 from custom_interfaces.action import MissionPlan
 from custom_interfaces.srv import RobotMode, StationConfig
@@ -235,6 +236,13 @@ MISSION_TASK_WIRE = {"none": 0, "pick": 1, "drop": 2}
 # robot was still working on the last one.
 MISSION_STEP_TIMEOUT_S = 900.0
 MISSION_GOAL_ACCEPT_TIMEOUT_S = 20.0
+# How often a step in progress asks the backend whether its run still exists.
+# "Cancel mission" used to be read only at the end of a lap, so the robot drove
+# the rest of the route after the operator had abandoned it.
+RUN_CANCEL_CHECK_S = 2.0
+# Returned as a step's detail when the run was ended from outside. Not a
+# failure: nothing is reported, because the run already has its final state.
+RUN_CANCELED = "run canceled"
 MAP_LOADER_SERVICE = "/map_server/load_map"
 SERVICE_WAIT_S = 10.0
 SERVICE_CALL_TIMEOUT_S = 120.0
@@ -267,6 +275,10 @@ class RobotAgent(Node):
         self.declare_parameter("backend_url", "")
         self.declare_parameter("robot_id", "")
         self.declare_parameter("map_cache_dir", "/maps/cache")
+        # What this agent remembers across restarts and outages: the last
+        # registry reading, station sets, unsent run reports, finished runs.
+        # Empty means ~/.amr_agent. See agent_state.py.
+        self.declare_parameter("state_dir", "")
         self.declare_parameter("map_sync_period", 10.0)
         # Which launch files this agent drives. Parameters rather than constants
         # because the agent is not only run against this repository's stack: a
@@ -283,6 +295,10 @@ class RobotAgent(Node):
         # orchestrator that would fight this agent over /robot_mode, an rviz
         # nobody is looking at, a rosbridge already running on that port.
         self.declare_parameter("extra_launch_args", "")
+        # Appended only to the SLAM launch command. This keeps mapping-specific
+        # arguments out of navigation while preserving the shared arguments
+        # above for both launch modes.
+        self.declare_parameter("slam_extra_launch_args", "")
         # How a survey is written to disk: "service" calls a running map_saver
         # node, "cli" shells out to map_saver_cli. See _write_map_via_cli.
         self.declare_parameter("map_save_via", "service")
@@ -314,6 +330,12 @@ class RobotAgent(Node):
         backend_url = str(self.get_parameter("backend_url").value).strip()
         self._robot_id = str(self.get_parameter("robot_id").value).strip()
         self._cache_dir = Path(str(self.get_parameter("map_cache_dir").value))
+        state_dir = str(self.get_parameter("state_dir").value).strip()
+        self._store = AgentState(Path(state_dir) if state_dir else Path.home() / ".amr_agent")
+        # The registry's desired mode as last read, kept with the map snapshot.
+        self._registry_desired = "nav"
+        # Said once per outage rather than every sync.
+        self._offline_announced = False
         self._sync_period = float(self.get_parameter("map_sync_period").value)
         self._slam_launch_pkg = str(self.get_parameter("slam_launch_package").value)
         self._slam_launch_file = str(self.get_parameter("slam_launch_file").value)
@@ -321,6 +343,9 @@ class RobotAgent(Node):
         self._nav_launch_file = str(self.get_parameter("nav_launch_file").value)
         self._extra_launch_args = shlex.split(
             str(self.get_parameter("extra_launch_args").value)
+        )
+        self._slam_extra_launch_args = shlex.split(
+            str(self.get_parameter("slam_extra_launch_args").value)
         )
         self._map_save_timeout = float(self.get_parameter("map_save_timeout").value)
         station_file = str(self.get_parameter("station_file").value).strip()
@@ -464,6 +489,9 @@ class RobotAgent(Node):
                 "managed": self._managed,
                 "backend": self._backend_state,
                 "teleop": self._teleop_active,
+                # Run reports written while the server was unreachable, still
+                # waiting to be sent. Non-zero means the UI's run is behind.
+                "pending_reports": self._store.pending_count(),
             }
         )
         self._status_pub.publish(msg)
@@ -868,17 +896,39 @@ class RobotAgent(Node):
         """
         if self._backend is None or not self._map_busy.acquire(blocking=False):
             return
+        robot = None
+        outage = False
         try:
             robot = self._backend.get_robot()
             self._backend_state = "ok"
         except BackendError as error:
             self._backend_state = "unreachable" if error.is_offline else "error"
-            return
+            # Unreachable or failing is an outage. A 4xx is the server answering:
+            # a 404 means this robot is not registered, and the snapshot must
+            # not keep a deleted robot driving.
+            outage = error.is_offline or error.status >= 500
         finally:
             self._map_busy.release()
 
+        if robot is None:
+            if outage:
+                self._run_from_snapshot()
+            return
+
+        if self._offline_announced:
+            self.get_logger().info("[robot_agent] server reachable again; back on the registry")
+            self._offline_announced = False
+        # Reports from the outage go before anything else: the server's view of
+        # a run has to be current before it is asked what to run next.
+        self._flush_outbox()
+
         assigned = robot.get("active_map_id")
         raw_desired = str(robot.get("desired_mode") or "nav")
+        self._registry_desired = raw_desired
+        try:
+            self._store.save_registry(active_map_id=assigned, desired_mode=raw_desired)
+        except OSError as exc:
+            self.get_logger().warning(f"[robot_agent] could not save registry snapshot: {exc}")
         desired = REGISTRY_TO_MODE.get(raw_desired, MODE_UNKNOWN)
         if desired == MODE_UNKNOWN:
             self.get_logger().warning(
@@ -964,10 +1014,87 @@ class RobotAgent(Node):
             # fallback means coming up on the wrong map and swapping a moment
             # later — visible as a robot that localises somewhere it is not.
             self._current_map = str(yaml_path)
+            self._snapshot_map(record)
         except (BackendError, RuntimeError, OSError) as error:
             self.get_logger().warning(f"[robot_agent] prefetch of {map_id} failed: {error}")
         finally:
             self._map_busy.release()
+
+    # ── Running without the server ────────────────────────────────────────────
+
+    def _snapshot_map(self, record: dict) -> None:
+        """Keep the map's registry row with the assignment, for booting offline."""
+        try:
+            self._store.save_registry(
+                active_map_id=record["id"],
+                desired_mode=self._registry_desired,
+                map_record={
+                    key: record.get(key)
+                    for key in ("id", "name", "version", "yaml_file", "image_file", "content_hash")
+                },
+            )
+        except OSError as exc:
+            self.get_logger().warning(f"[robot_agent] could not save registry snapshot: {exc}")
+
+    def _verified_cache(self, record: dict) -> Path | None:
+        """
+        The cached map, if its bytes still match the recorded hash.
+
+        Unlike _cached_yaml this never deletes a mismatch. Offline, the cache is
+        the only copy there is: throwing it away cannot be undone until the
+        server is back, and refusing to start on it is enough.
+        """
+        directory = self._cache_dir / str(record.get("id"))
+        yaml_path = directory / str(record.get("yaml_file"))
+        image_path = directory / str(record.get("image_file"))
+        if not yaml_path.is_file() or not image_path.is_file():
+            return None
+        if hashlib.sha256(image_path.read_bytes()).hexdigest() != record.get("content_hash"):
+            return None
+        return yaml_path
+
+    def _run_from_snapshot(self) -> None:
+        """
+        Keep to the last registry reading while the server cannot be reached.
+
+        A robot that powered up while the server was down used to sit idle with
+        its map already in its own cache, because the only thing it was waiting
+        for was a server telling it what it already knew. It now starts from the
+        last reading it saved. Reconciling against the same reading when it is
+        already running changes nothing, so this is safe to call every sync.
+        """
+        snapshot = self._store.load_registry()
+        if not snapshot:
+            return
+        assigned = snapshot.get("active_map_id")
+        desired = REGISTRY_TO_MODE.get(str(snapshot.get("desired_mode") or "nav"), MODE_UNKNOWN)
+        if desired == MODE_UNKNOWN:
+            return
+
+        record = snapshot.get("map_record") or {}
+        if assigned and record.get("id") == assigned:
+            cached = self._verified_cache(record)
+            if cached is None:
+                self.get_logger().warning(
+                    f"[robot_agent] server unreachable and the cached map {assigned} "
+                    "is missing or fails its hash check; not starting"
+                )
+                return
+            self._current_map = str(cached)
+
+        if assigned and not self._station_poses:
+            self._remember_station_poses(self._store.load_stations(assigned))
+
+        if not self._offline_announced:
+            saved = time.strftime(
+                "%Y-%m-%d %H:%M", time.localtime(float(snapshot.get("saved_at") or 0))
+            )
+            self.get_logger().warning(
+                f"[robot_agent] server unreachable; following the registry as saved at {saved} "
+                f"({snapshot.get('desired_mode')} on map {assigned})"
+            )
+            self._offline_announced = True
+        self._reconcile_mode(desired, assigned)
 
     def _apply_map(self, map_id: str) -> None:
         record = self._backend.get_map(map_id)
@@ -991,6 +1118,7 @@ class RobotAgent(Node):
         self._loaded_map_id = map_id
         self._loaded_hash = record.get("content_hash")
         self._current_map = str(yaml_path)
+        self._snapshot_map(record)
         self.get_logger().info(
             f"[robot_agent] loaded map {record['name']} v{record['version']} ({map_id})"
         )
@@ -1142,12 +1270,33 @@ class RobotAgent(Node):
         if self._mode != MODE_NAV or self._state != STATE_RUNNING:
             return
 
+        # The server only knows where a run is once the reports from an outage
+        # have arrived. Asking it what to run before then gets a stale answer —
+        # including a run this robot has already finished.
+        self._flush_outbox()
+        if self._store.has_pending():
+            return
+
         try:
             plan = self._backend.get_active_run()
         except BackendError as error:
             self._backend_state = "unreachable" if error.is_offline else "error"
             return
         if not plan or not plan.get("steps"):
+            return
+
+        run_id = str(plan["id"])
+        final = self._store.finished(run_id)
+        if final is not None:
+            # This robot ended this run and the server never heard. Driving it
+            # again would deliver everything twice; telling the server again is
+            # what was missing.
+            self.get_logger().warning(
+                f"[robot_agent] run {run_id} already ended here ({final.get('state')}); "
+                "re-sending the final report instead of driving it again"
+            )
+            if self._send_report(run_id, final) == "retry":
+                self._store.enqueue(run_id, final)
             return
 
         self._run_thread = threading.Thread(
@@ -1173,15 +1322,77 @@ class RobotAgent(Node):
         response.message = "run started" if started else "nothing to run"
         return response
 
-    def _report_run(self, run_id: str, patch: dict) -> None:
-        """Write progress back, tolerating a server that is briefly away."""
-        if self._backend is None:
-            return
+    def _send_report(self, run_id: str, patch: dict) -> str:
+        """
+        One attempt at one report.
+
+        "sent"; "ended" when the run is over or gone on the server (409, 404);
+        "rejected" when the server refused the report itself (another 4xx), so
+        resending it can never succeed; "retry" when the server could not be
+        reached or failed, and the report must be kept.
+        """
         try:
             self._backend.report_run(run_id, patch)
         except BackendError as error:
+            if error.status in (404, 409):
+                self.get_logger().info(f"[robot_agent] run {run_id} already ended on the server")
+                return "ended"
+            if not error.is_offline and error.status < 500:
+                self.get_logger().warning(
+                    f"[robot_agent] server refused report {patch} for run {run_id}: {error}"
+                )
+                return "rejected"
             self._backend_state = "unreachable" if error.is_offline else "error"
-            self.get_logger().warning(f"[robot_agent] could not report run: {error}")
+            return "retry"
+        return "sent"
+
+    def _flush_outbox(self) -> None:
+        """Send reports kept during an outage, oldest first, until one cannot go."""
+        if self._backend is None or not self._store.has_pending():
+            return
+        removed, empty = self._store.flush(
+            lambda run_id, patch: (
+                "retry" if self._send_report(run_id, patch) == "retry" else "sent"
+            )
+        )
+        if removed:
+            self.get_logger().info(
+                f"[robot_agent] sent {removed} run report(s) kept while offline"
+                + ("" if empty else "; the rest are still waiting")
+            )
+
+    def _report_run(self, run_id: str, patch: dict) -> bool:
+        """
+        Write progress back. Never lost: a report the server cannot take now is
+        kept on disk and sent, in order, when it can.
+
+        False only when the server says the run has already ended: the caller
+        must stop driving it. Unreachable is not that — ending a run because the
+        network blinked would strand a robot holding a payload.
+        """
+        if self._backend is None:
+            return True
+
+        if patch.get("state") in TERMINAL_STATES:
+            # Before sending, so a crash between the two still leaves this robot
+            # knowing it must not drive the route again (see _poll_run).
+            self._store.mark_finished(run_id, patch)
+
+        # Anything already waiting goes first, or this report would overtake it
+        # and the server would see the run move backwards when the rest arrive.
+        self._flush_outbox()
+        if self._store.has_pending():
+            self._store.enqueue(run_id, patch)
+            return True
+
+        outcome = self._send_report(run_id, patch)
+        if outcome == "retry":
+            self.get_logger().warning(
+                f"[robot_agent] server unreachable; keeping report {patch} for run {run_id}"
+            )
+            self._store.enqueue(run_id, patch)
+            return True
+        return outcome != "ended"
 
     def _execute_run(self, plan: dict) -> None:
         """
@@ -1216,13 +1427,34 @@ class RobotAgent(Node):
                         )
                         return
 
-                    self._report_run(run_id, {"lap": lap, "step_index": step_index})
+                    # Checked before every step, not only at the end of a lap.
+                    if self._run_canceled(run_id) or not self._report_run(
+                        run_id, {"lap": lap, "step_index": step_index}
+                    ):
+                        self.get_logger().info(f"[robot_agent] run {run_id} canceled; stopping")
+                        # Remembered, so a server that still lists it as live
+                        # (a cancel that raced a lost report) cannot restart it.
+                        self._store.mark_finished(run_id, {"state": "canceled"})
+                        return
                     step = steps[step_index]
                     ok, detail = (
-                        self._run_step_nav(client, step)
+                        self._run_step_nav(client, step, run_id)
                         if self._mission_via == "nav"
-                        else self._run_step(client, step)
+                        else self._run_step(client, step, run_id)
                     )
+                    # The UI's "Cancel mission" also cancels the Nav2 goal, so
+                    # a step can fail from the cancel before the next check
+                    # sees the run gone. That is a cancel, not a failure.
+                    if not ok and detail != RUN_CANCELED and self._run_canceled(run_id):
+                        detail = RUN_CANCELED
+                    if detail == RUN_CANCELED:
+                        # Ended from outside while driving. The goal is already
+                        # canceled and the run already has its final state.
+                        self.get_logger().info(
+                            f"[robot_agent] run {run_id} canceled during step {step_index + 1}"
+                        )
+                        self._store.mark_finished(run_id, {"state": "canceled"})
+                        return
                     if not ok:
                         # Stop the whole run rather than retrying. An automatic
                         # retry is how a robot spends a night driving into a
@@ -1236,6 +1468,13 @@ class RobotAgent(Node):
                         )
                         self.get_logger().error(f"[robot_agent] run {run_id} failed: {detail}")
                         return
+                    # Reported the moment it arrives. step_index only moves on
+                    # when the next step starts, and never for a lap's last
+                    # step, so it cannot tell anyone the robot got there.
+                    self._report_run(run_id, {"reached_lap": lap, "reached_index": step_index})
+                    self.get_logger().info(
+                        f"[robot_agent] run {run_id} reached step {step_index + 1} (lap {lap})"
+                    )
                     step_index += 1
 
                 # Lap complete. Re-read the run: somebody may have asked it to
@@ -1281,7 +1520,49 @@ class RobotAgent(Node):
             return True
         return str(current.get("state")) == "stopping"
 
-    def _run_step_nav(self, client, step: dict) -> tuple[bool, str]:
+    def _run_canceled(self, run_id: str) -> bool:
+        """
+        True when the run has been ended from outside — canceled, or finished.
+
+        Unlike `_run_wants_stop`, `stopping` is not a cancel: that one means
+        "finish this lap", and is honoured where the lap ends.
+        """
+        if self._backend is None:
+            return False
+        try:
+            current = self._backend.get_active_run()
+        except BackendError:
+            # Unreachable is not a cancel, for the same reason as above.
+            return False
+        return current is None or str(current.get("id")) != run_id
+
+    def _wait_for_step(self, handle, run_id: str, timeout_msg: str):
+        """
+        Wait for a step's goal, giving it up when it should not continue.
+
+        Returns (outcome, None) when the goal finished by itself, or
+        (None, (ok, detail)) for the step to return after its goal has been
+        canceled — by a mode change, the step timeout, or the run being ended.
+        """
+        result_future = handle.get_result_async()
+        deadline = time.time() + MISSION_STEP_TIMEOUT_S
+        next_check = time.time() + RUN_CANCEL_CHECK_S
+        while not result_future.done():
+            if not self._run_allowed():
+                handle.cancel_goal_async()
+                return None, (False, "robot left navigation mode")
+            if time.time() > deadline:
+                handle.cancel_goal_async()
+                return None, (False, timeout_msg)
+            if time.time() >= next_check:
+                next_check = time.time() + RUN_CANCEL_CHECK_S
+                if self._run_canceled(run_id):
+                    handle.cancel_goal_async()
+                    return None, (False, RUN_CANCELED)
+            time.sleep(0.1)
+        return result_future.result(), None
+
+    def _run_step_nav(self, client, step: dict, run_id: str) -> tuple[bool, str]:
         """
         Drive to one station with Nav2's own navigate_to_pose.
 
@@ -1331,18 +1612,12 @@ class RobotAgent(Node):
         if handle is None or not handle.accepted:
             return False, f"{NAV_READY_ACTION} rejected the goal"
 
-        result_future = handle.get_result_async()
-        deadline = time.time() + MISSION_STEP_TIMEOUT_S
-        while not result_future.done():
-            if not self._run_allowed():
-                handle.cancel_goal_async()
-                return False, "robot left navigation mode"
-            if time.time() > deadline:
-                handle.cancel_goal_async()
-                return False, f"step timed out after {MISSION_STEP_TIMEOUT_S:.0f}s"
-            time.sleep(0.1)
+        outcome, early = self._wait_for_step(
+            handle, run_id, f"step timed out after {MISSION_STEP_TIMEOUT_S:.0f}s"
+        )
+        if early is not None:
+            return early
 
-        outcome = result_future.result()
         status = getattr(outcome, "status", None)
         if status != GoalStatus.STATUS_SUCCEEDED:
             # Nav2 aborts for reasons about the map or the surroundings far more
@@ -1351,7 +1626,7 @@ class RobotAgent(Node):
             return False, f"navigation did not succeed (status {status})"
         return True, ""
 
-    def _run_step(self, client, step: dict) -> tuple[bool, str]:
+    def _run_step(self, client, step: dict, run_id: str) -> tuple[bool, str]:
         """Send one MissionPlan goal and wait for it. One step, one goal."""
         if not client.wait_for_server(timeout_sec=SERVICE_WAIT_S):
             return False, "mission_plan action server is not available"
@@ -1376,18 +1651,11 @@ class RobotAgent(Node):
         if handle is None or not handle.accepted:
             return False, "mission_plan rejected the goal"
 
-        result_future = handle.get_result_async()
-        deadline = time.time() + MISSION_STEP_TIMEOUT_S
-        while not result_future.done():
-            if not self._run_allowed():
-                handle.cancel_goal_async()
-                return False, "robot left navigation mode"
-            if time.time() > deadline:
-                handle.cancel_goal_async()
-                return False, "step timed out"
-            time.sleep(0.1)
+        result, early = self._wait_for_step(handle, run_id, "step timed out")
+        if early is not None:
+            return early
 
-        outcome = str(result_future.result().result.result)
+        outcome = str(result.result.result)
         if not outcome.startswith("SUCCESS"):
             return False, outcome
         return True, outcome
@@ -1429,7 +1697,7 @@ class RobotAgent(Node):
         # Cached whether or not anything changed: a restarted agent has an empty
         # cache and an unchanged digest, and a mission would then fail to
         # resolve stations that are perfectly well known to the registry.
-        self._remember_station_poses(stations)
+        self._remember_station_poses(stations, map_id)
 
         digest = self._station_digest(stations)
         if digest == self._station_hash:
@@ -1438,7 +1706,18 @@ class RobotAgent(Node):
         if self._apply_stations(map_id, stations):
             self._station_hash = digest
 
-    def _remember_station_poses(self, stations: list) -> None:
+    def _remember_station_poses(self, stations: list, map_id: str | None = None) -> None:
+        """
+        Keep the poses in memory, and on disk when they came from the server.
+
+        On disk so an agent restarted while the server is down still knows
+        where its stations are (see _run_from_snapshot).
+        """
+        if map_id is not None:
+            try:
+                self._store.save_stations(map_id, stations)
+            except OSError as exc:
+                self.get_logger().warning(f"[robot_agent] could not save stations: {exc}")
         self._station_poses = {
             str(station["id"]): (
                 float(station["x"]),
@@ -1471,7 +1750,7 @@ class RobotAgent(Node):
             self.get_logger().warning(f"[robot_agent] could not read stations: {error}")
             return
 
-        self._remember_station_poses(stations)
+        self._remember_station_poses(stations, map_id)
 
         if self._apply_stations(map_id, stations):
             self._station_hash = self._station_digest(stations)
@@ -1670,6 +1949,8 @@ class RobotAgent(Node):
                 f"use_sim_time:={use_sim_time}",
                 f"map:={self._current_map}",
             ]
+        if mode == MODE_MAP:
+            return cmd + self._slam_extra_launch_args + self._extra_launch_args
         return cmd + self._extra_launch_args
 
     def _start_child(self, mode: str) -> None:

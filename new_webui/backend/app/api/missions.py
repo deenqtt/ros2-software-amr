@@ -70,8 +70,13 @@ def list_missions(
     map_id: str | None = Query(default=None, description="Only missions on this map."),
 ) -> list[MissionSummary]:
     counts = repo.step_counts(connection)
+    routes = repo.route_station_ids(connection)
     return [
-        MissionSummary(**dict(row), step_count=counts.get(row["id"], 0))
+        MissionSummary(
+            **dict(row),
+            step_count=counts.get(row["id"], 0),
+            station_ids=routes.get(row["id"], []),
+        )
         for row in repo.list_missions(connection, map_id)
     ]
 
@@ -228,9 +233,22 @@ def update_run(run_id: str, body: RunProgress, connection: Connection) -> RunOut
     Called by the robot's agent, and by the UI to ask for a stop. Setting
     `stopping` rather than a terminal state is the "finish this lap" request:
     halting mid-lap can leave a robot holding a payload it has not delivered.
+
+    A run that has ended stays ended. The agent finishing its lap used to write
+    `done` over a run the operator had canceled, so history said the route was
+    completed when it had been abandoned.
     """
-    if repo.get_run(connection, run_id) is None:
+    current = repo.get_run(connection, run_id)
+    if current is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Run not found")
+    if current["state"] in ("done", "failed", "canceled"):
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            {
+                "message": f"This run has already ended ({current['state']})",
+                "state": current["state"],
+            },
+        )
 
     patch = body.model_dump(exclude_unset=True)
     if not patch:

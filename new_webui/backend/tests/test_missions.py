@@ -162,6 +162,26 @@ def test_the_list_carries_step_counts_without_the_steps(client, warehouse, stati
     assert "steps" not in rows[0]
 
 
+def test_the_list_carries_the_route_in_visiting_order(client, warehouse, stations):
+    """Enough to preview "Pickup A → Dropoff → Pickup A" without fetching steps."""
+    steps = [
+        {"station_id": stations[0]["id"], "task": "pick"},
+        {"station_id": stations[1]["id"], "task": "drop"},
+        {"station_id": stations[0]["id"], "task": "none"},
+    ]
+    client.post("/api/missions", json=route(warehouse, stations, steps=steps))
+    client.post("/api/missions", json=route(warehouse, stations, name="Empty", steps=[]))
+
+    rows = {row["name"]: row for row in client.get("/api/missions").json()}
+
+    assert rows["Shuttle"]["station_ids"] == [
+        stations[0]["id"],
+        stations[1]["id"],
+        stations[0]["id"],
+    ]
+    assert rows["Empty"]["station_ids"] == []
+
+
 def test_reordering_replaces_the_whole_list(client, warehouse, stations):
     """
     The thing being edited is an order. Patching rows individually means
@@ -342,6 +362,59 @@ def test_a_terminal_run_is_stamped_with_an_end_time(client, warehouse, stations,
     finished = client.patch(f"/api/runs/{run['id']}", json={"state": "failed"}).json()
 
     assert finished["ended_at"] is not None
+
+
+def test_an_arrival_is_recorded_and_stamped_by_the_server(client, warehouse, stations, robot):
+    """`step_index` is where the robot is going; an arrival is reported on its own."""
+    mission = client.post("/api/missions", json=route(warehouse, stations)).json()
+    run = client.post(
+        "/api/runs", json={"mission_id": mission["id"], "robot_id": robot["id"]}
+    ).json()
+    assert run["reached_index"] is None
+    assert run["reached_at"] is None
+
+    reached = client.patch(
+        f"/api/runs/{run['id']}", json={"reached_lap": 1, "reached_index": 0}
+    ).json()
+
+    assert reached["reached_lap"] == 1
+    assert reached["reached_index"] == 0
+    assert reached["reached_at"] is not None
+    # An arrival is not a terminal state.
+    assert reached["state"] == "running"
+    assert reached["ended_at"] is None
+
+
+def test_a_canceled_run_cannot_be_overwritten(client, warehouse, stations, robot):
+    """
+    The agent finishing its lap used to write `done` over a run the operator
+    had canceled, so history said an abandoned route had been completed.
+    """
+    mission = client.post("/api/missions", json=route(warehouse, stations)).json()
+    run = client.post(
+        "/api/runs", json={"mission_id": mission["id"], "robot_id": robot["id"]}
+    ).json()
+    client.patch(f"/api/runs/{run['id']}", json={"state": "canceled"})
+
+    response = client.patch(f"/api/runs/{run['id']}", json={"state": "done"})
+
+    assert response.status_code == 409
+    assert response.json()["detail"]["state"] == "canceled"
+    assert client.get(f"/api/runs/{run['id']}").json()["state"] == "canceled"
+
+
+def test_an_ended_run_takes_no_more_progress(client, warehouse, stations, robot):
+    mission = client.post("/api/missions", json=route(warehouse, stations)).json()
+    run = client.post(
+        "/api/runs", json={"mission_id": mission["id"], "robot_id": robot["id"]}
+    ).json()
+    client.patch(f"/api/runs/{run['id']}", json={"state": "done"})
+
+    response = client.patch(
+        f"/api/runs/{run['id']}", json={"reached_lap": 1, "reached_index": 1}
+    )
+
+    assert response.status_code == 409
 
 
 def test_stopping_is_not_terminal(client, warehouse, stations, robot):

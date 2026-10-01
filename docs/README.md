@@ -27,6 +27,7 @@ Operational command references.
 | Document | Covers |
 |---|---|
 | [runbooks/AMR_SIMULATION_COMMANDS.md](runbooks/AMR_SIMULATION_COMMANDS.md) | Simulation launch and runtime commands. **Referenced by `scripts/docker_run.sh` — do not move.** |
+| [runbooks/PRODUCTION_DEPLOYMENT.md](runbooks/PRODUCTION_DEPLOYMENT.md) | Server + Jetson layout, ports, nginx, agent service, and what keeps working when the server is unreachable. |
 
 ## Decisions
 

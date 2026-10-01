@@ -28,6 +28,14 @@ const props = defineProps<{
   placing: boolean
   /** Live robot pose in the map frame, for the teach-from-robot flow. */
   robotPose?: { x: number; y: number; yaw: number } | null
+  /**
+   * Station ids in visiting order, drawn as a numbered path. For the mission
+   * editor: a route read as a list of names says nothing about whether it
+   * zig-zags across the floor.
+   */
+  route?: string[]
+  /** False where stations are picked rather than placed: a click must not nudge one. */
+  movable?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -45,6 +53,9 @@ const COLOUR = {
 
 /** Ink, so the robot does not compete with the station hues. */
 const ROBOT_COLOUR = '#0a0b0d'
+
+/** Ink as well: the route connects stations of every type, so it takes none of their hues. */
+const ROUTE_COLOUR = '#0a0b0d'
 
 const ZOOM_MIN = 0.4
 const ZOOM_MAX = 40
@@ -76,6 +87,8 @@ const fit = computed(() => {
 const transform = computed(() => view.value ?? fit.value)
 
 const hoverWorld = ref<{ x: number; y: number } | null>(null)
+/** Over a marker, so the cursor can say "this is clickable" before the click. */
+const hoverStation = ref(false)
 
 /**
  * Below this drag distance the gesture is a plain click, and the station is
@@ -91,7 +104,6 @@ const PLACE_DRAG_THRESHOLD_PX = 12
 /** Where a placing gesture began, in screen pixels, while it is in flight. */
 let placeFrom: { sx: number; sy: number; x: number; y: number } | null = null
 const placePreview = ref<{ x: number; y: number; yaw: number } | null>(null)
-
 
 // ── Projection ───────────────────────────────────────────────────────────────
 
@@ -189,7 +201,10 @@ function drawMarker(context: CanvasRenderingContext2D, station: Station, selecte
   context.beginPath()
   context.moveTo(screen.sx, screen.sy)
   // Canvas y grows downward while a ROS yaw turns counter-clockwise.
-  context.lineTo(screen.sx + Math.cos(station.yaw) * length, screen.sy - Math.sin(station.yaw) * length)
+  context.lineTo(
+    screen.sx + Math.cos(station.yaw) * length,
+    screen.sy - Math.sin(station.yaw) * length,
+  )
   context.stroke()
 
   context.beginPath()
@@ -210,6 +225,80 @@ function drawMarker(context: CanvasRenderingContext2D, station: Station, selecte
   context.fillRect(screen.sx - width / 2 - 3, top - 1, width + 6, 14)
   context.fillStyle = '#0a0b0d'
   context.fillText(label, screen.sx, top)
+}
+
+/** The route's path, under the markers so the discs stay on top of it. */
+function drawRoute(context: CanvasRenderingContext2D, points: { sx: number; sy: number }[]) {
+  if (points.length < 2) return
+  context.save()
+  context.lineJoin = 'round'
+  context.lineCap = 'round'
+  // A white underlay, so the path stays legible across black walls.
+  for (const [style, width] of [
+    ['rgba(255,255,255,0.9)', 6],
+    [ROUTE_COLOUR, 2.5],
+  ] as const) {
+    context.strokeStyle = style
+    context.lineWidth = width
+    context.setLineDash(style === ROUTE_COLOUR ? [7, 5] : [])
+    context.beginPath()
+    points.forEach((point, index) =>
+      index === 0 ? context.moveTo(point.sx, point.sy) : context.lineTo(point.sx, point.sy),
+    )
+    context.stroke()
+  }
+  context.setLineDash([])
+
+  // A chevron at each leg's midpoint: a dashed line alone does not say which
+  // way round the loop goes.
+  context.fillStyle = ROUTE_COLOUR
+  for (let i = 1; i < points.length; i += 1) {
+    const from = points[i - 1] as { sx: number; sy: number }
+    const to = points[i] as { sx: number; sy: number }
+    if (Math.hypot(to.sx - from.sx, to.sy - from.sy) < MARKER_RADIUS * 4) continue
+    const angle = Math.atan2(to.sy - from.sy, to.sx - from.sx)
+    const mx = (from.sx + to.sx) / 2
+    const my = (from.sy + to.sy) / 2
+    context.beginPath()
+    context.moveTo(mx + Math.cos(angle) * 6, my + Math.sin(angle) * 6)
+    context.lineTo(mx + Math.cos(angle + 2.5) * 6, my + Math.sin(angle + 2.5) * 6)
+    context.lineTo(mx + Math.cos(angle - 2.5) * 6, my + Math.sin(angle - 2.5) * 6)
+    context.closePath()
+    context.fill()
+  }
+  context.restore()
+}
+
+/**
+ * Step numbers beside each stop. A station visited twice gets "1·3", not two
+ * badges stacked where only the top one can be read.
+ */
+function drawStepBadges(context: CanvasRenderingContext2D, route: string[]) {
+  const numbers = new Map<string, number[]>()
+  route.forEach((id, index) => numbers.set(id, [...(numbers.get(id) ?? []), index + 1]))
+  context.save()
+  context.font = '600 10px Inter, system-ui, sans-serif'
+  context.textAlign = 'center'
+  context.textBaseline = 'middle'
+  for (const [id, steps] of numbers) {
+    const station = props.stations.find((candidate) => candidate.id === id)
+    const screen = station && toScreen(station.x, station.y)
+    if (!screen) continue
+    const label = steps.join('·')
+    const width = Math.max(16, context.measureText(label).width + 8)
+    const cx = screen.sx + MARKER_RADIUS + width / 2 - 2
+    const cy = screen.sy - MARKER_RADIUS - 2
+    context.beginPath()
+    context.roundRect(cx - width / 2, cy - 8, width, 16, 8)
+    context.fillStyle = ROUTE_COLOUR
+    context.fill()
+    context.strokeStyle = '#ffffff'
+    context.lineWidth = 1.5
+    context.stroke()
+    context.fillStyle = '#ffffff'
+    context.fillText(label, cx, cy + 0.5)
+  }
+  context.restore()
 }
 
 function paintMarkers() {
@@ -254,9 +343,20 @@ function paintMarkers() {
     }
   }
 
+  const route = props.route ?? []
+  if (route.length) {
+    const points = route
+      .map((id) => props.stations.find((station) => station.id === id))
+      .map((station) => (station ? toScreen(station.x, station.y) : null))
+      .filter((point): point is { sx: number; sy: number } => point !== null)
+    drawRoute(context, points)
+  }
+
   for (const station of props.stations) {
     drawMarker(context, station, station.id === props.selectedId)
   }
+
+  if (route.length) drawStepBadges(context, route)
 
   // The gesture in flight, drawn last so it sits over everything it is being
   // aimed between.
@@ -340,6 +440,10 @@ function onPointerDown(event: PointerEvent) {
   if (!at) return
 
   const hit = stationAt(at.sx, at.sy)
+  if (hit && props.movable === false) {
+    emit('select', hit.id)
+    return
+  }
   if (hit) {
     dragging.value = hit.id
     activePointer = event.pointerId
@@ -369,6 +473,7 @@ function onPointerMove(event: PointerEvent) {
   const at = pointerAt(event)
   if (at) {
     hoverWorld.value = toWorld(at.sx, at.sy)
+    hoverStation.value = stationAt(at.sx, at.sy) !== null
   }
 
   if (panning.value && event.pointerId === activePointer) {
@@ -488,14 +593,17 @@ onBeforeUnmount(() => {
   observer = null
 })
 
-watch(() => props.grid, () => {
-  buffer = null
-  view.value = null
-  paintMap()
-})
+watch(
+  () => props.grid,
+  () => {
+    buffer = null
+    view.value = null
+    paintMap()
+  },
+)
 
 watch(
-  [() => props.stations, () => props.selectedId, () => props.robotPose],
+  [() => props.stations, () => props.selectedId, () => props.robotPose, () => props.route],
   () => paintMarkers(),
   { deep: true },
 )
@@ -516,7 +624,15 @@ defineExpose({ resetView })
   <div
     ref="wrapper"
     class="relative h-full w-full select-none overflow-hidden bg-[#e9ebee]"
-    :class="props.placing ? 'cursor-crosshair' : dragging ? 'cursor-grabbing' : 'cursor-grab'"
+    :class="
+      props.placing
+        ? 'cursor-crosshair'
+        : dragging || panning
+          ? 'cursor-grabbing'
+          : hoverStation
+            ? 'cursor-pointer'
+            : 'cursor-grab'
+    "
     @pointerdown="onPointerDown"
     @pointermove="onPointerMove"
     @pointerup="finishPointer"
@@ -539,7 +655,12 @@ defineExpose({ resetView })
       <Button variant="secondary" size="icon-sm" title="Zoom in" @click="zoomCentre(ZOOM_STEP)">
         <Plus :size="13" />
       </Button>
-      <Button variant="secondary" size="icon-sm" title="Zoom out" @click="zoomCentre(1 / ZOOM_STEP)">
+      <Button
+        variant="secondary"
+        size="icon-sm"
+        title="Zoom out"
+        @click="zoomCentre(1 / ZOOM_STEP)"
+      >
         <Minus :size="13" />
       </Button>
       <Button variant="secondary" size="icon-sm" title="Fit map" @click="resetView">

@@ -27,15 +27,19 @@ import { useMissionStore } from '@/stores/missions'
 import { useFleetStore } from '@/stores/fleet'
 import { useLinkStore } from '@/stores/links'
 import { useZoneStore } from '@/stores/zones'
+import { useStationStore } from '@/stores/stations'
+import { missionsApi } from '@/shared/api/missions'
 import { useRosPool } from '@/app/ros/pool'
 import { useRobotTelemetry } from '@/features/mapping/useRobotTelemetry'
 import { ZONE_KIND_LIST } from '@/features/zones/zoneKind'
 import { goalPoseMessage, initialPoseMessage, type PlanarPose } from '../pose'
 import { GOAL_OUTCOME_LABEL } from '../goalStatus'
 import { cancelAllGoals } from '../cancelGoal'
+import { stallLabel } from '../stall'
 import { SERVICE_TYPES } from '@/domain/ros/topics'
 import RobotMapCanvas, { type MapTool } from '../components/RobotMapCanvas.vue'
-import { RUN_MODE_LABEL, RUN_MODES, type RunMode } from '@/domain/types'
+import { missionOverlay } from '../missionMarkers'
+import { RUN_MODE_LABEL, RUN_MODES, type Mission, type RunMode } from '@/domain/types'
 import { activityStatus, dockingStatus } from '@/domain/ros/status'
 import { Button } from '@/shared/ui/button'
 import { Card, CardContent } from '@/shared/ui/card'
@@ -66,10 +70,7 @@ onMounted(async () => {
 })
 
 watch(robotId, (id) => links.focus(id))
-onBeforeUnmount(() => {
-  links.focus(null)
-  if (missionPoll !== null) clearInterval(missionPoll)
-})
+onBeforeUnmount(() => links.focus(null))
 
 const activity = computed(() =>
   vitals.value.activity === null ? null : activityStatus(vitals.value.activity),
@@ -80,6 +81,7 @@ const docking = computed(() =>
 
 const pool = useRosPool()
 const zones = useZoneStore()
+const stations = useStationStore()
 const telemetry = useRobotTelemetry(() => robotId.value)
 const tool = ref<MapTool>('view')
 
@@ -95,6 +97,7 @@ const layers = ref<Record<string, boolean>>({
   scan: true,
   particles: false,
   plan: true,
+  mission: true,
   robot: true,
 })
 
@@ -103,6 +106,7 @@ const LAYER_LIST = [
   { key: 'scan', label: 'Laser', hint: 'What the robot can see right now' },
   { key: 'particles', label: 'Particles', hint: 'Whether it knows where it is' },
   { key: 'plan', label: 'Plan', hint: 'Where it intends to go' },
+  { key: 'mission', label: 'Mission', hint: 'The stops of the running mission, and which are done' },
   { key: 'zones', label: 'Zones', hint: 'Rules that apply on this map' },
 ] as const
 
@@ -112,6 +116,8 @@ watch(
     selectedMissionId.value = null
     if (mapId) {
       void zones.load(mapId)
+      // The mission markers are stations; their poses live here.
+      void stations.load(mapId)
       await missions.load(mapId)
     }
   },
@@ -149,19 +155,46 @@ const missionBlockReason = computed(() => {
   return null
 })
 
-let missionPoll: ReturnType<typeof setInterval> | null = null
+// Runs are kept fresh by the app-wide watcher (app/runNotifications.ts), which
+// also catches a run started from another tab — the poll that lived here only
+// started once this page already knew of a live run.
+
+/** The route of the run in progress: a run carries its mission id, not its steps. */
+const runMission = ref<Mission | null>(null)
 watch(
-  () => missions.liveRuns.length,
-  (live) => {
-    if (live > 0 && missionPoll === null) {
-      missionPoll = setInterval(() => void missions.refreshRuns(), 2000)
-    } else if (live === 0 && missionPoll !== null) {
-      clearInterval(missionPoll)
-      missionPoll = null
+  () => activeRun.value?.missionId ?? null,
+  async (missionId) => {
+    if (!missionId) {
+      runMission.value = null
+      return
+    }
+    if (runMission.value?.id === missionId) return
+    try {
+      const mission = await missionsApi.get(missionId)
+      // Another run may have started while this was in flight.
+      if (activeRun.value?.missionId === missionId) runMission.value = mission
+    } catch {
+      // No markers is a smaller problem than an error over the map; the card
+      // still shows the step number.
+      runMission.value = null
     }
   },
   { immediate: true },
 )
+
+const missionMap = computed(() => {
+  const run = activeRun.value
+  const mission = runMission.value
+  if (!run || !mission || mission.id !== run.missionId) return null
+  return missionOverlay(mission.steps, stations.byId, run)
+})
+
+/** Where the robot is headed, by name, for the mission card. */
+const currentStopName = computed(() => {
+  const run = activeRun.value
+  const step = run ? runMission.value?.steps[run.stepIndex] : undefined
+  return step ? (stations.byId(step.stationId)?.name ?? null) : null
+})
 
 const TOOLS = [
   { value: 'view', label: 'Pan', icon: Hand, hint: 'Move the view' },
@@ -340,7 +373,16 @@ async function cancelMission() {
   missionPending.value = true
   try {
     await missions.cancel(run.id)
-    toast.success(`${run.missionName} canceled`)
+    // The agent also gives the goal up when it sees the run gone, within a
+    // couple of seconds. Canceling it here too stops the robot now rather
+    // than then. Best effort: the run is already canceled either way.
+    const client = pool.clientFor(robotId.value)
+    if (client) {
+      await client
+        .callService('cancelNavGoal', SERVICE_TYPES.cancelGoal, cancelAllGoals())
+        .catch(() => undefined)
+    }
+    toast.success(`${run.missionName} canceled`, { description: 'The robot stops where it is.' })
   } catch (error) {
     toast.error('Could not cancel the mission', { description: missions.describeError(error) })
   } finally {
@@ -399,8 +441,10 @@ async function cancelMission() {
             <Button variant="ghost" size="sm" as-child>
               <RouterLink :to="`/robot/${robotId}/detail`"><Radio :size="14" /> Details</RouterLink>
             </Button>
+            <!-- The dashboard, not the robot list. This page is opened from the
+                 dashboard's Navigation button, and back should undo that. -->
             <Button variant="ghost" size="sm" as-child>
-              <RouterLink to="/robot"><ArrowLeft :size="14" /> Back</RouterLink>
+              <RouterLink to="/"><ArrowLeft :size="14" /> Back</RouterLink>
             </Button>
           </template>
         </PanelToolbar>
@@ -424,15 +468,22 @@ async function cancelMission() {
                the only place the answer arrives. -->
           <div class="rounded-control bg-surface-soft px-sm py-xs">
             <div class="text-label uppercase text-muted">Goal</div>
+            <!-- A stalled goal is still "executing" as far as Nav2 is
+                 concerned, so saying so would be true and useless. -->
             <div
               class="mt-xxs text-body-sm font-medium"
               :class="{
                 'text-status-ok': telemetry.goalOutcome.value === 'arrived',
                 'text-status-fault': telemetry.goalOutcome.value === 'failed',
+                'text-status-warn': telemetry.stall.value.stalled,
                 'text-muted': telemetry.goalOutcome.value === 'none',
               }"
             >
-              {{ GOAL_OUTCOME_LABEL[telemetry.goalOutcome.value] }}
+              {{
+                telemetry.stall.value.stalled
+                  ? stallLabel(telemetry.stall.value.stillFor)
+                  : GOAL_OUTCOME_LABEL[telemetry.goalOutcome.value]
+              }}
             </div>
           </div>
           <div class="rounded-control bg-surface-soft px-sm py-xs">
@@ -452,7 +503,9 @@ async function cancelMission() {
               <div>
                 <div class="text-body-md font-medium text-ink">{{ activeRun.missionName }}</div>
                 <div class="mt-xxs text-body-sm text-muted">
-                  Step {{ activeRun.stepIndex + 1 }} ·
+                  Step {{ activeRun.stepIndex + 1
+                  }}<span v-if="runMission"> of {{ runMission.steps.length }}</span>
+                  <span v-if="currentStopName" class="text-ink"> → {{ currentStopName }}</span> ·
                   {{ activeRun.mode === 'once' ? 'single pass' : `lap ${activeRun.lap}` }}
                   <span v-if="activeRun.mode === 'laps'"> of {{ activeRun.lapsTarget }}</span>
                 </div>
@@ -610,6 +663,7 @@ async function cancelMission() {
               :sensor-offset="telemetry.sensorOffset.value"
               :zones="zones.zones"
               :footprint="telemetry.footprint.value"
+              :mission="missionMap"
               :layers="layers"
               :tool="tool"
               @pick="onPick"

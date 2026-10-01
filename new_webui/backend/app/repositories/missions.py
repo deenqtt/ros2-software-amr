@@ -24,7 +24,8 @@ _STEP_COLUMNS = """
 
 _RUN_COLUMNS = """
     id, mission_id, mission_name, robot_id, mode, laps_target,
-    lap, step_index, state, detail, started_at, ended_at
+    lap, step_index, reached_lap, reached_index, reached_at,
+    state, detail, started_at, ended_at
 """
 
 LIVE_STATES = ("running", "stopping")
@@ -87,6 +88,17 @@ def step_counts(connection: sqlite3.Connection) -> dict[str, int]:
         "SELECT mission_id, COUNT(*) AS total FROM mission_steps GROUP BY mission_id"
     ).fetchall()
     return {row["mission_id"]: int(row["total"]) for row in rows}
+
+
+def route_station_ids(connection: sqlite3.Connection) -> dict[str, list[str]]:
+    """Each mission's stations in visiting order, so a list can preview the route."""
+    rows = connection.execute(
+        "SELECT mission_id, station_id FROM mission_steps ORDER BY mission_id, ordinal"
+    ).fetchall()
+    routes: dict[str, list[str]] = {}
+    for row in rows:
+        routes.setdefault(row["mission_id"], []).append(row["station_id"])
+    return routes
 
 
 def create_mission(connection: sqlite3.Connection, payload: dict) -> sqlite3.Row:
@@ -228,12 +240,17 @@ def update_run(connection: sqlite3.Connection, run_id: str, patch: dict) -> sqli
         # Stamped here rather than by the caller: a terminal run with no end
         # time is a run that looks like it is still going.
         fields.setdefault("ended_at", None)
+    if "reached_index" in fields:
+        # The server's clock, like ended_at. It is also what makes a repeat of
+        # the same step on the next lap a new arrival rather than the old one.
+        fields.setdefault("reached_at", None)
 
+    stamped = ("ended_at", "reached_at")
     assignments = ", ".join(
-        f"{column} = datetime('now')" if column == "ended_at" else f"{column} = :{column}"
+        f"{column} = datetime('now')" if column in stamped else f"{column} = :{column}"
         for column in fields
     )
-    params = {key: value for key, value in fields.items() if key != "ended_at"}
+    params = {key: value for key, value in fields.items() if key not in stamped}
     connection.execute(
         f"UPDATE mission_runs SET {assignments} WHERE id = :id",  # noqa: S608 — keys are columns
         {**params, "id": run_id},

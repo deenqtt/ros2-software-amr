@@ -67,6 +67,8 @@ export interface MissionSummary {
   name: string
   note: string | null
   stepCount: number
+  /** Station ids in visiting order — enough to preview the route. */
+  stationIds: string[]
   createdAt: string
   updatedAt: string
 }
@@ -97,7 +99,16 @@ export interface MissionRun {
   lapsTarget: number | null
   /** Owned by the robot's agent. The browser used to hold these and lose them. */
   lap: number
+  /** The step the robot is on — written before it sets off, so not an arrival. */
   stepIndex: number
+  /**
+   * The last stop it actually arrived at, reported when Nav2 says so. Null
+   * until the first arrival. `reachedAt` is the server's clock, which is what
+   * makes the same step on the next lap a new arrival.
+   */
+  reachedLap: number | null
+  reachedIndex: number | null
+  reachedAt: string | null
   state: RunState
   detail: string | null
   startedAt: string

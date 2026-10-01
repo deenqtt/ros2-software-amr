@@ -17,6 +17,7 @@ import {
   type GoalOutcome,
   type GoalStatusArrayLike,
 } from '@/features/robot/goalStatus'
+import { isMoving, stallState, type StallState } from '@/features/robot/stall'
 import { useRosPool } from '@/app/ros/pool'
 import { parseUrdfFootprint, type Footprint } from '@/domain/ros/urdf'
 import { quaternionToYaw } from '@/domain/ros/quaternion'
@@ -80,6 +81,17 @@ export function useRobotTelemetry(robotId: () => string) {
   const goalOutcome = ref<GoalOutcome>('none')
 
   /**
+   * A goal that is still running while the robot is not moving.
+   *
+   * Nav2 keeps retrying a goal it cannot start, so the status alone says
+   * "executing" for as long as anyone watches. This is what turns that into
+   * something an operator can act on.
+   */
+  const stall = ref<StallState>({ stalled: false, stillFor: 0 })
+  /** When the robot was last seen moving. Null until it has been. */
+  let movingSince: number | null = null
+
+  /**
    * The planner's costmap, the route it intends to take, and AMCL's particles.
    *
    * Separate from `grid` because they answer different questions: the map is
@@ -128,6 +140,15 @@ export function useRobotTelemetry(robotId: () => string) {
           linear: msg.twist?.twist?.linear?.x ?? 0,
           angular: msg.twist?.twist?.angular?.z ?? 0,
         }
+        const now = Date.now()
+        if (isMoving(velocity.value.linear, velocity.value.angular)) movingSince = now
+        stall.value = stallState({
+          goalRunning: goalOutcome.value === 'running',
+          linear: velocity.value.linear,
+          angular: velocity.value.angular,
+          movingSince,
+          now,
+        })
         break
       }
       case 'tf': {
@@ -155,9 +176,19 @@ export function useRobotTelemetry(robotId: () => string) {
         }
         break
       }
-      case 'navGoalStatus':
+      case 'navGoalStatus': {
+        const before = goalOutcome.value
         goalOutcome.value = outcomeOf(latestGoal(message as GoalStatusArrayLike))
+        // Drop the route when the goal that produced it ends. Nav2 publishes no
+        // empty path on abort or cancel, so the last one drawn stays on screen
+        // for good — a robot with no plan, still showing where it was going.
+        if (before === 'running' && goalOutcome.value !== 'running') {
+          plan.value = null
+          stall.value = { stalled: false, stillFor: 0 }
+          movingSince = null
+        }
         break
+      }
       case 'robotDescription': {
         const msg = message as { data?: string }
         if (msg.data) footprint.value = parseUrdfFootprint(msg.data)
@@ -207,6 +238,8 @@ export function useRobotTelemetry(robotId: () => string) {
     velocity.value = { linear: 0, angular: 0 }
     sensorOffset.value = null
     goalOutcome.value = 'none'
+    stall.value = { stalled: false, stillFor: 0 }
+    movingSince = null
   }
 
   /** Re-attach after the pool rebuilds a client, e.g. its bridge URL changed. */
@@ -228,6 +261,7 @@ export function useRobotTelemetry(robotId: () => string) {
     sensorOffset,
     agent,
     goalOutcome,
+    stall,
     clear,
     reattach,
   }

@@ -54,11 +54,13 @@ exec python3 "$HERE/robot_agent_node.py" --ros-args \
     -p "backend_url:=$BACKEND_URL" \
     -p "robot_id:=$ROBOT_ID" \
     -p "map_cache_dir:=$HOME/map_cache" \
+    -p "state_dir:=$HERE/state" \
     -p slam_launch_package:=amr_description \
     -p slam_launch_file:=amr_mapping_sim_launch.py \
     -p nav_launch_package:=amr_description \
     -p nav_launch_file:=amr_navigation_sim_launch.py \
     -p extra_launch_args:="launch_master_control:=false launch_websocket:=false launch_rviz:=false" \
+    -p slam_extra_launch_args:="launch_scan_filter:=true scan_topic:=/scan_filtered" \
     -p map_save_via:=cli \
     -p map_save_timeout:=20.0 \
     -p "station_file:=$HOME/amr_agent/station_data.yaml" \

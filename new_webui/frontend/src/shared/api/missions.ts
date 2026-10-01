@@ -43,6 +43,7 @@ interface SummaryWire {
   name: string
   note: string | null
   step_count: number
+  station_ids?: string[]
   created_at: string
   updated_at: string
 }
@@ -56,6 +57,10 @@ interface RunWire {
   laps_target: number | null
   lap: number
   step_index: number
+  // Optional on the wire: a backend from before migration 007 does not send them.
+  reached_lap?: number | null
+  reached_index?: number | null
+  reached_at?: string | null
   state: RunState
   detail: string | null
   started_at: string
@@ -92,6 +97,8 @@ export function summaryFromWire(wire: SummaryWire): MissionSummary {
     name: wire.name,
     note: wire.note,
     stepCount: wire.step_count,
+    // Optional on the wire so an older backend still lists, just without a preview.
+    stationIds: wire.station_ids ?? [],
     createdAt: wire.created_at,
     updatedAt: wire.updated_at,
   }
@@ -107,6 +114,9 @@ export function runFromWire(wire: RunWire): MissionRun {
     lapsTarget: wire.laps_target,
     lap: wire.lap,
     stepIndex: wire.step_index,
+    reachedLap: wire.reached_lap ?? null,
+    reachedIndex: wire.reached_index ?? null,
+    reachedAt: wire.reached_at ?? null,
     state: wire.state,
     detail: wire.detail,
     startedAt: wire.started_at,

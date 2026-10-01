@@ -12,13 +12,14 @@
  * mid-route with nobody left to send the next one.
  */
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { ListOrdered, Pencil, Play, Plus, Square, Trash2, X } from 'lucide-vue-next'
+import { RouterLink, useRoute, useRouter } from 'vue-router'
+import { ChevronRight, ListOrdered, Pencil, Play, Plus, Square, Trash2, X } from 'lucide-vue-next'
 import { toast } from 'vue-sonner'
 import { useMapStore } from '@/stores/maps'
 import { useFleetStore } from '@/stores/fleet'
 import { useMissionStore } from '@/stores/missions'
+import { useStationStore } from '@/stores/stations'
 import {
-  isRunLive,
   RUN_MODE_LABEL,
   RUN_MODES,
   type MissionRun,
@@ -32,16 +33,22 @@ import { FormField } from '@/shared/ui/label'
 import { Select } from '@/shared/ui/select'
 import { Dialog } from '@/shared/ui/dialog'
 import { Badge } from '@/shared/ui/badge'
-import { RowActions, RowActionItem, RowActionSeparator } from '@/shared/ui/menu'
+import { RowActions, RowActionItem } from '@/shared/ui/menu'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/shared/ui/table'
 import PanelToolbar from '@/shared/components/PanelToolbar.vue'
 import EmptyState from '@/shared/components/EmptyState.vue'
 import ConfirmDialog from '@/shared/components/ConfirmDialog.vue'
 import { cn } from '@/shared/lib/utils'
+import { STATION_TYPE_STYLE } from '@/features/stations/stationType'
+import MissionTableSkeleton from '../components/MissionTableSkeleton.vue'
+import { lastFinishedRun, routePreview, RUN_RESULT, timeAgo } from '../missionList'
 
 const maps = useMapStore()
 const fleet = useFleetStore()
 const missions = useMissionStore()
+const stations = useStationStore()
+const route = useRoute()
+const router = useRouter()
 
 const selectedMapId = ref<string | null>(null)
 
@@ -51,16 +58,88 @@ const mapOptions = computed(() =>
 
 const selectedMap = computed(() => (selectedMapId.value ? maps.byId(selectedMapId.value) : null))
 
+/** Robots on the selected map: the only ones a mission here can be sent to. */
+const robotsOnMap = computed(() =>
+  fleet.robots.filter((robot) => robot.activeMapId === selectedMapId.value),
+)
+
 async function selectMap(mapId: string) {
   selectedMapId.value = mapId
-  await missions.load(mapId)
+  // In the URL so a reload or a shared link lands on the same map.
+  if (route.query.map !== mapId) void router.replace({ query: { ...route.query, map: mapId } })
+  // Stations alongside, so a route preview can name its stops.
+  await Promise.all([missions.load(mapId), stations.load(mapId)])
 }
 
+/**
+ * The map to open on: the one in the URL, else the one most robots are on.
+ *
+ * Opening on the first map in the list could land on a floor with no robot,
+ * where every Run button is disabled and nothing says why.
+ */
+function initialMapId(): string | null {
+  const fromUrl = typeof route.query.map === 'string' ? route.query.map : null
+  if (fromUrl && maps.byId(fromUrl)) return fromUrl
+  const counts = new Map<string, number>()
+  for (const robot of fleet.robots) {
+    if (robot.activeMapId) counts.set(robot.activeMapId, (counts.get(robot.activeMapId) ?? 0) + 1)
+  }
+  const busiest = maps.maps
+    .filter((map) => counts.has(map.id))
+    .sort((a, b) => (counts.get(b.id) ?? 0) - (counts.get(a.id) ?? 0))[0]
+  return busiest?.id ?? maps.maps[0]?.id ?? null
+}
+
+/**
+ * True until the first map's missions are in.
+ *
+ * The stores start out empty and not loading, which would flash "No maps yet"
+ * for the moment before the first request goes out.
+ */
+const booting = ref(true)
+
 onMounted(async () => {
-  await Promise.all([maps.load(), fleet.load()])
-  const first = maps.maps[0]
-  if (first) await selectMap(first.id)
+  try {
+    await Promise.all([maps.load(), fleet.load()])
+    const mapId = initialMapId()
+    if (mapId) await selectMap(mapId)
+  } finally {
+    booting.value = false
+  }
 })
+
+const showSkeleton = computed(() => booting.value || missions.loading)
+
+// ── Row content ──────────────────────────────────────────────────────────────
+
+/** A clock for "5m ago", ticking slowly: the labels are minutes-coarse. */
+const now = ref(Date.now())
+const clock = setInterval(() => (now.value = Date.now()), 30_000)
+onBeforeUnmount(() => clearInterval(clock))
+
+function stationLabel(id: string): string {
+  return stations.byId(id)?.name ?? 'missing station'
+}
+
+function stationDot(id: string): string {
+  const station = stations.byId(id)
+  return station ? STATION_TYPE_STYLE[station.type].colour : 'rgb(128,132,140)'
+}
+
+function preview(mission: MissionSummary) {
+  const shown = routePreview(mission.stationIds, (id) => id)
+  return { ids: shown.shown, hidden: shown.hidden }
+}
+
+function liveRunOf(mission: MissionSummary): MissionRun | null {
+  return missions.liveRuns.find((run) => run.missionId === mission.id) ?? null
+}
+
+function lastResult(mission: MissionSummary) {
+  const run = lastFinishedRun(missions.runs, mission.id)
+  if (!run || run.state === 'running' || run.state === 'stopping') return null
+  return { ...RUN_RESULT[run.state], ago: timeAgo(run.endedAt ?? run.startedAt, now.value), run }
+}
 
 /**
  * Poll only while something is live.
@@ -108,18 +187,33 @@ const dispatchPending = ref(false)
  * it is not offered rather than being offered and refused.
  */
 const dispatchOptions = computed(() =>
-  fleet.robots
-    .filter((robot) => robot.activeMapId === selectedMapId.value)
-    .map((robot) => {
-      const busy = missions.runForRobot(robot.id)
-      return {
-        value: robot.id,
-        label: robot.name,
-        hint: busy ? `Running ${busy.missionName}` : undefined,
-        disabled: Boolean(busy),
-      }
-    }),
+  robotsOnMap.value.map((robot) => {
+    const busy = missions.runForRobot(robot.id)
+    return {
+      value: robot.id,
+      label: robot.name,
+      hint: busy ? `Running ${busy.missionName}` : undefined,
+      disabled: Boolean(busy),
+    }
+  }),
 )
+
+/** Why Run is unavailable for a mission, or null when it can be run. */
+function runBlocker(mission: MissionSummary): string | null {
+  if (!mission.stepCount) return 'Add steps before running this'
+  if (!robotsOnMap.value.length) return 'No robot is on this map'
+  if (!dispatchOptions.value.some((option) => !option.disabled)) {
+    return 'Every robot on this map is already running a mission'
+  }
+  return null
+}
+
+const mapSubtitle = computed(() => {
+  if (!selectedMap.value) return 'Pick a map'
+  const n = missions.count
+  const r = robotsOnMap.value.length
+  return `${n} mission${n === 1 ? '' : 's'} · ${r ? `${r} robot${r === 1 ? '' : 's'}` : 'no robot'} on this map`
+})
 
 const modeOptions = RUN_MODES.map((mode) => ({ value: mode, label: RUN_MODE_LABEL[mode] }))
 
@@ -131,6 +225,12 @@ function openDispatch(mission: MissionSummary) {
 }
 
 /** A route with a step that waits for a person should not be left to loop. */
+/** Shown on hover, so the coarse "3h ago" can still be pinned to a time. */
+function resultTitle(run: MissionRun): string {
+  const who = robotName(run.robotId)
+  return run.detail ? `${who} · ${run.detail}` : who
+}
+
 const loopNeedsSomeone = computed(
   () => dispatchMode.value !== 'once' && Boolean(dispatching.value?.note?.includes('confirm')),
 )
@@ -231,6 +331,8 @@ async function createMission() {
     createOpen.value = false
     newName.value = ''
     toast.success(`Created ${created.name}`, { description: 'Add its steps next.' })
+    // An empty route cannot run, so the next thing to do is always this.
+    await router.push(`/mission/edit/${created.id}`)
   } catch (error) {
     createError.value = missions.describeError(error)
   } finally {
@@ -279,7 +381,9 @@ watch(createOpen, (open) => {
           :key="run.id"
           class="flex flex-wrap items-center gap-sm rounded-control border border-hairline p-sm"
         >
-          <span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-control bg-status-run/12 text-status-run">
+          <span
+            class="flex h-7 w-7 shrink-0 items-center justify-center rounded-control bg-status-run/12 text-status-run"
+          >
             <Play :size="13" />
           </span>
           <div class="min-w-0 flex-1">
@@ -318,10 +422,7 @@ watch(createOpen, (open) => {
     </Card>
 
     <Card>
-      <PanelToolbar
-        title="Missions"
-        :subtitle="selectedMap ? `${missions.count} on ${selectedMap.name} v${selectedMap.version}` : 'Pick a map'"
-      >
+      <PanelToolbar title="Missions" :subtitle="mapSubtitle">
         <template #icon><ListOrdered :size="14" class="shrink-0 text-muted" /></template>
         <template #actions>
           <Select
@@ -339,93 +440,171 @@ watch(createOpen, (open) => {
       </PanelToolbar>
 
       <CardContent>
+        <Table v-if="showSkeleton">
+          <MissionTableSkeleton />
+        </Table>
+
         <EmptyState
-          v-if="!mapOptions.length && !maps.loading"
+          v-else-if="!mapOptions.length"
           title="No maps yet"
           description="A mission names stations, and stations belong to a map. Survey one or upload one first."
         />
 
         <EmptyState
-          v-else-if="!missions.count && !missions.loading"
+          v-else-if="!missions.count"
           title="No missions on this map"
           description="A mission is an ordered route: pick at one station, drop at another. Create one and add its steps."
-        />
+        >
+          <template #action>
+            <Button size="sm" @click="createOpen = true"><Plus :size="13" /> New mission</Button>
+          </template>
+        </EmptyState>
 
-        <Table v-else>
-          <TableHeader>
-            <TableRow>
-              <TableHead class="w-full max-w-0">Mission</TableHead>
-              <TableHead class="whitespace-nowrap">Steps</TableHead>
-              <TableHead class="whitespace-nowrap">Status</TableHead>
-              <TableHead align="right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
+        <template v-else>
+          <!-- A disabled button's tooltip is easy to miss; say it once, in view. -->
+          <p
+            v-if="!robotsOnMap.length"
+            class="mb-sm rounded-control border border-status-warn/40 bg-status-warn/10 p-sm text-caption text-body"
+          >
+            No robot is on this map, so nothing here can run. Load this map on a robot, or pick the
+            map a robot is on.
+          </p>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead class="w-full max-w-0">Mission</TableHead>
+                <TableHead class="whitespace-nowrap">Status</TableHead>
+                <TableHead class="whitespace-nowrap">Last run</TableHead>
+                <TableHead align="right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
 
-          <TableBody>
-            <TableRow v-for="mission in missions.missions" :key="mission.id" interactive>
-              <TableCell class="w-full max-w-0">
-                <div class="min-w-0">
-                  <span class="block truncate text-body-md text-ink">{{ mission.name }}</span>
+            <TableBody>
+              <TableRow v-for="mission in missions.missions" :key="mission.id" interactive>
+                <TableCell class="w-full max-w-0">
+                  <div class="min-w-0 space-y-xxs py-xxs">
+                    <div class="flex min-w-0 items-baseline gap-xs">
+                      <RouterLink
+                        :to="`/mission/edit/${mission.id}`"
+                        class="truncate text-body-md text-ink hover:text-primary hover:underline"
+                        :title="`Edit ${mission.name}`"
+                      >
+                        {{ mission.name }}
+                      </RouterLink>
+                      <span
+                        v-if="mission.note"
+                        class="truncate text-caption text-muted"
+                        :title="mission.note"
+                      >
+                        {{ mission.note }}
+                      </span>
+                    </div>
+
+                    <!-- The route itself, so "Shuttle" and "Shuttle 2" can be told
+                         apart without opening either. -->
+                    <div
+                      v-if="mission.stationIds.length"
+                      class="flex min-w-0 flex-wrap items-center gap-x-xxs gap-y-0 text-caption text-body"
+                      :title="mission.stationIds.map(stationLabel).join(' → ')"
+                    >
+                      <template v-for="(id, index) in preview(mission).ids" :key="index">
+                        <template v-if="index > 0">
+                          <ChevronRight :size="11" class="shrink-0 text-muted-soft" />
+                          <span
+                            v-if="
+                              index === preview(mission).ids.length - 1 && preview(mission).hidden
+                            "
+                            class="font-data text-muted"
+                          >
+                            +{{ preview(mission).hidden }}
+                            <ChevronRight :size="11" class="inline shrink-0 text-muted-soft" />
+                          </span>
+                        </template>
+                        <span class="inline-flex min-w-0 items-center gap-xxs">
+                          <span
+                            class="h-2 w-2 shrink-0 rounded-full"
+                            :style="{ backgroundColor: stationDot(id) }"
+                          />
+                          <span class="max-w-[9rem] truncate">{{ stationLabel(id) }}</span>
+                        </span>
+                      </template>
+                      <span class="ml-xxs font-data text-muted-soft">
+                        · {{ mission.stepCount }} step{{ mission.stepCount === 1 ? '' : 's' }}
+                      </span>
+                    </div>
+                    <RouterLink
+                      v-else
+                      :to="`/mission/edit/${mission.id}`"
+                      class="inline-flex items-center gap-xxs text-caption text-status-warn hover:underline"
+                    >
+                      <Plus :size="12" /> No steps yet — add the first stop
+                    </RouterLink>
+                  </div>
+                </TableCell>
+
+                <TableCell>
                   <span
-                    v-if="mission.note"
-                    class="block truncate text-caption text-muted"
-                    :title="mission.note"
+                    v-if="liveRunOf(mission)"
+                    class="inline-flex items-center gap-xxs whitespace-nowrap rounded-chip bg-status-run/12 px-xs py-[2px] text-caption text-status-run"
+                    :title="`${robotName(liveRunOf(mission)!.robotId)} · step ${liveRunOf(mission)!.stepIndex + 1}`"
                   >
-                    {{ mission.note }}
+                    <span class="h-1.5 w-1.5 animate-pulse rounded-full bg-status-run" />
+                    {{ liveRunOf(mission)!.state === 'stopping' ? 'Stopping' : 'Running' }}
                   </span>
-                </div>
-              </TableCell>
-
-              <TableCell>
-                <span
-                  class="whitespace-nowrap font-data text-body-sm"
-                  :class="mission.stepCount ? 'text-body' : 'text-status-warn'"
-                >
-                  {{ mission.stepCount || 'none yet' }}
-                </span>
-              </TableCell>
-
-              <TableCell>
-                <span class="whitespace-nowrap text-body-sm text-muted">
-                  {{
-                    missions.runs.find((r) => r.missionId === mission.id && isRunLive(r.state))
-                      ? 'running'
-                      : 'idle'
-                  }}
-                </span>
-              </TableCell>
-
-              <TableCell align="right">
-                <div class="flex justify-end gap-xxs">
-                  <!-- A route with no steps has nothing to send, so the button
-                       says so rather than producing a server error. -->
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    :disabled="!mission.stepCount || !dispatchOptions.some((o) => !o.disabled)"
-                    :title="
-                      !mission.stepCount
-                        ? 'Add steps before running this'
-                        : `Run ${mission.name}`
-                    "
-                    @click="openDispatch(mission)"
+                  <span
+                    v-else
+                    class="inline-flex items-center gap-xxs whitespace-nowrap rounded-chip bg-surface-strong px-xs py-[2px] text-caption text-muted"
                   >
-                    <Play :size="13" /> Run
-                  </Button>
-                  <RowActions :label="`More actions for ${mission.name}`">
-                    <RowActionItem :icon="Pencil" :to="`/mission/edit/${mission.id}`">
-                      Edit steps
-                    </RowActionItem>
-                    <RowActionSeparator class="my-xxs h-px bg-hairline" />
-                    <RowActionItem :icon="Trash2" destructive @select="pendingRemoval = mission">
-                      Remove
-                    </RowActionItem>
-                  </RowActions>
-                </div>
-              </TableCell>
-            </TableRow>
-          </TableBody>
-        </Table>
+                    Idle
+                  </span>
+                </TableCell>
+
+                <TableCell>
+                  <span
+                    v-if="lastResult(mission)"
+                    class="whitespace-nowrap text-body-sm"
+                    :title="resultTitle(lastResult(mission)!.run)"
+                  >
+                    <span :class="lastResult(mission)!.tone">{{ lastResult(mission)!.label }}</span>
+                    <span class="text-muted"> · {{ lastResult(mission)!.ago }}</span>
+                  </span>
+                  <span v-else class="whitespace-nowrap text-body-sm text-muted-soft"
+                    >Never run</span
+                  >
+                </TableCell>
+
+                <TableCell align="right">
+                  <div class="flex justify-end gap-xxs">
+                    <!-- A route with no steps has nothing to send, so the button
+                       says so rather than producing a server error. -->
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      :disabled="runBlocker(mission) !== null"
+                      :title="runBlocker(mission) ?? `Run ${mission.name}`"
+                      @click="openDispatch(mission)"
+                    >
+                      <Play :size="13" /> Run
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      :title="`Edit ${mission.name}`"
+                      @click="router.push(`/mission/edit/${mission.id}`)"
+                    >
+                      <Pencil :size="13" /> Edit
+                    </Button>
+                    <RowActions :label="`More actions for ${mission.name}`">
+                      <RowActionItem :icon="Trash2" destructive @select="pendingRemoval = mission">
+                        Remove
+                      </RowActionItem>
+                    </RowActions>
+                  </div>
+                </TableCell>
+              </TableRow>
+            </TableBody>
+          </Table>
+        </template>
       </CardContent>
     </Card>
 
@@ -515,15 +694,20 @@ watch(createOpen, (open) => {
           v-if="loopNeedsSomeone"
           class="rounded-control border border-status-warn/40 bg-status-warn/10 p-sm text-caption text-body"
         >
-          This route has a step that waits for someone to confirm. Looping it means
-          somebody has to be there every lap.
+          This route has a step that waits for someone to confirm. Looping it means somebody has to
+          be there every lap.
         </p>
 
         <p v-if="dispatchError" class="text-caption text-status-fault">{{ dispatchError }}</p>
       </form>
 
       <template #footer>
-        <Button variant="secondary" size="sm" :disabled="dispatchPending" @click="dispatching = null">
+        <Button
+          variant="secondary"
+          size="sm"
+          :disabled="dispatchPending"
+          @click="dispatching = null"
+        >
           Cancel
         </Button>
         <Button size="sm" :disabled="!dispatchRobotId || dispatchPending" @click="confirmDispatch">

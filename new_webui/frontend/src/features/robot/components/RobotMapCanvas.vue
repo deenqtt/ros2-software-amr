@@ -11,6 +11,7 @@
  *   scan       what the robot can see right now
  *   particles  whether it knows where it is
  *   plan       where it intends to go
+ *   mission    the stops of the route it is running, and which are behind it
  *   robot      where it is, and which way it faces
  *
  * The two that are usually missing are the two that matter most when something
@@ -33,6 +34,7 @@ import type {
 } from '@/domain/types'
 import { ZONE_KIND_STYLE } from '@/features/zones/zoneKind'
 import { Button } from '@/shared/ui/button'
+import type { MissionOverlay, StepStatus } from '../missionMarkers'
 
 export type MapTool = 'view' | 'initialPose' | 'goal'
 
@@ -47,6 +49,8 @@ const props = defineProps<{
   sensorOffset: { x: number; y: number; yaw: number } | null
   zones: Zone[]
   footprint: { length: number; width: number } | null
+  /** The stops of the route being run, when there is one. */
+  mission?: MissionOverlay | null
   layers: Record<string, boolean>
   tool: MapTool
 }>()
@@ -275,6 +279,91 @@ function drawPlan(context: CanvasRenderingContext2D) {
   context.setLineDash([])
 }
 
+/**
+ * Done, current and still to come must be told apart at a glance and from
+ * across the room: filled green, filled blue with a halo, and hollow.
+ */
+const STEP_STYLE: Record<StepStatus, { fill: string; stroke: string; text: string }> = {
+  done: { fill: '#0f9d58', stroke: '#ffffff', text: '#ffffff' },
+  current: { fill: '#1a6ef5', stroke: '#ffffff', text: '#ffffff' },
+  pending: { fill: '#ffffff', stroke: '#5b6472', text: '#2b3038' },
+}
+const STEP_RADIUS = 11
+
+function drawMission(context: CanvasRenderingContext2D) {
+  const mission = props.mission
+  if (!mission?.markers.length) return
+
+  // The order of the route, faint: it says "then here", it is not a path the
+  // robot will follow. The planner's line is the one that means that.
+  if (mission.route.length > 1) {
+    context.beginPath()
+    mission.route.forEach((point, index) => {
+      const screen = project(point.x, point.y)
+      if (!screen) return
+      if (index === 0) context.moveTo(screen.sx, screen.sy)
+      else context.lineTo(screen.sx, screen.sy)
+    })
+    context.strokeStyle = 'rgba(91,100,114,0.55)'
+    context.lineWidth = 1.5
+    context.setLineDash([3, 4])
+    context.stroke()
+    context.setLineDash([])
+  }
+
+  // Current last, so it is never covered by a neighbour.
+  const ordered = [...mission.markers].sort(
+    (a, b) => Number(a.status === 'current') - Number(b.status === 'current'),
+  )
+  for (const marker of ordered) {
+    const screen = project(marker.x, marker.y)
+    if (!screen) continue
+    const style = STEP_STYLE[marker.status]
+
+    // Arrival heading first, so the disc covers its root.
+    context.strokeStyle = marker.status === 'pending' ? style.stroke : style.fill
+    context.lineWidth = 2
+    context.beginPath()
+    context.moveTo(screen.sx, screen.sy)
+    context.lineTo(
+      screen.sx + Math.cos(marker.yaw) * (STEP_RADIUS + 10),
+      screen.sy - Math.sin(marker.yaw) * (STEP_RADIUS + 10),
+    )
+    context.stroke()
+
+    if (marker.status === 'current') {
+      context.beginPath()
+      context.arc(screen.sx, screen.sy, STEP_RADIUS + 5, 0, Math.PI * 2)
+      context.fillStyle = 'rgba(26,110,245,0.22)'
+      context.fill()
+    }
+
+    context.beginPath()
+    context.arc(screen.sx, screen.sy, STEP_RADIUS, 0, Math.PI * 2)
+    context.fillStyle = style.fill
+    context.fill()
+    context.lineWidth = 2
+    context.strokeStyle = style.stroke
+    context.stroke()
+
+    const number = marker.ordinals.join('·')
+    context.font = `600 ${number.length > 2 ? 9 : 11}px Inter, system-ui, sans-serif`
+    context.textAlign = 'center'
+    context.textBaseline = 'middle'
+    context.fillStyle = style.text
+    context.fillText(number, screen.sx, screen.sy + 0.5)
+
+    context.font = '11px Inter, system-ui, sans-serif'
+    context.textBaseline = 'top'
+    const width = context.measureText(marker.name).width
+    const top = screen.sy + STEP_RADIUS + 4
+    context.fillStyle = 'rgba(255,255,255,0.88)'
+    context.fillRect(screen.sx - width / 2 - 3, top - 1, width + 6, 14)
+    context.fillStyle = '#0a0b0d'
+    context.fillText(marker.name, screen.sx, top)
+  }
+}
+
 function drawScan(context: CanvasRenderingContext2D) {
   const scan = props.scan
   const pose = props.pose
@@ -357,6 +446,7 @@ function paintOverlay() {
   if (props.layers.zones !== false) drawZones(context)
   if (props.layers.particles) drawParticles(context)
   if (props.layers.plan !== false) drawPlan(context)
+  if (props.layers.mission !== false) drawMission(context)
   if (props.layers.scan !== false) drawScan(context)
   if (props.layers.robot !== false) drawRobot(context)
   drawDraft(context)
@@ -541,6 +631,7 @@ watch(
     () => props.plan,
     () => props.particles,
     () => props.zones,
+    () => props.mission,
     () => props.tool,
   ],
   () => paintOverlay(),

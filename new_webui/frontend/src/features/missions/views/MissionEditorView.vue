@@ -12,12 +12,23 @@
  */
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
-import { ArrowDown, ArrowLeft, ArrowUp, ListOrdered, Plus, Save, Trash2 } from 'lucide-vue-next'
+import {
+  ArrowDown,
+  ArrowLeft,
+  ArrowUp,
+  ListOrdered,
+  MousePointerClick,
+  Plus,
+  Save,
+  Trash2,
+} from 'lucide-vue-next'
 import { toast } from 'vue-sonner'
 import { useMapStore } from '@/stores/maps'
 import { useStationStore } from '@/stores/stations'
 import { useMissionStore } from '@/stores/missions'
 import { missionsApi } from '@/shared/api/missions'
+import { mapsApi } from '@/shared/api/maps'
+import { decodePgm, type Grid } from '@/domain/map/pgm'
 import {
   STEP_CONFIRMS,
   STEP_TASK_LABEL,
@@ -26,8 +37,11 @@ import {
   type StepConfirm,
   type StepDraft,
   type StepTask,
+  type StationType,
 } from '@/domain/types'
-import { STATION_TYPE_STYLE } from '@/features/stations/stationType'
+import { STATION_TYPE_LIST, STATION_TYPE_STYLE } from '@/features/stations/stationType'
+import StationMapCanvas from '@/features/stations/components/StationMapCanvas.vue'
+import { Skeleton } from '@/shared/ui/skeleton'
 import { Button } from '@/shared/ui/button'
 import { Card, CardContent } from '@/shared/ui/card'
 import { Input } from '@/shared/ui/input'
@@ -56,8 +70,14 @@ const saving = ref(false)
 const saveError = ref<string | null>(null)
 const confirmLeave = ref(false)
 
-/** What was loaded, to tell an edited route from an untouched one. */
-let baseline = ''
+/**
+ * What was loaded, to tell an edited route from an untouched one.
+ *
+ * A ref, not a plain variable: `isDirty` is first computed while the page is
+ * still loading, and a plain variable assigned afterwards never invalidates it
+ * — the page opened already saying "Unsaved changes".
+ */
+const baseline = ref('')
 
 function snapshot(): string {
   return JSON.stringify({
@@ -67,7 +87,7 @@ function snapshot(): string {
   })
 }
 
-const isDirty = computed(() => snapshot() !== baseline)
+const isDirty = computed(() => snapshot() !== baseline.value)
 
 const stationOptions = computed(() =>
   stations.stations.map((station) => ({
@@ -112,7 +132,10 @@ async function load() {
     // scoped to the route's own map — a station from elsewhere names a place in
     // a frame this route does not use.
     await stations.load(found.mapId)
-    baseline = snapshot()
+    baseline.value = snapshot()
+    // Not awaited: the steps are usable without the picture, and a large map
+    // should not hold the whole page on a skeleton.
+    void loadMapImage(found.mapId)
   } catch (error) {
     loadError.value = error instanceof Error ? error.message : String(error)
   } finally {
@@ -122,15 +145,76 @@ async function load() {
 
 onMounted(load)
 
+// ── Map ──────────────────────────────────────────────────────────────────────
+
+const grid = ref<Grid | null>(null)
+const mapLoading = ref(true)
+const mapError = ref<string | null>(null)
+
+async function loadMapImage(mapId: string) {
+  mapLoading.value = true
+  mapError.value = null
+  try {
+    grid.value = decodePgm(await mapsApi.fetchFile(mapId, 'image'))
+  } catch (error) {
+    mapError.value = error instanceof Error ? error.message : String(error)
+  } finally {
+    mapLoading.value = false
+  }
+}
+
+const placement = computed(() => {
+  const map = mission.value ? maps.byId(mission.value.mapId) : null
+  return {
+    resolution: map?.resolution ?? 0.05,
+    originX: map?.originX ?? 0,
+    originY: map?.originY ?? 0,
+  }
+})
+
+const routeIds = computed(() => steps.value.map((step) => step.stationId))
+
+/** The station of the step being looked at, ringed on the map. */
+const focusedStationId = ref<string | null>(null)
+
 // ── Editing the list ─────────────────────────────────────────────────────────
 
-function addStep() {
-  const first = stations.stations[0]
-  if (!first) return
+/** What a step usually does at a station of this type; still editable after. */
+const DEFAULT_TASK: Record<StationType, StepTask> = {
+  pick: 'pick',
+  drop: 'drop',
+  pick_drop: 'none',
+  charging: 'none',
+}
+
+function appendStep(stationId: string) {
+  const station = stations.byId(stationId)
   steps.value = [
     ...steps.value,
-    { key: makeKey(), stationId: first.id, task: 'none', confirm: 'auto', note: null },
+    {
+      key: makeKey(),
+      stationId,
+      task: station ? DEFAULT_TASK[station.type] : 'none',
+      confirm: 'auto',
+      note: null,
+    },
   ]
+}
+
+function addStep() {
+  // Start from where the route left off is no better a guess than the first
+  // station, but a different stop from the last one usually is.
+  const last = steps.value[steps.value.length - 1]?.stationId
+  const next = stations.stations.find((station) => station.id !== last) ?? stations.stations[0]
+  if (next) appendStep(next.id)
+}
+
+/** A click on the map adds that station as the next stop. */
+function onMapSelect(stationId: string | null) {
+  if (!stationId) return
+  appendStep(stationId)
+  focusedStationId.value = stationId
+  toast.success(`Step ${steps.value.length}: ${stationName(stationId)}`, { duration: 1500 })
 }
 
 function removeStep(key: string) {
@@ -187,7 +271,7 @@ async function save() {
       note: note.value.trim() || null,
       steps: steps.value,
     })
-    baseline = snapshot()
+    baseline.value = snapshot()
     toast.success(`Saved ${name.value.trim()}`)
     void router.push('/mission')
   } catch (error) {
@@ -238,7 +322,10 @@ watch(
       >
         <template #icon><ListOrdered :size="14" class="shrink-0 text-muted" /></template>
         <template #actions>
-          <span class="font-data text-caption" :class="isDirty ? 'text-status-act' : 'text-muted-soft'">
+          <span
+            class="font-data text-caption"
+            :class="isDirty ? 'text-status-act' : 'text-muted-soft'"
+          >
             {{ isDirty ? 'Unsaved changes' : 'Saved' }}
           </span>
           <Button
@@ -254,149 +341,224 @@ watch(
         </template>
       </PanelToolbar>
 
-      <CardContent class="space-y-base">
-        <div v-if="loading" class="h-64 animate-pulse rounded-surface bg-hairline-soft" />
-
-        <template v-else>
-          <div class="grid gap-base md:grid-cols-2">
-            <FormField label="Name" required :error="saveError ?? nameProblem ?? undefined">
-              <template #default="{ id, invalid }">
-                <Input :id="id" v-model="name" :invalid="invalid" />
-              </template>
-            </FormField>
-            <FormField label="Note" hint="What this route is for.">
-              <template #default="{ id }">
-                <Input :id="id" v-model="note" placeholder="Morning shuttle from the dock" />
-              </template>
-            </FormField>
-          </div>
-
-          <div class="space-y-xs">
-            <div class="flex items-center gap-sm">
-              <p class="text-label uppercase text-muted">Steps</p>
-              <span class="text-caption text-muted-soft">
-                The robot visits these in order, one goal per step.
-              </span>
-              <Button
-                size="sm"
-                variant="outline"
-                class="ml-auto"
-                :disabled="!stations.count"
-                @click="addStep"
-              >
-                <Plus :size="13" /> Add step
-              </Button>
+      <CardContent>
+        <div v-if="loading" class="grid gap-base lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+          <div class="space-y-base">
+            <div class="grid gap-base md:grid-cols-2">
+              <div class="space-y-xs">
+                <Skeleton class="h-3 w-12" /><Skeleton class="h-9 w-full" />
+              </div>
+              <div class="space-y-xs">
+                <Skeleton class="h-3 w-12" /><Skeleton class="h-9 w-full" />
+              </div>
             </div>
-
-            <EmptyState
-              v-if="!stations.count"
-              title="This map has no stations"
-              description="A step goes to a station, so there has to be one first."
-            >
-              <template #action>
-                <Button size="sm" variant="secondary" as-child>
-                  <RouterLink to="/station">Add stations</RouterLink>
-                </Button>
-              </template>
-            </EmptyState>
-
-            <EmptyState
-              v-else-if="!steps.length"
-              title="No steps yet"
-              description="Add the first station this route visits."
-            />
-
+            <Skeleton class="h-3 w-24" />
             <div
-              v-for="(step, index) in steps"
-              v-else
-              :key="step.key"
-              class="flex flex-wrap items-start gap-sm rounded-control border p-sm"
-              :class="
-                stations.byId(step.stationId) === null
-                  ? 'border-status-fault/50 bg-status-fault/[0.04]'
-                  : 'border-hairline'
-              "
+              v-for="row in 3"
+              :key="row"
+              class="flex items-center gap-sm rounded-control border border-hairline p-sm"
             >
-              <span
-                class="mt-xxs flex h-6 w-6 shrink-0 items-center justify-center rounded-control font-data text-caption text-white"
-                :style="{ backgroundColor: stationColour(step.stationId) }"
-              >
-                {{ index + 1 }}
-              </span>
+              <Skeleton class="h-6 w-6" />
+              <Skeleton class="h-9 flex-1" />
+              <Skeleton class="h-9 w-32" />
+              <Skeleton class="h-9 w-36" />
+            </div>
+          </div>
+          <Skeleton class="h-[24rem] w-full rounded-surface lg:h-[32rem]" />
+        </div>
 
-              <div class="min-w-[10rem] flex-1">
-                <Select
-                  label="Station"
-                  :model-value="step.stationId"
-                  :options="stationOptions"
-                  class="w-full"
-                  @update:model-value="patch(step.key, { stationId: $event })"
-                />
-                <p v-if="stations.byId(step.stationId) === null" class="mt-xxs text-caption text-status-fault">
-                  {{ stationName(step.stationId) }} — pick another before saving.
-                </p>
-              </div>
-
-              <Select
-                label="What to do"
-                :model-value="step.task"
-                :options="taskOptions"
-                class="min-w-[9rem]"
-                @update:model-value="patch(step.key, { task: $event as StepTask })"
-              />
-
-              <Select
-                label="After arriving"
-                :model-value="step.confirm"
-                :options="confirmOptions"
-                class="min-w-[10rem]"
-                @update:model-value="patch(step.key, { confirm: $event as StepConfirm })"
-              />
-
-              <div class="flex shrink-0 gap-xxs">
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  title="Move up"
-                  :disabled="index === 0"
-                  @click="move(index, -1)"
-                >
-                  <ArrowUp :size="13" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  title="Move down"
-                  :disabled="index === steps.length - 1"
-                  @click="move(index, 1)"
-                >
-                  <ArrowDown :size="13" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  title="Remove this step"
-                  class="hover:text-status-fault"
-                  @click="removeStep(step.key)"
-                >
-                  <Trash2 :size="13" />
-                </Button>
-              </div>
+        <div v-else class="grid items-start gap-base lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+          <div class="min-w-0 space-y-base">
+            <div class="grid gap-base md:grid-cols-2">
+              <FormField label="Name" required :error="saveError ?? nameProblem ?? undefined">
+                <template #default="{ id, invalid }">
+                  <Input :id="id" v-model="name" :invalid="invalid" />
+                </template>
+              </FormField>
+              <FormField label="Note" hint="What this route is for.">
+                <template #default="{ id }">
+                  <Input :id="id" v-model="note" placeholder="Morning shuttle from the dock" />
+                </template>
+              </FormField>
             </div>
 
-            <p
-              v-if="steps.some((s) => s.confirm === 'confirm')"
-              :class="
-                cn(
-                  'rounded-control border border-status-warn/40 bg-status-warn/10 p-sm text-caption text-body',
-                )
-              "
-            >
-              A step set to wait for confirmation needs somebody standing there to
-              press it — on every lap, if this route is ever set to loop.
-            </p>
+            <div class="space-y-xs">
+              <div class="flex items-center gap-sm">
+                <p class="text-label uppercase text-muted">Steps</p>
+                <span class="text-caption text-muted-soft">
+                  The robot visits these in order, one goal per step.
+                </span>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  class="ml-auto"
+                  :disabled="!stations.count"
+                  @click="addStep"
+                >
+                  <Plus :size="13" /> Add step
+                </Button>
+              </div>
+
+              <EmptyState
+                v-if="!stations.count"
+                title="This map has no stations"
+                description="A step goes to a station, so there has to be one first."
+              >
+                <template #action>
+                  <Button size="sm" variant="secondary" as-child>
+                    <RouterLink to="/station">Add stations</RouterLink>
+                  </Button>
+                </template>
+              </EmptyState>
+
+              <EmptyState
+                v-else-if="!steps.length"
+                title="No steps yet"
+                description="Click a station on the map, or use Add step."
+              />
+
+              <div
+                v-for="(step, index) in steps"
+                v-else
+                :key="step.key"
+                class="flex items-start gap-sm rounded-control border p-sm transition-colors"
+                :class="
+                  stations.byId(step.stationId) === null
+                    ? 'border-status-fault/50 bg-status-fault/[0.04]'
+                    : focusedStationId === step.stationId
+                      ? 'border-primary/50 bg-primary/[0.03]'
+                      : 'border-hairline'
+                "
+                @mouseenter="focusedStationId = step.stationId"
+                @focusin="focusedStationId = step.stationId"
+              >
+                <span
+                  class="mt-[6px] flex h-6 w-6 shrink-0 items-center justify-center rounded-control font-data text-caption text-white"
+                  :style="{ backgroundColor: stationColour(step.stationId) }"
+                >
+                  {{ index + 1 }}
+                </span>
+
+                <!-- One line per step at any width the editor column has: the
+                     controls used to wrap and strand the arrows on a row of their own. -->
+                <div
+                  class="grid min-w-0 flex-1 grid-cols-1 gap-xs sm:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,1fr)]"
+                >
+                  <Select
+                    label="Station"
+                    :model-value="step.stationId"
+                    :options="stationOptions"
+                    class="w-full"
+                    @update:model-value="patch(step.key, { stationId: $event })"
+                  />
+                  <Select
+                    label="What to do"
+                    :model-value="step.task"
+                    :options="taskOptions"
+                    class="w-full"
+                    @update:model-value="patch(step.key, { task: $event as StepTask })"
+                  />
+                  <Select
+                    label="After arriving"
+                    :model-value="step.confirm"
+                    :options="confirmOptions"
+                    class="w-full"
+                    @update:model-value="patch(step.key, { confirm: $event as StepConfirm })"
+                  />
+                  <p
+                    v-if="stations.byId(step.stationId) === null"
+                    class="text-caption text-status-fault sm:col-span-3"
+                  >
+                    {{ stationName(step.stationId) }} — pick another before saving.
+                  </p>
+                </div>
+
+                <div class="mt-[2px] flex shrink-0">
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    title="Move up"
+                    :disabled="index === 0"
+                    @click="move(index, -1)"
+                  >
+                    <ArrowUp :size="13" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    title="Move down"
+                    :disabled="index === steps.length - 1"
+                    @click="move(index, 1)"
+                  >
+                    <ArrowDown :size="13" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    title="Remove this step"
+                    class="hover:text-status-fault"
+                    @click="removeStep(step.key)"
+                  >
+                    <Trash2 :size="13" />
+                  </Button>
+                </div>
+              </div>
+
+              <p
+                v-if="steps.some((s) => s.confirm === 'confirm')"
+                :class="
+                  cn(
+                    'rounded-control border border-status-warn/40 bg-status-warn/10 p-sm text-caption text-body',
+                  )
+                "
+              >
+                A step set to wait for confirmation needs somebody standing there to press it — on
+                every lap, if this route is ever set to loop.
+              </p>
+            </div>
           </div>
-        </template>
+
+          <!-- Sticky, so a long route can be scrolled while its shape stays in view. -->
+          <div
+            class="relative h-[24rem] overflow-hidden rounded-surface border border-hairline lg:sticky lg:top-base lg:h-[calc(100vh-10rem)] lg:min-h-[28rem]"
+          >
+            <Skeleton v-if="mapLoading" class="h-full w-full rounded-none" />
+            <EmptyState
+              v-else-if="mapError"
+              class="p-lg"
+              title="Cannot show this map"
+              :description="mapError"
+            />
+            <StationMapCanvas
+              v-else
+              :grid="grid"
+              :placement="placement"
+              :stations="stations.stations"
+              :selected-id="focusedStationId"
+              :placing="false"
+              :movable="false"
+              :route="routeIds"
+              @select="onMapSelect"
+            >
+              <template #legend>
+                <span class="flex items-center gap-xxs text-ink">
+                  <MousePointerClick :size="12" /> Click a station to add it
+                </span>
+                <span
+                  v-for="kind in STATION_TYPE_LIST"
+                  :key="kind.value"
+                  class="hidden items-center gap-xxs xl:flex"
+                >
+                  <span
+                    class="h-2.5 w-2.5 rounded-full"
+                    :style="{ backgroundColor: kind.colour }"
+                  />
+                  {{ kind.label }}
+                </span>
+              </template>
+            </StationMapCanvas>
+          </div>
+        </div>
       </CardContent>
     </Card>
 

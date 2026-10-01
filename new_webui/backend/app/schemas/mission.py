@@ -125,6 +125,8 @@ class MissionSummary(BaseModel):
     name: str
     note: str | None
     step_count: int
+    # Station ids in visiting order: enough to draw the route, without the steps.
+    station_ids: list[str] = []
     created_at: str
     updated_at: str
 
@@ -169,6 +171,10 @@ class RunProgress(BaseModel):
 
     lap: Annotated[int, Field(ge=1)] | None = None
     step_index: Annotated[int, Field(ge=0)] | None = None
+    #: An arrival, reported when Nav2 says the step succeeded. The server stamps
+    #: the time, so the same step on the next lap is still a new arrival.
+    reached_lap: Annotated[int, Field(ge=1)] | None = None
+    reached_index: Annotated[int, Field(ge=0)] | None = None
     state: RunState | None = None
     detail: str | None = None
 
@@ -207,6 +213,10 @@ class RunOut(BaseModel):
     laps_target: int | None
     lap: int
     step_index: int
+    #: The last stop actually arrived at. Null until the first arrival.
+    reached_lap: int | None = None
+    reached_index: int | None = None
+    reached_at: str | None = None
     state: RunState
     detail: str | None
     started_at: str
