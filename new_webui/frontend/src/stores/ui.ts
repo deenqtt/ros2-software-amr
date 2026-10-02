@@ -1,7 +1,7 @@
 /** Operator preferences. Persisted, because the old UI lost everything on refresh. */
 import { defineStore } from 'pinia'
 import { useLocalStorage, usePreferredDark } from '@vueuse/core'
-import { computed, watchEffect } from 'vue'
+import { computed, ref, watchEffect } from 'vue'
 
 export type Theme = 'light' | 'dark' | 'system'
 export type Density = 'compact' | 'default' | 'comfortable'
@@ -11,7 +11,24 @@ export const useUiStore = defineStore('ui', () => {
   // stays available for night or low-light operation.
   const theme = useLocalStorage<Theme>('amr.ui.theme', 'light')
   const density = useLocalStorage<Density>('amr.ui.density', 'default')
-  const navCollapsed = useLocalStorage('amr.ui.navCollapsed', false)
+  const navCollapsedSaved = useLocalStorage('amr.ui.navCollapsed', false)
+  /**
+   * Folded by a page that needs the room — the robot's live map — for as long
+   * as it is open. Not saved: leaving the page puts the rail back as the
+   * operator had it, and expanding it by hand wins while on the page.
+   */
+  const navFolded = ref(false)
+  const navCollapsed = computed({
+    get: () => navCollapsedSaved.value || navFolded.value,
+    set: (value: boolean) => {
+      navFolded.value = false
+      navCollapsedSaved.value = value
+    },
+  })
+
+  function foldNav(fold: boolean) {
+    navFolded.value = fold
+  }
   const inspectorOpen = useLocalStorage('amr.ui.inspectorOpen', true)
 
   const prefersDark = usePreferredDark()
@@ -50,6 +67,7 @@ export const useUiStore = defineStore('ui', () => {
     inspectorOpen,
     resolvedTheme,
     toggleNav,
+    foldNav,
     toggleInspector,
     setTheme,
     cycleTheme,

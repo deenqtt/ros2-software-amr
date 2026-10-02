@@ -165,3 +165,27 @@ describe('AppShell', () => {
     expect(wrapper.find('[role="radiogroup"]').exists()).toBe(false)
   })
 })
+
+describe('folding the rail for a page', () => {
+  beforeEach(() => {
+    localStorage.clear()
+    setActivePinia(createPinia())
+  })
+
+  it('folds without changing the saved preference, and restores it', () => {
+    const ui = useUiStore()
+    expect(ui.navCollapsed).toBe(false)
+    ui.foldNav(true)
+    expect(ui.navCollapsed).toBe(true)
+    expect(localStorage.getItem('amr.ui.navCollapsed')).not.toBe('true')
+    ui.foldNav(false)
+    expect(ui.navCollapsed).toBe(false)
+  })
+
+  it('lets the operator expand it while folded', () => {
+    const ui = useUiStore()
+    ui.foldNav(true)
+    ui.toggleNav()
+    expect(ui.navCollapsed).toBe(false)
+  })
+})
