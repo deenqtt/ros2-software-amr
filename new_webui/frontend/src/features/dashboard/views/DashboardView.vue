@@ -32,7 +32,7 @@ import { useMapStore } from '@/stores/maps'
 import { useRosPool } from '@/app/ros/pool'
 import { DESIRED_MODE_LABEL, type DesiredMode, type MissionRun } from '@/domain/types'
 import { attentionItems, fleetCounts, type AgentSnapshot, type AttentionSeverity } from '../attention'
-import { stackStatuses } from '../stackStatus'
+import { stackSummary, type StackSummary } from '../stackStatus'
 import { Card, CardContent } from '@/shared/ui/card'
 import { Button } from '@/shared/ui/button'
 import { Badge } from '@/shared/ui/badge'
@@ -151,8 +151,13 @@ function mapName(id: string | null): string {
   return found ? `${found.name} v${found.version}` : 'unknown map'
 }
 
-function stackFor(robotId: string) {
-  return stackStatuses(agents.value.get(robotId) ?? null)
+function stackFor(robotId: string): StackSummary {
+  return stackSummary(agents.value.get(robotId) ?? null)
+}
+
+/** "Nav2 running", "SLAM starting", "Stopped", "Unknown". */
+function stackLabel(summary: StackSummary): string {
+  return summary.stack ? `${summary.stack} ${summary.label.toLowerCase()}` : summary.label
 }
 
 /** What the robot reports it is doing, as opposed to what it should be doing. */
@@ -280,137 +285,226 @@ watch(() => fleet.count, readAgents)
           </template>
         </EmptyState>
 
-        <Table v-else>
-          <TableHeader>
-            <TableRow>
-              <TableHead class="whitespace-nowrap">Robot</TableHead>
-              <TableHead class="whitespace-nowrap">Link</TableHead>
-              <TableHead class="whitespace-nowrap">Mode</TableHead>
-              <TableHead class="whitespace-nowrap">Nav2</TableHead>
-              <TableHead class="whitespace-nowrap">SLAM</TableHead>
-              <TableHead class="whitespace-nowrap">Map</TableHead>
-              <TableHead class="w-full max-w-0">Doing</TableHead>
-              <TableHead align="right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
+        <template v-else>
+          <!--
+            A table from 1024px up — the sidebar takes ~230px, so below that the
+            content area is too narrow for one. The robot's name is the row's primary link,
+            so the most used action sits in the first column — not past a
+            horizontal scroll at the far right. When the table is still wider
+            than the screen, the name and the actions stay pinned at the edges
+            and only the columns between them scroll.
+          -->
+          <div class="hidden lg:block">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead class="sticky left-0 z-[1] bg-surface">Robot</TableHead>
+                  <TableHead>Link</TableHead>
+                  <TableHead class="hidden xl:table-cell">Mode</TableHead>
+                  <TableHead>Stack</TableHead>
+                  <TableHead class="hidden xl:table-cell">Map</TableHead>
+                  <TableHead class="w-full min-w-[9rem]">Doing</TableHead>
+                  <TableHead align="right" class="sticky right-0 z-[1] bg-surface">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
 
-          <TableBody>
-            <TableRow v-for="robot in fleet.robots" :key="robot.id" interactive>
-              <TableCell>
-                <div class="flex items-center gap-sm whitespace-nowrap">
+              <TableBody>
+                <TableRow v-for="robot in fleet.robots" :key="robot.id" interactive>
+                  <TableCell
+                    class="sticky left-0 z-[1] bg-surface transition-colors group-hover:bg-surface-soft"
+                  >
+                    <RouterLink
+                      :to="`/robot/${robot.id}/nav`"
+                      class="flex items-center gap-sm whitespace-nowrap text-body-md font-medium text-ink hover:text-primary hover:underline"
+                      :title="`Open ${robot.name} navigation`"
+                    >
+                      <span
+                        class="h-2.5 w-2.5 shrink-0 rounded-full"
+                        :style="{ backgroundColor: `rgb(var(--robot-accent-${robot.accent}))` }"
+                      />
+                      {{ robot.name }}
+                    </RouterLink>
+                  </TableCell>
+
+                  <TableCell>
+                    <LinkIndicator
+                      :state="links.stateFor(robot.id)"
+                      :attempt="links.linkFor(robot.id).attempt"
+                    />
+                  </TableCell>
+
+                  <!--
+                    Intent and reality, side by side. They are two different
+                    things, and the whole point of recording intent was that
+                    nothing used to notice when they parted company.
+                  -->
+                  <TableCell class="hidden xl:table-cell">
+                    <div class="flex items-center gap-xxs whitespace-nowrap">
+                      <Badge
+                        :class="
+                          robot.desiredMode === 'idle'
+                            ? 'bg-surface-strong text-muted'
+                            : 'bg-surface-strong text-body'
+                        "
+                      >
+                        {{ DESIRED_MODE_LABEL[robot.desiredMode] }}
+                      </Badge>
+                      <span
+                        class="font-data text-caption"
+                        :class="modeDrifted(robot.id) ? 'text-status-warn' : 'text-muted-soft'"
+                      >
+                        {{ actualMode(robot.id) }}
+                      </span>
+                    </div>
+                  </TableCell>
+
+                  <TableCell>
+                    <span class="whitespace-nowrap" :title="stackFor(robot.id).detail">
+                      <StatusBadge
+                        :tone="stackFor(robot.id).tone"
+                        :label="stackLabel(stackFor(robot.id))"
+                      />
+                    </span>
+                  </TableCell>
+
+                  <TableCell class="hidden xl:table-cell">
+                    <span
+                      class="whitespace-nowrap text-body-sm"
+                      :class="robot.activeMapId ? 'text-body' : 'text-status-warn'"
+                    >
+                      {{ mapName(robot.activeMapId) }}
+                    </span>
+                  </TableCell>
+
+                  <TableCell class="w-full min-w-[9rem] max-w-0">
+                    <div class="flex min-w-0 items-center gap-xs">
+                      <component
+                        :is="missions.runForRobot(robot.id) ? Play : CheckCircle2"
+                        :size="13"
+                        :class="
+                          missions.runForRobot(robot.id)
+                            ? 'shrink-0 text-status-run'
+                            : 'shrink-0 text-muted-soft'
+                        "
+                      />
+                      <span
+                        class="truncate text-body-sm text-body"
+                        :title="runLabel(missions.runForRobot(robot.id))"
+                      >
+                        {{ runLabel(missions.runForRobot(robot.id)) }}
+                      </span>
+                    </div>
+                  </TableCell>
+
+                  <TableCell
+                    align="right"
+                    class="sticky right-0 z-[1] bg-surface transition-colors group-hover:bg-surface-soft"
+                  >
+                    <div class="flex justify-end gap-xxs whitespace-nowrap">
+                      <Button
+                        v-if="robot.desiredMode !== 'map'"
+                        variant="ghost"
+                        size="sm"
+                        :disabled="modePending === robot.id"
+                        :title="
+                          robot.desiredMode === 'idle'
+                            ? 'Parked — will not start navigation. Release it.'
+                            : 'Stop navigating and stay stopped.'
+                        "
+                        @click="toggleParked(robot.id, robot.desiredMode)"
+                      >
+                        <Ban
+                          v-if="robot.desiredMode === 'idle'"
+                          :size="13"
+                          class="mr-xxs text-muted-soft"
+                        />
+                        {{ robot.desiredMode === 'idle' ? 'Release' : 'Park' }}
+                      </Button>
+                      <Button variant="ghost" size="sm" as-child>
+                        <RouterLink :to="`/robot/${robot.id}/nav`">Navigation</RouterLink>
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              </TableBody>
+            </Table>
+          </div>
+
+          <!--
+            One card per robot below 1024px. A narrow screen does not fit seven columns,
+            and a table it has to be dragged sideways to use is not usable at all.
+            Everything an operator acts on stays visible on the card.
+          -->
+          <ul class="grid gap-sm sm:grid-cols-2 lg:hidden">
+            <li
+              v-for="robot in fleet.robots"
+              :key="robot.id"
+              class="rounded-control border border-hairline p-sm"
+            >
+              <div class="flex items-center justify-between gap-sm">
+                <RouterLink
+                  :to="`/robot/${robot.id}/nav`"
+                  class="flex min-w-0 items-center gap-sm text-body-md font-medium text-ink hover:text-primary"
+                >
                   <span
                     class="h-2.5 w-2.5 shrink-0 rounded-full"
                     :style="{ backgroundColor: `rgb(var(--robot-accent-${robot.accent}))` }"
                   />
-                  <span class="text-body-md text-ink">{{ robot.name }}</span>
-                </div>
-              </TableCell>
-
-              <TableCell>
+                  <span class="truncate">{{ robot.name }}</span>
+                </RouterLink>
                 <LinkIndicator
                   :state="links.stateFor(robot.id)"
                   :attempt="links.linkFor(robot.id).attempt"
                 />
-              </TableCell>
+              </div>
 
-              <!--
-                Intent and reality, side by side. They are two different things,
-                and the whole point of recording intent was that nothing used to
-                notice when they parted company.
-              -->
-              <TableCell>
-                <div class="flex items-center gap-xxs whitespace-nowrap">
-                  <Badge
-                    :class="
-                      robot.desiredMode === 'idle'
-                        ? 'bg-surface-strong text-muted'
-                        : 'bg-surface-strong text-body'
-                    "
-                  >
-                    {{ DESIRED_MODE_LABEL[robot.desiredMode] }}
-                  </Badge>
-                  <span
-                    class="font-data text-caption"
-                    :class="modeDrifted(robot.id) ? 'text-status-warn' : 'text-muted-soft'"
-                  >
-                    {{ actualMode(robot.id) }}
-                  </span>
-                </div>
-              </TableCell>
-
-              <TableCell>
-                <span :title="stackFor(robot.id).nav2.detail">
+              <div class="mt-xs flex flex-wrap items-center gap-xs">
+                <Badge class="bg-surface-strong text-body">
+                  {{ DESIRED_MODE_LABEL[robot.desiredMode] }}
+                </Badge>
+                <span :title="stackFor(robot.id).detail">
                   <StatusBadge
-                    :tone="stackFor(robot.id).nav2.tone"
-                    :label="stackFor(robot.id).nav2.label"
+                    :tone="stackFor(robot.id).tone"
+                    :label="stackLabel(stackFor(robot.id))"
                   />
                 </span>
-              </TableCell>
-
-              <TableCell>
-                <span :title="stackFor(robot.id).slam.detail">
-                  <StatusBadge
-                    :tone="stackFor(robot.id).slam.tone"
-                    :label="stackFor(robot.id).slam.label"
-                  />
-                </span>
-              </TableCell>
-
-              <TableCell>
                 <span
-                  class="whitespace-nowrap text-body-sm"
-                  :class="robot.activeMapId ? 'text-body' : 'text-status-warn'"
+                  class="text-caption"
+                  :class="robot.activeMapId ? 'text-muted' : 'text-status-warn'"
                 >
                   {{ mapName(robot.activeMapId) }}
                 </span>
-              </TableCell>
+              </div>
 
-              <TableCell class="w-full max-w-0">
-                <div class="flex min-w-0 items-center gap-xs">
-                  <component
-                    :is="missions.runForRobot(robot.id) ? Play : CheckCircle2"
-                    :size="13"
-                    :class="
-                      missions.runForRobot(robot.id)
-                        ? 'shrink-0 text-status-run'
-                        : 'shrink-0 text-muted-soft'
-                    "
-                  />
-                  <span class="truncate text-body-sm text-body">
-                    {{ runLabel(missions.runForRobot(robot.id)) }}
-                  </span>
-                </div>
-              </TableCell>
+              <p class="mt-xs flex min-w-0 items-center gap-xs text-body-sm text-body">
+                <component
+                  :is="missions.runForRobot(robot.id) ? Play : CheckCircle2"
+                  :size="13"
+                  :class="
+                    missions.runForRobot(robot.id) ? 'shrink-0 text-status-run' : 'shrink-0 text-muted-soft'
+                  "
+                />
+                <span class="truncate">{{ runLabel(missions.runForRobot(robot.id)) }}</span>
+              </p>
 
-              <TableCell align="right">
-                <div class="flex justify-end gap-xxs">
-                  <Button
-                    v-if="robot.desiredMode !== 'map'"
-                    variant="ghost"
-                    size="sm"
-                    :disabled="modePending === robot.id"
-                    :title="
-                      robot.desiredMode === 'idle'
-                        ? 'Parked — will not start navigation. Release it.'
-                        : 'Stop navigating and stay stopped.'
-                    "
-                    @click="toggleParked(robot.id, robot.desiredMode)"
-                  >
-                    <Ban
-                      v-if="robot.desiredMode === 'idle'"
-                      :size="13"
-                      class="mr-xxs text-muted-soft"
-                    />
-                    {{ robot.desiredMode === 'idle' ? 'Release' : 'Park' }}
-                  </Button>
-                  <Button variant="ghost" size="sm" as-child>
-                    <RouterLink :to="`/robot/${robot.id}/nav`">Navigation</RouterLink>
-                  </Button>
-                </div>
-              </TableCell>
-            </TableRow>
-          </TableBody>
-        </Table>
+              <div class="mt-sm flex gap-xs">
+                <Button
+                  v-if="robot.desiredMode !== 'map'"
+                  variant="outline"
+                  size="sm"
+                  class="flex-1"
+                  :disabled="modePending === robot.id"
+                  @click="toggleParked(robot.id, robot.desiredMode)"
+                >
+                  {{ robot.desiredMode === 'idle' ? 'Release' : 'Park' }}
+                </Button>
+                <Button size="sm" class="flex-1" as-child>
+                  <RouterLink :to="`/robot/${robot.id}/nav`">Navigation</RouterLink>
+                </Button>
+              </div>
+            </li>
+          </ul>
+        </template>
       </CardContent>
     </Card>
   </div>

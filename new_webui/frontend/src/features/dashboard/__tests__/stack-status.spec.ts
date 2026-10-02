@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { stackStatuses } from '../stackStatus'
+import { stackStatuses, stackSummary } from '../stackStatus'
 
 describe('stackStatuses', () => {
   it('reports Nav2 running and SLAM stopped in navigation mode', () => {
@@ -36,5 +36,33 @@ describe('stackStatuses', () => {
     expect(status.slam.label).toBe('Unknown')
     expect(status.nav2.tone).toBe('neutral')
     expect(status.slam.tone).toBe('neutral')
+  })
+})
+
+describe('stackSummary', () => {
+  const agent = (mode: string, state: string, detail = '') => ({ mode, state, detail })
+
+  it('says unknown, once, for a robot with no agent report', () => {
+    const summary = stackSummary(null)
+    expect(summary.label).toBe('Unknown')
+    expect(summary.stack).toBeNull()
+  })
+
+  it('names the stack that is running', () => {
+    expect(stackSummary(agent('nav', 'running'))).toMatchObject({ label: 'Running', stack: 'Nav2' })
+    expect(stackSummary(agent('map', 'running'))).toMatchObject({ label: 'Running', stack: 'SLAM' })
+  })
+
+  it('names the stack that failed, with its detail', () => {
+    expect(stackSummary(agent('nav', 'failed', 'map_server died'))).toMatchObject({
+      label: 'Failed',
+      tone: 'fault',
+      stack: 'Nav2',
+      detail: 'map_server died',
+    })
+  })
+
+  it('says stopped only when neither stack is up', () => {
+    expect(stackSummary(agent('unknown', 'idle'))).toMatchObject({ label: 'Stopped', stack: null })
   })
 })
