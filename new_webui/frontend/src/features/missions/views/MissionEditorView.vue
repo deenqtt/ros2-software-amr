@@ -385,7 +385,7 @@ watch(
             <div class="space-y-xs">
               <div class="flex items-center gap-sm">
                 <p class="text-label uppercase text-muted">Steps</p>
-                <span class="text-caption text-muted-soft">
+                <span class="hidden truncate text-caption text-muted-soft sm:inline">
                   The robot visits these in order, one goal per step.
                 </span>
                 <Button
@@ -548,13 +548,13 @@ watch(
               @select="onMapSelect"
             >
               <template #legend>
-                <span class="flex items-center gap-xxs text-ink">
+                <span class="flex items-center gap-xxs whitespace-nowrap text-ink">
                   <MousePointerClick :size="12" /> Click a station to add it
                 </span>
                 <span
                   v-for="kind in STATION_TYPE_LIST"
                   :key="kind.value"
-                  class="hidden items-center gap-xxs xl:flex"
+                  class="hidden items-center gap-xxs whitespace-nowrap 2xl:flex"
                 >
                   <span
                     class="h-2.5 w-2.5 rounded-full"
