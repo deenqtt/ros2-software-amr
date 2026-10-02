@@ -11,12 +11,22 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import { ApiError } from '@/shared/api/client'
-import { stationsApi, StationNameTakenError, type StationPatch } from '@/shared/api/stations'
+import {
+  stationsApi,
+  StationInUseError,
+  StationNameTakenError,
+  type StationPatch,
+} from '@/shared/api/stations'
 import { config } from '@/app/config'
 import type { Station, StationDraft } from '@/domain/types'
 
 function describe(error: unknown): string {
   if (error instanceof StationNameTakenError) return error.message
+  if (error instanceof StationInUseError) {
+    return error.missions.length
+      ? `Used by ${error.missions.join(', ')}. Take it out of those missions first.`
+      : 'A mission still uses this station. Take it out of that mission first.'
+  }
   if (error instanceof ApiError) {
     if (error.isOffline) return `Backend unreachable at ${config.apiBaseUrl}`
     if (error.isNotFound) return 'That station no longer exists.'

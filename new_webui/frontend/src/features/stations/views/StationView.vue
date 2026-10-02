@@ -31,13 +31,17 @@ import { useMapStore } from '@/stores/maps'
 import { useFleetStore } from '@/stores/fleet'
 import { useStationStore } from '@/stores/stations'
 import { useLinkStore } from '@/stores/links'
+import { useMissionStore } from '@/stores/missions'
+import { RouterLink } from 'vue-router'
 import { useRobotTelemetry } from '@/features/mapping/useRobotTelemetry'
 import { mapsApi } from '@/shared/api/maps'
+import { StationInUseError } from '@/shared/api/stations'
 import { decodePgm, type Grid } from '@/domain/map/pgm'
 import { radToDeg } from '@/domain/ros/quaternion'
 import { type Station, type StationType } from '@/domain/types'
 import { STATION_TYPE_LIST, STATION_TYPE_STYLE } from '../stationType'
 import StationMapCanvas from '../components/StationMapCanvas.vue'
+import { missionsByStation } from '../stationUsage'
 import { Button } from '@/shared/ui/button'
 import { Select } from '@/shared/ui/select'
 import { RowActions, RowActionItem, RowActionSeparator } from '@/shared/ui/menu'
@@ -52,6 +56,7 @@ const maps = useMapStore()
 const fleet = useFleetStore()
 const links = useLinkStore()
 const stations = useStationStore()
+const missions = useMissionStore()
 
 const selectedMapId = ref<string | null>(null)
 const grid = ref<Grid | null>(null)
@@ -60,8 +65,27 @@ const mapError = ref<string | null>(null)
 
 const selectedId = ref<string | null>(null)
 const placing = ref(false)
-/** Collapsed to a strip on request; the map is what the screen is for. */
-const panelOpen = ref(true)
+/**
+ * Collapsed to a strip on request; the map is what the screen is for.
+ *
+ * Starts collapsed below 1024px: next to the sidebar the open list left the
+ * map half the screen.
+ */
+function wideScreen(): boolean {
+  try {
+    return window.matchMedia?.('(min-width: 1024px)')?.matches ?? true
+  } catch {
+    return true
+  }
+}
+const panelOpen = ref(wideScreen())
+
+/** Missions on this map, by the stations they visit. */
+const usage = computed(() => missionsByStation(missions.missions))
+
+function usedBy(stationId: string) {
+  return usage.value.get(stationId) ?? []
+}
 
 /** Which robot to read a pose from. Only one is watched, and only on request. */
 const teachRobotId = ref<string | null>(null)
@@ -155,7 +179,13 @@ async function selectMap(mapId: string) {
   selectedId.value = null
   placing.value = false
   teachRobotId.value = null
-  await Promise.all([loadMapImage(mapId), stations.load(mapId)])
+  // Missions too: they say which stations cannot be deleted. Failing to load
+  // them only loses that hint — the server still refuses the delete.
+  await Promise.all([
+    loadMapImage(mapId),
+    stations.load(mapId),
+    missions.load(mapId).catch(() => undefined),
+  ])
 }
 
 onMounted(async () => {
@@ -284,6 +314,11 @@ const shownStations = computed(() =>
   }),
 )
 
+/** Missions that keep the station being removed from being deleted. */
+const removalBlockedBy = computed(() =>
+  pendingRemoval.value ? usedBy(pendingRemoval.value.id) : [],
+)
+
 async function confirmRemoval() {
   const station = pendingRemoval.value
   if (!station) return
@@ -297,6 +332,11 @@ async function confirmRemoval() {
     toast.error(`Could not remove ${station.name}`, {
       description: stations.describeError(error),
     })
+    // A mission added since this page loaded: refresh, and the dialog turns
+    // into the blocked version with links to the routes.
+    if (error instanceof StationInUseError && selectedMapId.value) {
+      await missions.load(selectedMapId.value).catch(() => undefined)
+    }
   } finally {
     removing.value = false
   }
@@ -384,9 +424,19 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
           Capture
         </Button>
       </div>
-
-      <span class="ml-auto font-data text-caption text-muted-soft">
-        {{ selectedMap ? `${selectedMap.name} v${selectedMap.version}` : '' }}
+      <!-- Shown even when nobody can use it, or nobody learns it exists. -->
+      <Button
+        v-else-if="grid"
+        size="sm"
+        variant="outline"
+        disabled
+        title="No robot is online on this map. Load this map on a robot to capture its pose."
+      >
+        <Crosshair :size="13" />
+        Capture from robot
+      </Button>
+      <span v-if="grid && !teachOptions.length" class="hidden text-caption text-muted-soft xl:inline">
+        No robot online on this map
       </span>
     </div>
 
@@ -443,7 +493,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
       -->
       <aside
         class="flex shrink-0 flex-col border-l border-hairline bg-surface transition-[width] duration-150"
-        :class="panelOpen ? 'w-[21rem]' : 'w-[3rem]'"
+        :class="panelOpen ? 'w-[18rem]' : 'w-[3rem]'"
       >
         <button
           type="button"
@@ -492,21 +542,37 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
                 </span>
                 <span class="min-w-0 flex-1">
                   <span class="block truncate text-body-sm text-ink">{{ station.name }}</span>
-                  <span class="block font-data text-caption text-muted">
-                    {{ station.x.toFixed(2) }}, {{ station.y.toFixed(2) }} m ·
-                    {{ Math.round(radToDeg(station.yaw)) }}°
+                  <!-- The type in words: four colours are not a vocabulary. -->
+                  <span class="block truncate text-caption text-muted">
+                    {{ STATION_TYPE_STYLE[station.type].label }} ·
+                    <span class="font-data">
+                      {{ station.x.toFixed(2) }}, {{ station.y.toFixed(2) }} m ·
+                      {{ Math.round(radToDeg(station.yaw)) }}°
+                    </span>
+                  </span>
+                  <span
+                    v-if="usedBy(station.id).length"
+                    class="mt-xxs inline-block rounded-chip bg-surface-strong px-xxs text-caption text-muted"
+                    :title="usedBy(station.id).map((m) => m.name).join(', ')"
+                  >
+                    {{ usedBy(station.id).length }} mission{{ usedBy(station.id).length === 1 ? '' : 's' }}
                   </span>
                   <!-- Only on the selected one: detail every row carries is not
                        detail, it is noise that makes the list twice as long. -->
                   <span
-                    v-if="selectedId === station.id"
+                    v-if="selectedId === station.id && (station.taughtByRobotId || station.note)"
                     class="mt-xxs block text-caption text-muted-soft"
                   >
-                    {{ STATION_TYPE_STYLE[station.type].label }}
-                    <template v-if="station.taughtByRobotId">
-                      · taught by {{ robotName(station.taughtByRobotId) }}
-                    </template>
-                    <template v-if="station.note"> · {{ station.note }}</template>
+                    {{
+                      [
+                        station.taughtByRobotId
+                          ? `Taught by ${robotName(station.taughtByRobotId)}`
+                          : null,
+                        station.note,
+                      ]
+                        .filter(Boolean)
+                        .join(' · ')
+                    }}
                   </span>
                 </span>
               </button>
@@ -615,16 +681,38 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
       </template>
     </Dialog>
 
+    <!--
+      The server refuses to delete a station a mission still names, so a
+      station in use is not offered for deletion: the dialog names the routes
+      and links to them instead.
+    -->
     <ConfirmDialog
       :open="pendingRemoval !== null"
       destructive
       :pending="removing"
       :title="`Remove ${pendingRemoval?.name ?? ''}?`"
-      description="Any mission step that names this station will stop working. Nothing on a robot changes until its stations are next pushed."
+      :description="
+        removalBlockedBy.length
+          ? `${removalBlockedBy.map((m) => m.name).join(', ')} still ${removalBlockedBy.length === 1 ? 'visits' : 'visit'} this station. Take it out of ${removalBlockedBy.length === 1 ? 'that mission' : 'those missions'} first.`
+          : 'No mission uses this station. Robots keep their copy until their stations are next pushed.'
+      "
+      :blocked="removalBlockedBy.length > 0"
       confirm-label="Remove"
       @update:open="(value: boolean) => !value && !removing && (pendingRemoval = null)"
       @cancel="pendingRemoval = null"
       @confirm="confirmRemoval"
-    />
+    >
+      <template v-if="removalBlockedBy.length" #actions>
+        <Button
+          v-for="mission in removalBlockedBy.slice(0, 3)"
+          :key="mission.id"
+          size="sm"
+          variant="secondary"
+          as-child
+        >
+          <RouterLink :to="`/mission/edit/${mission.id}`">Edit {{ mission.name }}</RouterLink>
+        </Button>
+      </template>
+    </ConfirmDialog>
   </div>
 </template>

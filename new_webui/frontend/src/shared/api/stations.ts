@@ -69,6 +69,35 @@ export class StationNameTakenError extends Error {
   }
 }
 
+/**
+ * A delete the server refused because mission steps still name the station.
+ *
+ * Carries the mission names, so the refusal can say which routes to edit
+ * rather than showing the raw 409 body.
+ */
+export class StationInUseError extends Error {
+  constructor(
+    readonly missions: string[],
+    message: string,
+  ) {
+    super(message)
+    this.name = 'StationInUseError'
+  }
+}
+
+function asInUse(error: ApiError): StationInUseError | null {
+  if (error.status !== 409) return null
+  try {
+    const parsed = JSON.parse(error.message) as {
+      detail?: { message?: string; missions?: string[] }
+    }
+    const missions = parsed.detail?.missions ?? []
+    return new StationInUseError(missions, parsed.detail?.message ?? 'Station is in use')
+  } catch {
+    return new StationInUseError([], 'Station is in use')
+  }
+}
+
 interface ConflictDetail {
   field?: string
   message?: string
@@ -130,7 +159,11 @@ export const stationsApi = {
   },
 
   async remove(id: string): Promise<void> {
-    await api.del<void>(`/stations/${id}`)
+    try {
+      await api.del<void>(`/stations/${id}`)
+    } catch (error) {
+      throw (error instanceof ApiError && asInUse(error)) || error
+    }
   },
 
   /**
