@@ -9,12 +9,6 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 
 const AppShell = () => import('./layouts/AppShell.vue')
-const PlaceholderView = () => import('@/shared/components/PlaceholderView.vue')
-
-function placeholder(title: string, description: string, phase: string) {
-  return { component: PlaceholderView, props: { title, description, phase } }
-}
-
 const routes: RouteRecordRaw[] = [
   {
     path: '/',
@@ -104,22 +98,17 @@ const routes: RouteRecordRaw[] = [
         path: 'alarm',
         name: 'alarm',
         component: () => import('@/features/alarm/views/AlarmView.vue'),
-        meta: { title: 'Alarm', subtitle: 'Active and acknowledged events' },
+        meta: { title: 'Alarm', subtitle: 'What needs you now, and what happened' },
       },
     ],
   },
 
+  // Outside the shell: a dead end gets a way home, not a sidebar.
   {
     path: '/:pathMatch(.*)*',
-    component: AppShell,
-    children: [
-      {
-        path: '',
-        name: 'not-found',
-        meta: { title: 'Not found' },
-        ...placeholder('Screen not found', 'That URL does not match any destination.', ''),
-      },
-    ],
+    name: 'not-found',
+    component: () => import('@/features/not-found/NotFoundView.vue'),
+    meta: { title: 'Not found' },
   },
 ]
 
