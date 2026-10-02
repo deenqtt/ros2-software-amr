@@ -1,5 +1,0 @@
-stamp:
-  sec: 51
-  nanosec: 390000000
-frame_id: imu_link
----

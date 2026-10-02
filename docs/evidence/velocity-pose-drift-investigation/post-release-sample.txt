@@ -1,4 +1,0 @@
-Label: NOT VERIFIED
-
-No operator motion sample was requested or collected. No movement command was
-published by the investigation.

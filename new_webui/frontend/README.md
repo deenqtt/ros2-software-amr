@@ -2,9 +2,8 @@
 
 Fleet control and monitoring interface for the AMR stack. Vue 3 + Vite + TypeScript.
 
-This is the redesign target described in [`docs/WEB_UI_REDESIGN_AUDIT.md`](../../docs/WEB_UI_REDESIGN_AUDIT.md).
-The existing application in [`web-ui/`](../../web-ui/) keeps running unchanged; nothing here
-replaces it until the features are migrated.
+It replaced the old `web-ui/` application, which has been removed from this repository.
+The user manual is [`docs/Panduan_AMR_Web_UI.pdf`](../../docs/Panduan_AMR_Web_UI.pdf).
 
 ---
 

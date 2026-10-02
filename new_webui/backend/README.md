@@ -71,8 +71,8 @@ app/
 
 ## What is deliberately different from the old backend
 
-Each of these fixes a specific defect recorded in
-[`docs/WEB_UI_REDESIGN_AUDIT.md`](../../docs/WEB_UI_REDESIGN_AUDIT.md).
+Each of these fixes a specific defect found in the old backend (since removed; its
+audit is in git history as `docs/WEB_UI_REDESIGN_AUDIT.md`).
 
 **Robots are a table, from the first migration.** The old schema had six tables and
 not one robot reference; a robot was an implicit singleton defined by a build-time

@@ -1,3 +1,0 @@
-/phase4_bridge
-/robot_state_publisher
-9

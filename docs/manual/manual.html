@@ -1,0 +1,879 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8" />
+<title>Panduan AMR Control — Web UI, Robot Agent &amp; Kiosk</title>
+<link rel="stylesheet" href="manual.css" />
+</head>
+<body>
+
+<!-- ═════════════════════════════════ SAMPUL ═════════════════════════════════ -->
+<div class="cover">
+  <div class="brand"><span class="logo">🤖</span> AMR Control</div>
+  <h1>Panduan Pengguna<br />AMR Control</h1>
+  <p class="sub">Web UI untuk mengelola robot, peta, station, zone dan mission — beserta cara kerja Robot Agent, operasi banyak robot, dan layar Kiosk di robot.</p>
+  <div class="chips">
+    <span>Web UI</span><span>Robot Agent</span><span>Multi-robot</span><span>Kiosk</span><span>ROS 2 Jazzy · Nav2</span>
+  </div>
+  <div class="eyes"><i></i><i></i></div>
+  <div class="meta">
+    Versi dokumen: Oktober 2026<br />
+    Sistem: <b>new_webui</b> (frontend Vue + backend FastAPI) · <b>amr_agent</b> · <b>kiosk-mockup</b><br />
+    Bahasa label di layar: Inggris (ditulis persis seperti tampil di layar)
+  </div>
+</div>
+
+<!-- ═════════════════════════════ DAFTAR ISI ═════════════════════════════════ -->
+<div class="toc">
+  <h2 style="font-size:20pt;font-weight:800;margin-bottom:6mm">Daftar Isi</h2>
+  <ol>
+    <li><a href="#pengenalan">Pengenalan Sistem</a>
+      <ol><li>Komponen utama · Cara data mengalir · Istilah penting</li></ol></li>
+    <li><a href="#mulai">Memulai</a>
+      <ol><li>Membuka Web UI · Tata letak layar · Status koneksi robot</li></ol></li>
+    <li><a href="#alur">Alur Kerja dari Nol sampai Robot Jalan</a>
+      <ol><li>Sembilan langkah: robot → peta → pose → station → zone → mission → jalankan → pantau</li></ol></li>
+    <li><a href="#halaman">Panduan Setiap Halaman</a>
+      <ol>
+        <li>Dashboard · Robot · Robot Navigation · Robot Details</li>
+        <li>Maps · Map Editor · Survey (membuat peta)</li>
+        <li>Mission · Mission Editor · Station · Zone · Alarm &amp; notifikasi</li>
+      </ol></li>
+    <li><a href="#agent">Robot Agent</a>
+      <ol><li>Peran · Siklus sinkronisasi · Mode · Peta, station &amp; zone · Menjalankan mission · Saat server mati · Instalasi</li></ol></li>
+    <li><a href="#multi">Operasi Banyak Robot (Multi-Robot)</a>
+      <ol><li>Satu robot satu agent · Peta bersama · Aturan mission · Jaringan · Batasan saat ini</li></ol></li>
+    <li><a href="#kiosk">Kiosk — Layar di Robot</a>
+      <ol><li>Tujuan · Setiap layar · Alur konfirmasi · Menu staf · Status &amp; rencana integrasi</li></ol></li>
+    <li><a href="#masalah">Mengatasi Masalah</a></li>
+    <li><a href="#glosarium">Glosarium</a></li>
+  </ol>
+</div>
+
+<!-- ═══════════════════════════ 1. PENGENALAN ════════════════════════════════ -->
+<section class="chapter" id="pengenalan">
+  <h2><span class="num">1</span>Pengenalan Sistem</h2>
+  <p class="lead">AMR Control adalah satu tempat untuk mengatur robot AMR (Autonomous Mobile Robot): dari mendaftarkan robot, membuat peta, menandai titik tujuan, sampai menjalankan rute dan memantau hasilnya.</p>
+
+  <h3><span class="num">1.1</span>Komponen utama</h3>
+  <div class="cards">
+    <div class="card">
+      <div class="tag">Di browser</div>
+      <h4>Web UI</h4>
+      <p>Aplikasi yang Anda buka di browser. Semua pekerjaan operator dilakukan di sini: melihat peta live, mengirim robot, membuat mission, menggambar zone.</p>
+    </div>
+    <div class="card">
+      <div class="tag">Di server</div>
+      <h4>Backend (registry)</h4>
+      <p>Menyimpan semua data di database: daftar robot, peta (beserta versinya), station, zone, mission, dan riwayat run. Ini adalah <b>sumber kebenaran</b>.</p>
+    </div>
+    <div class="card">
+      <div class="tag">Di setiap robot</div>
+      <h4>Robot Agent</h4>
+      <p>Program kecil di komputer robot (mis. Jetson). Ia mengambil tugas dari backend, menyalakan Nav2/SLAM, menjalankan mission, dan melaporkan progresnya.</p>
+    </div>
+    <div class="card">
+      <div class="tag">Di layar robot</div>
+      <h4>Kiosk</h4>
+      <p>Tampilan untuk orang di sekitar robot: wajah robot, tujuan, dan tombol besar "Sudah diambil" saat pesanan tiba. Saat ini berupa <b>mockup</b>.</p>
+    </div>
+  </div>
+
+  <h3><span class="num">1.2</span>Cara data mengalir</h3>
+  <p>Hal terpenting untuk dipahami: <b>browser tidak memerintah robot untuk menjalankan mission</b>. Browser hanya menyimpan "apa yang harus dikerjakan" ke backend; robot sendiri yang mengambilnya dan mengerjakannya. Karena itu menutup tab browser tidak menghentikan robot.</p>
+
+  <div class="diagram">
+    <svg viewBox="0 0 720 300" xmlns="http://www.w3.org/2000/svg" font-family="Inter, Noto Sans, sans-serif">
+      <defs>
+        <marker id="a1" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#6b7280"/></marker>
+        <marker id="a2" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#1a6ef5"/></marker>
+      </defs>
+      <rect x="20" y="20" width="200" height="90" rx="12" fill="#e8f0fe" stroke="#1a6ef5"/>
+      <text x="120" y="52" text-anchor="middle" font-weight="700" font-size="15" fill="#111827">Browser (Web UI)</text>
+      <text x="120" y="74" text-anchor="middle" font-size="11.5" fill="#374151">operator: peta, mission,</text>
+      <text x="120" y="90" text-anchor="middle" font-size="11.5" fill="#374151">station, zone, pantau</text>
+
+      <rect x="500" y="20" width="200" height="90" rx="12" fill="#f3f4f6" stroke="#6b7280"/>
+      <text x="600" y="52" text-anchor="middle" font-weight="700" font-size="15" fill="#111827">Backend (server)</text>
+      <text x="600" y="74" text-anchor="middle" font-size="11.5" fill="#374151">database: robot, peta,</text>
+      <text x="600" y="90" text-anchor="middle" font-size="11.5" fill="#374151">station, zone, mission, run</text>
+
+      <rect x="260" y="185" width="200" height="95" rx="12" fill="#e6f6ee" stroke="#0f9d58"/>
+      <text x="360" y="215" text-anchor="middle" font-weight="700" font-size="15" fill="#111827">Robot (Jetson)</text>
+      <text x="360" y="237" text-anchor="middle" font-size="11.5" fill="#374151">Robot Agent + Nav2/SLAM</text>
+      <text x="360" y="253" text-anchor="middle" font-size="11.5" fill="#374151">+ rosbridge :9090</text>
+      <text x="360" y="269" text-anchor="middle" font-size="11.5" fill="#374151">+ Kiosk (layar robot)</text>
+
+      <line x1="220" y1="55" x2="496" y2="55" stroke="#6b7280" stroke-width="2" marker-end="url(#a1)"/>
+      <text x="358" y="46" text-anchor="middle" font-size="11" fill="#374151">simpan / baca data (HTTP)</text>
+
+      <line x1="560" y1="110" x2="430" y2="182" stroke="#1a6ef5" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#a2)"/>
+      <text x="560" y="160" font-size="11" fill="#1a6ef5">robot menarik tugas</text>
+      <text x="560" y="175" font-size="11" fill="#1a6ef5">tiap 10 detik + lapor progres</text>
+
+      <line x1="140" y1="110" x2="275" y2="182" stroke="#6b7280" stroke-width="2" marker-end="url(#a1)"/>
+      <text x="40" y="160" font-size="11" fill="#374151">peta live, laser, pose,</text>
+      <text x="40" y="175" font-size="11" fill="#374151">goal manual (WebSocket)</text>
+    </svg>
+  </div>
+
+  <ul>
+    <li><b>Browser → Backend:</b> semua data yang Anda buat (peta, station, zone, mission) disimpan ke backend.</li>
+    <li><b>Robot → Backend:</b> robot memeriksa backend setiap ±10 detik: "peta apa yang harus saya pakai? mode apa? ada mission?" lalu melaporkan progres.</li>
+    <li><b>Browser ↔ Robot (langsung):</b> hanya untuk hal yang <i>live</i>: menampilkan peta, laser dan posisi robot, serta mengirim <span class="ui">Set pose</span> / <span class="ui">Go here</span>.</li>
+  </ul>
+
+  <h3><span class="num">1.3</span>Istilah penting</h3>
+  <table>
+    <thead><tr><th style="width:28%">Istilah</th><th>Arti singkat</th></tr></thead>
+    <tbody>
+      <tr><td>Peta (Map)</td><td>Gambar denah tempat robot bekerja. Setiap peta punya versi (v1, v2…); versi lama tidak pernah ditimpa kecuali Anda memilih "Replace".</td></tr>
+      <tr><td>Station</td><td>Titik bernama di peta (mis. "Meja 5", "Dock 1") lengkap dengan arah hadap robot saat tiba.</td></tr>
+      <tr><td>Zone</td><td>Area poligon di peta yang mengubah perilaku robot: dilarang masuk, dihindari, dibatasi kecepatannya, atau pemicu sinyal.</td></tr>
+      <tr><td>Mission</td><td>Rute berurutan: daftar station yang dikunjungi satu per satu (step).</td></tr>
+      <tr><td>Run</td><td>Satu kali eksekusi sebuah mission oleh satu robot (sekali jalan, beberapa lap, atau terus-menerus).</td></tr>
+      <tr><td>Pose</td><td>Posisi (x, y dalam meter) plus arah hadap robot di peta.</td></tr>
+      <tr><td>Nav2 / SLAM</td><td>Nav2 = sistem navigasi otomatis robot. SLAM = mode membuat peta sambil berjalan.</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ═════════════════════════════ 2. MEMULAI ═════════════════════════════════ -->
+<section class="chapter" id="mulai">
+  <h2><span class="num">2</span>Memulai</h2>
+  <p class="lead">Membuka Web UI, mengenal tata letak layar, dan membaca status koneksi robot.</p>
+
+  <h3><span class="num">2.1</span>Membuka Web UI</h3>
+  <p>Buka alamat Web UI di browser (Chrome/Edge/Firefox terbaru). Saat pengembangan alamatnya <code>http://&lt;ip-server&gt;:3100</code>; pada instalasi produksi biasanya cukup <code>http://&lt;nama-server&gt;</code>. Halaman pertama yang muncul adalah <span class="ui">Dashboard</span>.</p>
+
+  <h3><span class="num">2.2</span>Tata letak layar</h3>
+  <figure>
+    <img src="../images/web-ui/01-dashboard.png" alt="Dashboard" />
+    <figcaption><b>Gambar 1.</b> Tata letak umum: menu di kiri, judul halaman di atas, ikon lonceng notifikasi di kanan atas, pemilih tema di kiri bawah. (Contoh ini diambil saat kedua robot belum tersambung.)</figcaption>
+  </figure>
+  <ul>
+    <li><b>Menu kiri:</b> <span class="ui">Dashboard</span>, <span class="ui">Robot</span>, <span class="ui">Maps</span>, <span class="ui">Mission</span>, <span class="ui">Station</span>, <span class="ui">Zone</span>, lalu di bawah garis pemisah <span class="ui">Alarm</span> (dengan angka merah bila ada alarm yang belum dibaca).</li>
+    <li><b>Ciutkan menu:</b> klik tombol bulat bertanda panah di tepi kanan menu. Saat diciutkan hanya ikon yang tampil.</li>
+    <li><b>Tema:</b> di kiri bawah ada tiga pilihan — Terang (matahari), Gelap (bulan), Sistem (ikuti pengaturan komputer).</li>
+    <li><b>Lonceng 🔔 (kanan atas):</b> menampilkan 3 notifikasi terbaru yang belum dibaca. Lihat Bab 4.12.</li>
+  </ul>
+
+  <h3><span class="num">2.3</span>Status koneksi robot</h3>
+  <p>Di banyak tempat Anda akan melihat indikator koneksi robot. Artinya:</p>
+  <table>
+    <thead><tr><th style="width:22%">Tampilan</th><th>Arti</th><th style="width:32%">Yang perlu dilakukan</th></tr></thead>
+    <tbody>
+      <tr><td><span class="pill ok">Online</span></td><td>Terhubung ke robot dan data terus mengalir.</td><td>Normal. Hanya dalam status ini robot bisa diberi perintah.</td></tr>
+      <tr><td><span class="pill warn">Stale</span></td><td>Koneksi terbuka, tetapi salah satu data rutin berhenti datang.</td><td>Cek apakah program di robot macet/hang, atau jaringan lambat.</td></tr>
+      <tr><td><span class="pill warn">Connecting</span></td><td>Sedang membuka koneksi (atau "Reconnecting (n)" saat mencoba ulang).</td><td>Tunggu. Percobaan ulang otomatis, jeda 1 s naik sampai 30 s.</td></tr>
+      <tr><td><span class="pill fault">Offline</span></td><td>Robot tidak dapat dijangkau.</td><td>Pastikan robot menyala dan rosbridge (port 9090) jalan.</td></tr>
+      <tr><td><span class="pill grey">Muted</span></td><td>Pemantauan robot ini sengaja dimatikan.</td><td>Klik <span class="ui">Monitoring</span>/<span class="ui">Resume monitoring</span> untuk menyalakan lagi.</td></tr>
+    </tbody>
+  </table>
+  <div class="note"><b>Catatan</b>Status "Muted" hanya disimpan sementara: setelah halaman di-refresh, pemantauan aktif kembali.</div>
+</section>
+
+<!-- ═════════════════════════════ 3. ALUR KERJA ══════════════════════════════ -->
+<section class="chapter" id="alur">
+  <h2><span class="num">3</span>Alur Kerja dari Nol sampai Robot Jalan</h2>
+  <p class="lead">Urutan pekerjaan untuk lokasi baru. Ikuti dari atas ke bawah; detail setiap layar ada di Bab 4.</p>
+
+  <ol class="steps">
+    <li><b>Daftarkan robot.</b> Buka <span class="ui">Robot</span> → <span class="ui">+ Add robot</span>, isi nama dan alamat rosbridge (mis. <code>ws://192.168.2.133:9090</code>). Di robot, jalankan Robot Agent dengan ID robot yang muncul di Web UI (Bab 5.7).</li>
+    <li><b>Buat peta.</b> Buka <span class="ui">Maps</span> → <span class="ui">Create map</span>, pilih robot, lalu kemudikan robot dengan joystick sampai seluruh area terpetakan, dan klik <span class="ui">Save map</span>. Jika sudah punya file peta (.yaml + .pgm), gunakan <span class="ui">Upload map</span>.</li>
+    <li><b>Tugaskan peta ke robot.</b> Di <span class="ui">Maps</span>, klik <span class="ui">Assign</span> pada peta, centang robot, lalu <span class="ui">Apply</span>. Robot akan memuat peta itu dalam ±10 detik.</li>
+    <li><b>Pastikan robot dalam mode kerja.</b> Di <span class="ui">Dashboard</span>, jika kolom Actions menampilkan <span class="ui">Release</span>, klik agar robot mulai bernavigasi (Nav2 menyala sendiri).</li>
+    <li><b>Beri tahu posisi awal robot.</b> Buka halaman navigasi robot → alat <span class="ui">Set pose</span> → tekan di posisi robot dan seret ke arah hadapnya. Tunggu sampai status <span class="ui">Localization</span> menjadi "Pose available".</li>
+    <li><b>Tandai station.</b> Buka <span class="ui">Station</span> → <span class="ui">+ Add station</span> → klik di peta (seret untuk arah hadap). Atau kemudikan robot ke titik itu lalu <span class="ui">Capture</span>.</li>
+    <li><b>(Opsional) Gambar zone.</b> Buka <span class="ui">Zone</span>, pilih jenis (Keep out, Avoid, Speed limit, Trigger) lalu klik sudut-sudut area.</li>
+    <li><b>Buat mission.</b> Buka <span class="ui">Mission</span> → <span class="ui">+ New mission</span> → beri nama → klik station di peta sesuai urutan → <span class="ui">Save</span>.</li>
+    <li><b>Jalankan dan pantau.</b> Klik <span class="ui">Run</span> (atau dari halaman navigasi: pilih mission → <span class="ui">Start mission</span>). Notifikasi muncul setiap robot tiba di station dan ketika mission selesai.</li>
+  </ol>
+
+  <div class="tip"><b>Tips</b>Robot yang sudah punya peta dan mode "Working" akan menyalakan navigasinya sendiri saat dihidupkan — tidak ada tombol "start" yang perlu ditekan setiap pagi.</div>
+</section>
+
+<!-- ═════════════════════════ 4. PANDUAN HALAMAN ═════════════════════════════ -->
+<section class="chapter" id="halaman">
+  <h2><span class="num">4</span>Panduan Setiap Halaman</h2>
+  <p class="lead">Penjelasan isi dan tombol setiap halaman. Nama tombol ditulis persis seperti di layar.</p>
+
+  <!-- 4.1 Dashboard -->
+  <h3><span class="num">4.1</span>Dashboard — kondisi armada sekilas</h3>
+  <p>Tujuan halaman ini: menjawab "robot mana yang butuh perhatian saya sekarang?". Halaman diperbarui otomatis setiap 2 detik dan membukanya <b>tidak</b> mengirim perintah apa pun ke robot.</p>
+  <h4>Bagian "Needs attention"</h4>
+  <p>Muncul hanya jika ada masalah. Setiap baris punya tombol <span class="ui">Open navigation</span>.</p>
+  <table>
+    <thead><tr><th style="width:36%">Pesan</th><th style="width:12%">Tingkat</th><th>Artinya</th></tr></thead>
+    <tbody>
+      <tr><td>No link to this robot</td><td><span class="pill fault">fault</span></td><td>Robot tidak bisa dihubungi. Periksa daya dan rosbridge.</td></tr>
+      <tr><td>Telemetry has gone quiet</td><td><span class="pill warn">warn</span></td><td>Terhubung, tapi data berhenti — program di robot mungkin macet.</td></tr>
+      <tr><td>No map assigned</td><td><span class="pill warn">warn</span></td><td>Robot belum punya peta, jadi belum bisa bernavigasi/menjalankan mission.</td></tr>
+      <tr><td>This robot cannot reach the registry</td><td><span class="pill warn">warn</span></td><td>Agent di robot tidak bisa menghubungi backend. Peta, station, zone baru tidak sampai.</td></tr>
+      <tr><td>Navigation failed to start</td><td><span class="pill fault">fault</span></td><td>Nav2 gagal menyala. Lihat log robot.</td></tr>
+      <tr><td>Should be navigating, but is not</td><td><span class="pill warn">warn</span></td><td>Robot diminta bekerja tapi Nav2 belum menyala.</td></tr>
+      <tr><td>&lt;mission&gt; failed</td><td><span class="pill fault">fault</span></td><td>Run mission terakhir gagal (detail tercantum).</td></tr>
+      <tr><td>Monitoring is muted</td><td><span class="pill info">info</span></td><td>Pemantauan robot dimatikan.</td></tr>
+    </tbody>
+  </table>
+  <h4>Tiga angka ringkas</h4>
+  <p><b>Robots</b> (total &amp; yang online), <b>Working</b> (yang sedang menjalankan mission &amp; yang diparkir), <b>Needs attention</b> (jumlah robot bermasalah).</p>
+  <h4>Tabel "Fleet"</h4>
+  <table>
+    <thead><tr><th style="width:18%">Kolom</th><th>Isi</th></tr></thead>
+    <tbody>
+      <tr><td>Robot</td><td>Nama dan warna penanda robot.</td></tr>
+      <tr><td>Link</td><td>Status koneksi (Bab 2.3).</td></tr>
+      <tr><td>Mode</td><td>Lencana = mode yang <i>diminta</i> (<b>Working</b>, <b>Parked</b>, <b>Surveying</b>); teks kecil = mode <i>sebenarnya</i> (navigating, idle, starting…). Teks menjadi kuning bila keduanya tidak cocok.</td></tr>
+      <tr><td>Nav2 / SLAM</td><td><span class="pill ok">Running</span> <span class="pill info">Starting</span> <span class="pill info">Stopping</span> <span class="pill fault">Failed</span> <span class="pill grey">Stopped</span> <span class="pill grey">Unknown</span> (arahkan kursor untuk detail).</td></tr>
+      <tr><td>Map</td><td>Nama dan versi peta yang dipakai; "—" kuning bila belum ada.</td></tr>
+      <tr><td>Doing</td><td>Mission yang sedang dijalankan beserta step/lap, atau "idle".</td></tr>
+      <tr><td>Actions</td><td><span class="ui">Park</span> / <span class="ui">Release</span> dan <span class="ui">Navigation</span>.</td></tr>
+    </tbody>
+  </table>
+  <div class="note"><b>Park dan Release</b><p><span class="ui">Park</span> = robot berhenti bernavigasi dan tetap berhenti (Nav2 dimatikan). <span class="ui">Release</span> = robot boleh bekerja lagi; Nav2 akan menyala sendiri dalam ±10 detik bila robot sudah punya peta. Tombol ini hanya mengubah "keinginan" di backend — agent di robot yang menyesuaikan.</p></div>
+
+  <!-- 4.2 Robot -->
+  <h3><span class="num">4.2</span>Robot — daftar robot</h3>
+  <figure>
+    <img src="../images/web-ui/02-robots.png" alt="Daftar robot" />
+    <figcaption><b>Gambar 2.</b> Daftar robot terdaftar dengan alamat rosbridge, ROS domain, aktivitas dan status koneksi.</figcaption>
+  </figure>
+  <ul>
+    <li><span class="ui">+ Add robot</span> — mendaftarkan robot baru.</li>
+    <li><span class="ui">Details</span> — membuka halaman teknis robot (Bab 4.4).</li>
+    <li>Menu <span class="ui">⋯</span> — <span class="ui">Stop monitoring</span> / <span class="ui">Resume monitoring</span>, <span class="ui">Edit</span>, <span class="ui">Remove</span>.</li>
+    <li>Ikon panah melingkar — memuat ulang daftar.</li>
+  </ul>
+  <figure class="half">
+    <img src="../images/web-ui/03-robots-add-dialog.png" alt="Dialog tambah robot" />
+    <figcaption><b>Gambar 3.</b> Dialog <span class="ui">Add robot</span>.</figcaption>
+  </figure>
+  <table>
+    <thead><tr><th style="width:24%">Kolom isian</th><th>Keterangan</th></tr></thead>
+    <tbody>
+      <tr><td>Robot name *</td><td>Nama yang tampil di mana-mana. Samakan dengan tulisan di badan robot. Tidak boleh sama dengan robot lain.</td></tr>
+      <tr><td>Bridge WebSocket *</td><td>Alamat rosbridge robot, wajib diawali <code>ws://</code> atau <code>wss://</code> dan memakai port, mis. <code>ws://192.168.2.133:9090</code>.</td></tr>
+      <tr><td>ROS domain ID</td><td>Opsional (0–232). Hanya perlu jika ada program di mesin ini yang memakai DDS langsung; browser tidak membutuhkannya.</td></tr>
+    </tbody>
+  </table>
+  <div class="warn"><b>Penting</b><span class="ui">Remove</span> hanya menghapus robot dari daftar. Peta, station dan mission di backend tidak ikut terhapus.</div>
+
+  <!-- 4.3 Navigation -->
+  <h3><span class="num">4.3</span>Robot Navigation — halaman kerja satu robot</h3>
+  <p>Halaman paling sering dipakai operator: peta live, posisi robot, mengirim goal, menjalankan mission, dan menghentikan robot. Buka dari <span class="ui">Navigation</span> di Dashboard.</p>
+  <figure>
+    <img src="../images/web-ui/04-robot-navigation.png" alt="Halaman navigasi" />
+    <figcaption><b>Gambar 4.</b> Halaman navigasi: kartu judul, lima status, kartu Mission, alat &amp; layer peta, peta live, dan data baterai. Zone keep-out tampak sebagai kotak merah muda. (Contoh saat koneksi berstatus "Stale".)</figcaption>
+  </figure>
+
+  <h4>Kartu judul</h4>
+  <ul>
+    <li><span class="ui">Stop</span> (merah) — menghentikan semuanya sekaligus: membatalkan goal, membatalkan mission yang berjalan, lalu memarkir robot. Robot tetap diam sampai Anda klik <span class="ui">Release</span> di Dashboard.</li>
+    <li><span class="ui">Monitoring</span> / <span class="ui">Muted</span> — menyalakan/mematikan pembacaan data robot ini.</li>
+    <li><span class="ui">Details</span> — halaman teknis. <span class="ui">Back</span> — kembali ke Dashboard.</li>
+  </ul>
+  <div class="danger"><b>Tombol Stop bukan E-STOP fisik</b>Tombol ini menghentikan perintah perangkat lunak, bukan memutus daya motor. Untuk keadaan darurat sesungguhnya, gunakan tombol E-STOP fisik di robot. Di halaman ini tombol Stop, Cancel mission, Cancel goal dan Stop after lap langsung bekerja tanpa konfirmasi.</div>
+
+  <h4>Lima status</h4>
+  <table>
+    <thead><tr><th style="width:18%">Status</th><th>Kemungkinan isi</th></tr></thead>
+    <tbody>
+      <tr><td>Mode</td><td>NAV (navigasi), MAP (membuat peta), UNKNOWN.</td></tr>
+      <tr><td>Stack</td><td>RUNNING, STARTING, STOPPING, FAILED, WAITING.</td></tr>
+      <tr><td>Localization</td><td>"Pose available" (robot tahu posisinya) / "Waiting for pose".</td></tr>
+      <tr><td>Goal</td><td>"No goal", "Driving to the goal", "Arrived", "Goal canceled", "Could not reach it". Bila robot punya goal tapi diam ≥15 detik muncul <span class="pill warn">Not moving for Ns</span>.</td></tr>
+      <tr><td>Active map</td><td>ID peta yang sedang dipakai, atau "Not assigned".</td></tr>
+    </tbody>
+  </table>
+
+  <h4>Kartu Mission</h4>
+  <p>Saat tidak ada mission berjalan: pilih <span class="ui">Mission</span>, pilih <span class="ui">Run mode</span> (<b>Once</b> = sekali, <b>Laps</b> = sejumlah putaran, <b>Until stopped</b> = terus-menerus), lalu <span class="ui">Start mission</span>. Bila tombol belum aktif, baris di bawahnya menjelaskan alasannya, misalnya "Set the initial pose before running a mission."</p>
+  <p>Saat mission berjalan, kartu menampilkan "Step 2 of 3 → Poin2 · single pass" dan tiga tombol:</p>
+  <table>
+    <thead><tr><th style="width:22%">Tombol</th><th>Efek</th></tr></thead>
+    <tbody>
+      <tr><td>Stop after lap</td><td>Robot menyelesaikan lap yang sedang berjalan, lalu berhenti. Aman untuk robot yang membawa barang.</td></tr>
+      <tr><td>Cancel mission</td><td>Mission dihentikan saat itu juga; robot berhenti di tempat.</td></tr>
+      <tr><td>Cancel goal</td><td>Hanya membatalkan perjalanan saat ini; mission tidak dibatalkan.</td></tr>
+    </tbody>
+  </table>
+
+  <h4>Alat peta</h4>
+  <table>
+    <thead><tr><th style="width:18%">Alat</th><th>Cara pakai</th></tr></thead>
+    <tbody>
+      <tr><td>Pan</td><td>Menggeser tampilan. Roda mouse untuk zoom; tombol <span class="ui">+</span> <span class="ui">−</span> dan <span class="ui">⛶</span> (pas layar) di kanan atas peta.</td></tr>
+      <tr><td>Set pose</td><td>Memberi tahu robot di mana ia berada. <b>Tekan</b> di posisi robot, <b>seret</b> ke arah hadapnya, <b>lepas</b>. Klik tanpa menyeret = arah hadap tidak berubah.</td></tr>
+      <tr><td>Go here</td><td>Mengirim robot ke satu titik. Tekan di tujuan, seret ke arah hadap saat tiba, lepas.</td></tr>
+    </tbody>
+  </table>
+  <p>Setelah pose/goal terkirim, alat otomatis kembali ke <span class="ui">Pan</span>. Panah sementara berwarna oranye (pose) atau hijau (goal).</p>
+
+  <h4>Layer peta</h4>
+  <table>
+    <thead><tr><th style="width:18%">Layer</th><th>Menampilkan</th><th style="width:14%">Awal</th></tr></thead>
+    <tbody>
+      <tr><td>Costmap</td><td>Bagaimana perencana jalur "menilai" lantai: merah/ungu = mahal atau terlarang (termasuk zone keep-out).</td><td>mati</td></tr>
+      <tr><td>Laser</td><td>Titik merah: apa yang dilihat sensor robot saat ini.</td><td>nyala</td></tr>
+      <tr><td>Particles</td><td>Sebaran perkiraan posisi (apakah robot yakin di mana ia berada).</td><td>mati</td></tr>
+      <tr><td>Plan</td><td>Garis hijau putus-putus: rute yang akan ditempuh.</td><td>nyala</td></tr>
+      <tr><td>Mission</td><td>Lingkaran bernomor di setiap station mission: <span class="pill ok">hijau</span> sudah, <span class="pill info">biru + lingkaran</span> tujuan sekarang, putih = belum. Garis abu-abu tipis menunjukkan urutan.</td><td>nyala</td></tr>
+      <tr><td>Zones</td><td>Area zone: merah = Keep out, oranye = Avoid, biru = Speed limit, ungu = Trigger.</td><td>nyala</td></tr>
+    </tbody>
+  </table>
+  <figure>
+    <img src="../images/web-ui/05-robot-navigation-costmap.png" alt="Layer costmap" />
+    <figcaption><b>Gambar 5.</b> Layer <span class="ui">Costmap</span> menyala: dinding dan sekitarnya berwarna; kotak zone keep-out di lorong kanan ikut dianggap terlarang.</figcaption>
+  </figure>
+  <div class="note"><b>Robot di peta</b>Kotak biru = robot dengan ukuran sebenarnya, garis = arah hadapnya. Di kiri bawah peta tertulis posisi robot (x, y dalam meter), atau "no pose — is AMCL localised?" jika robot belum tahu posisinya (lakukan <span class="ui">Set pose</span>).</div>
+
+  <figure>
+    <img src="../images/web-ui/07-robot-navigation-offline.png" alt="Robot offline" />
+    <figcaption><b>Gambar 6.</b> Robot yang belum tersambung: status "Connecting", peta "Waiting for /map", dan alasan mission tidak bisa dijalankan.</figcaption>
+  </figure>
+
+  <!-- 4.4 Details -->
+  <h3><span class="num">4.4</span>Robot Details — kesehatan data robot</h3>
+  <p>Halaman teknis untuk mendiagnosis: data apa saja yang diterima dari robot dan seberapa sering. Tidak ada tombol yang menggerakkan robot di sini.</p>
+  <figure>
+    <img src="../images/web-ui/08-robot-detail.png" alt="Robot details" />
+    <figcaption><b>Gambar 7.</b> Tabel <span class="ui">Topics</span>: setiap jenis data dengan pola kirim, jumlah pesan, frekuensi, terakhir diterima, dan status.</figcaption>
+  </figure>
+  <table>
+    <thead><tr><th style="width:18%">Status</th><th>Arti</th></tr></thead>
+    <tbody>
+      <tr><td><span class="pill ok">OK</span></td><td>Data diterima, atau diam dengan wajar sesuai jenisnya.</td></tr>
+      <tr><td><span class="pill grey">Waiting</span></td><td>Sudah berlangganan tapi belum ada data (mis. robot belum mengirim baterai).</td></tr>
+      <tr><td><span class="pill warn">Stale</span></td><td>Data rutin berhenti melebihi batas waktunya — kemungkinan program pengirimnya macet.</td></tr>
+      <tr><td><span class="pill grey">Not subscribed</span></td><td>Tidak sedang dibaca (mis. robot di-mute).</td></tr>
+    </tbody>
+  </table>
+  <p class="small muted">Kolom <b>Cadence</b>: <i>periodic</i> = dikirim berkala (diam terlalu lama = masalah), <i>event</i> = dikirim saat ada perubahan (diam itu normal), <i>latched</i> = dikirim sekali saat mulai berlangganan. Tag "FULL" = hanya dibaca saat halaman robot terbuka.</p>
+
+  <!-- 4.5 Maps -->
+  <h3><span class="num">4.5</span>Maps — daftar peta dan penugasannya</h3>
+  <figure>
+    <img src="../images/web-ui/09-maps.png" alt="Maps" />
+    <figcaption><b>Gambar 8.</b> Daftar peta: ukuran, robot yang memakai, dan robot yang membuatnya.</figcaption>
+  </figure>
+  <table>
+    <thead><tr><th style="width:22%">Tombol</th><th>Fungsi</th></tr></thead>
+    <tbody>
+      <tr><td>Create map</td><td>Membuat peta baru dengan mengemudikan robot (Bab 4.7). Hanya robot yang online yang bisa dipilih.</td></tr>
+      <tr><td>Upload map</td><td>Mengunggah peta yang sudah ada: file <code>.yaml</code> <b>dan</b> gambarnya (<code>.pgm</code>/<code>.png</code>) wajib keduanya. Nama yang sudah ada = versi baru.</td></tr>
+      <tr><td>Assign</td><td>Memilih robot mana yang memakai versi peta ini. Robot memuatnya saat berikutnya dalam mode navigasi. Menghapus centang robot yang sedang memakai peta ini = melepas petanya.</td></tr>
+      <tr><td>⋯ Rename</td><td>Mengganti nama (berlaku untuk semua versi).</td></tr>
+      <tr><td>⋯ Edit cells</td><td>Membuka Map Editor.</td></tr>
+      <tr><td>⋯ Download</td><td>Mengunduh arsip peta.</td></tr>
+      <tr><td>⋯ Remove</td><td>Menghapus versi peta. Ditolak jika masih dipakai robot — pindahkan robotnya dulu.</td></tr>
+    </tbody>
+  </table>
+  <div class="warn"><b>Penting saat memindah peta</b>Station dan zone milik satu peta. Memindahkan robot ke peta lain berarti station/zone peta lama tidak berlaku lagi untuk robot itu.</div>
+
+  <!-- 4.6 Map editor -->
+  <h3><span class="num">4.6</span>Map Editor — merapikan peta</h3>
+  <p>Untuk membetulkan peta secara manual: menghapus dinding "hantu" dari kaca, menutup pintu yang tidak boleh dilewati, dan sebagainya.</p>
+  <figure>
+    <img src="../images/web-ui/10-map-editor.png" alt="Map editor" />
+    <figcaption><b>Gambar 9.</b> Map Editor: alat di kiri, pilihan cat dan ukuran kuas di atas.</figcaption>
+  </figure>
+  <table>
+    <thead><tr><th style="width:16%">Alat</th><th style="width:10%">Tombol</th><th>Fungsi</th></tr></thead>
+    <tbody>
+      <tr><td>Brush</td><td>B</td><td>Menggambar bebas.</td></tr>
+      <tr><td>Line</td><td>L</td><td>Garis lurus, mis. menutup pintu.</td></tr>
+      <tr><td>Block</td><td>R</td><td>Mengisi kotak.</td></tr>
+      <tr><td>Fill</td><td>F</td><td>Mengganti satu area yang tersambung.</td></tr>
+      <tr><td>Pan</td><td>H</td><td>Menggeser tampilan tanpa menggambar.</td></tr>
+    </tbody>
+  </table>
+  <ul>
+    <li><b>Cat:</b> <span class="ui">Obstacle</span> (dinding, hitam), <span class="ui">Free</span> (lantai), <span class="ui">Unknown</span> (belum terpetakan, abu-abu).</li>
+    <li><b>Ukuran kuas:</b> 5 cm, 10 cm, 20 cm, 50 cm, 1 m (tombol <code>[</code> dan <code>]</code>).</li>
+    <li><b>Pintasan:</b> Spasi + seret = geser; tahan <code>\</code> = lihat peta asli; <code>Ctrl+Z</code> undo, <code>Ctrl+Shift+Z</code> redo; <code>Esc</code> batal.</li>
+  </ul>
+  <h4>Menyimpan</h4>
+  <p>Klik <span class="ui">Save</span>, isi <b>What changed</b> (wajib — menjadi riwayat versi), lalu pilih:</p>
+  <ul>
+    <li><b>Publish a new version</b> (disarankan): versi lama tetap utuh; versi baru belum dipakai robot mana pun sampai Anda <span class="ui">Assign</span>. Bisa dikembalikan.</li>
+    <li><b>Replace vN</b>: menimpa versi yang sama; robot yang memakainya memuat isi baru dalam ±10 detik. <b>Tidak bisa dikembalikan.</b></li>
+  </ul>
+
+  <!-- 4.7 Survey -->
+  <h3><span class="num">4.7</span>Survey — membuat peta dengan mengemudikan robot</h3>
+  <figure>
+    <img src="../images/web-ui/11-map-survey.png" alt="Survey" />
+    <figcaption><b>Gambar 10.</b> Halaman Survey sebelum mapping dimulai. Lencana di kanan atas menunjukkan status SLAM (di sini "Navigating" = robot sedang dalam mode navigasi).</figcaption>
+  </figure>
+  <ol class="steps">
+    <li><b>Mulai.</b> Klik <span class="ui">Start mapping</span> dan konfirmasi. Robot keluar dari mode navigasi, mission yang berjalan dibatalkan, dan SLAM menyala.</li>
+    <li><b>Kemudikan robot.</b> Seret joystick di layar (lepas = robot berhenti), atau colok gamepad dan <b>tahan tombol bahu (L1)</b> sambil menggerakkan stik kiri. Pilih kecepatan: <b>Slow</b> 0,15 m/s · <b>Normal</b> 0,3 m/s · <b>Fast</b> 0,5 m/s.</li>
+    <li><b>Simpan.</b> Setelah semua area terpetakan, klik <span class="ui">Save map</span> dan beri nama. Peta disimpan dulu ke disk robot, lalu dikirim ke daftar peta. Setelah berhasil, SLAM dimatikan dan robot kembali ke mode kerja.</li>
+  </ol>
+  <ul>
+    <li><span class="ui">E-STOP</span> di halaman ini langsung mengirim kecepatan nol dan mematikan SLAM.</li>
+    <li><span class="ui">Stop mapping</span> mematikan SLAM tanpa menyimpan — bagian yang belum disimpan hilang.</li>
+    <li>Menutup tab tidak menghentikan mapping; buka lagi halaman ini untuk melanjutkan.</li>
+  </ul>
+  <div class="note"><b>Catatan</b>Kolom <b>Note</b> pada dialog Save map saat ini belum ikut tersimpan — hanya nama peta yang dikirim. Tambahkan catatan lewat <span class="ui">Rename</span>/versi berikutnya bila perlu.</div>
+
+  <!-- 4.8 Missions -->
+  <h3><span class="num">4.8</span>Mission — daftar rute dan yang sedang berjalan</h3>
+  <figure>
+    <img src="../images/web-ui/12-missions.png" alt="Missions" />
+    <figcaption><b>Gambar 11.</b> Daftar mission untuk satu peta. Kolom Mission menampilkan pratinjau rute (titik berwarna = jenis station).</figcaption>
+  </figure>
+  <ul>
+    <li>Pilih peta di kanan atas; mission selalu milik satu peta.</li>
+    <li><b>Status:</b> <span class="pill info">Running</span>, <span class="pill warn">Stopping</span>, <span class="pill grey">Idle</span>. <b>Last run:</b> completed / failed / canceled dan kapan.</li>
+    <li><span class="ui">Run</span> — memilih robot (hanya robot yang memakai peta ini) dan cara jalan: <b>Once</b>, <b>Laps</b> (jumlah putaran), <b>Until stopped</b>.</li>
+    <li><span class="ui">Edit</span> — Mission Editor. <span class="ui">⋯ Remove</span> — hapus rute (riwayat run tetap disimpan).</li>
+    <li>Kartu <b>Running now</b> muncul saat ada mission berjalan, dengan <span class="ui">Stop after lap</span> dan <span class="ui">Cancel</span> (keduanya meminta konfirmasi di halaman ini).</li>
+  </ul>
+  <figure class="half">
+    <img src="../images/web-ui/13-missions-new-dialog.png" alt="New mission" />
+    <figcaption><b>Gambar 12.</b> Dialog <span class="ui">New mission</span>: cukup nama, langkah ditambahkan di editor. (Pesan merah muncul bila nama dikosongkan.)</figcaption>
+  </figure>
+  <div class="tip"><b>Robot yang mengerjakan</b>Setelah mission dijalankan, robot yang melaksanakannya — bukan browser. Menutup halaman tidak menghentikan mission.</div>
+
+  <!-- 4.9 Mission editor -->
+  <h3><span class="num">4.9</span>Mission Editor — menyusun langkah</h3>
+  <figure>
+    <img src="../images/web-ui/14-mission-editor.png" alt="Mission editor" />
+    <figcaption><b>Gambar 13.</b> Mission "Tets" dengan tiga langkah. Klik station di peta untuk menambah langkah; rute tergambar bernomor.</figcaption>
+  </figure>
+  <p>Setiap langkah punya tiga pilihan:</p>
+  <table>
+    <thead><tr><th style="width:22%">Pilihan</th><th>Isi</th></tr></thead>
+    <tbody>
+      <tr><td>Station</td><td>Titik yang dituju.</td></tr>
+      <tr><td>What to do</td><td><b>Pass through</b> (hanya lewat/tiba), <b>Pick</b> (ambil barang), <b>Drop</b> (taruh barang). Default mengikuti jenis station.</td></tr>
+      <tr><td>After arriving</td><td><b>Continue</b> (langsung lanjut) atau <b>Wait for confirm</b> (tunggu seseorang menekan tombol konfirmasi — lihat Kiosk, Bab 7).</td></tr>
+    </tbody>
+  </table>
+  <ul>
+    <li>Panah ↑ ↓ mengubah urutan; ikon tong sampah menghapus langkah. <span class="ui">+ Add step</span> menambah langkah baru.</li>
+    <li><span class="ui">Save</span> aktif bila ada perubahan dan semua langkah punya station yang valid.</li>
+  </ul>
+  <div class="warn"><b>Perhatian</b>Pada robot simulasi saat ini (agent mode <code>mission_via=nav</code>), pilihan <b>Pick/Drop</b> akan ditolak robot, dan <b>Wait for confirm</b> belum benar-benar menunggu. Fitur ini membutuhkan integrasi Kiosk (Bab 7.5).</div>
+
+  <!-- 4.10 Station -->
+  <h3><span class="num">4.10</span>Station — titik bernama di peta</h3>
+  <figure>
+    <img src="../images/web-ui/15-stations.png" alt="Stations" />
+    <figcaption><b>Gambar 14.</b> Station di peta (titik berwarna dengan garis arah hadap) dan daftarnya di kanan.</figcaption>
+  </figure>
+  <table>
+    <thead><tr><th style="width:20%">Jenis</th><th style="width:14%">Warna</th><th>Kegunaan</th></tr></thead>
+    <tbody>
+      <tr><td>Pick</td><td><span class="dot" style="background:#1a6ef5"></span>biru</td><td>Tempat mengambil barang.</td></tr>
+      <tr><td>Drop</td><td><span class="dot" style="background:#7a3df5"></span>ungu</td><td>Tempat menaruh barang.</td></tr>
+      <tr><td>Pick &amp; drop</td><td><span class="dot" style="background:#0f9d58"></span>hijau</td><td>Keduanya di titik yang sama.</td></tr>
+      <tr><td>Charging</td><td><span class="dot" style="background:#f0a020"></span>oranye</td><td>Dock pengisian baterai.</td></tr>
+    </tbody>
+  </table>
+  <h4>Dua cara membuat station</h4>
+  <ol class="steps">
+    <li><b>Klik di peta:</b> <span class="ui">+ Add station</span> → klik lokasi (seret untuk arah hadap) → isi nama, jenis, catatan → <span class="ui">Add station</span>.</li>
+    <li><b>Ajarkan dari robot (paling akurat):</b> kemudikan robot ke titik itu, pilih robot di <span class="ui">Teach from…</span>, klik <span class="ui">Capture</span>. Pilihan ini hanya muncul untuk robot online yang memakai versi peta yang sama.</li>
+  </ol>
+  <ul>
+    <li>Seret penanda untuk memindah posisinya (tersimpan otomatis). Arah hadap hanya diubah lewat <span class="ui">⋯ Edit</span>.</li>
+    <li>Menghapus station membuat langkah mission yang memakainya tidak bisa dijalankan.</li>
+  </ul>
+
+  <!-- 4.11 Zone -->
+  <h3><span class="num">4.11</span>Zone — aturan area</h3>
+  <figure>
+    <img src="../images/web-ui/16-zones.png" alt="Zones" />
+    <figcaption><b>Gambar 15.</b> Zone "Keepout1" (merah) menutup satu lorong. Tombol jenis zone ada di bar atas.</figcaption>
+  </figure>
+  <table>
+    <thead><tr><th style="width:18%">Jenis</th><th>Perilaku robot</th><th style="width:30%">Contoh pemakaian</th></tr></thead>
+    <tbody>
+      <tr><td><span class="dot" style="background:#e5484d"></span>Keep out</td><td><b>Dilarang masuk</b>, dianggap seperti dinding. Goal di dalamnya ditolak; jika tidak ada jalan lain, rute gagal.</td><td>Panel listrik, tangga, area mesin, dapur.</td></tr>
+      <tr><td><span class="dot" style="background:#f0a020"></span>Avoid</td><td><b>Dihindari bila mungkin</b>. Nilai <i>Reluctance</i> 1–99: makin tinggi makin enggan. Tetap dilewati bila jalan memutar terlalu jauh atau tidak ada jalan lain.</td><td>Area ramai pengunjung, lantai basah.</td></tr>
+      <tr><td><span class="dot" style="background:#1a6ef5"></span>Speed limit</td><td>Robot <b>melambat</b> sampai batas kecepatan (m/s) selama di dalam area.</td><td>Tikungan buta, pintu, area anak-anak.</td></tr>
+      <tr><td><span class="dot" style="background:#7a3df5"></span>Trigger</td><td>Menyalakan sinyal selama robot di dalam area (mis. lampu, buzzer).</td><td>Pintu otomatis, lampu peringatan.</td></tr>
+    </tbody>
+  </table>
+  <h4>Menggambar zone</h4>
+  <ol class="steps">
+    <li>Pilih peta, lalu klik tombol jenis zone di bar atas.</li>
+    <li>Klik setiap sudut area (minimal 3). <code>Backspace</code> menghapus sudut terakhir.</li>
+    <li>Selesaikan dengan mengklik sudut pertama, klik dua kali, atau tekan <code>Enter</code>.</li>
+    <li>Isi nama, (batas kecepatan / reluctance bila perlu), centang <b>Active — robots obey it</b>, lalu <span class="ui">Add zone</span>.</li>
+  </ol>
+  <ul>
+    <li>Robot menerima perubahan zone dalam ±10 detik.</li>
+    <li>Untuk menonaktifkan sementara, gunakan <span class="ui">⋯ Switch off</span> (bentuknya tetap tersimpan) — lebih baik daripada menghapus.</li>
+    <li>Untuk mengubah bentuk: pilih zone lalu seret sudut-sudutnya (tersimpan otomatis).</li>
+  </ul>
+  <div class="note"><b>Agar zone benar-benar berpengaruh</b>Di robot harus berjalan <code>zone_mask_server</code> dan filter Nav2 (keepout/speed) aktif. Pada robot simulasi gprp keduanya sudah disiapkan dan dijalankan otomatis oleh Robot Agent.</div>
+
+  <!-- 4.12 Alarm -->
+  <h3><span class="num">4.12</span>Alarm &amp; notifikasi</h3>
+  <p>Saat mission berjalan, Web UI menampilkan <b>notifikasi pop-up</b> (pojok kanan atas, hilang sendiri) dan menyimpan <b>catatan</b> yang bisa dilihat lewat lonceng 🔔 dan halaman <span class="ui">Alarm</span>. Ini bekerja di halaman mana pun.</p>
+  <table>
+    <thead><tr><th style="width:24%">Kejadian</th><th>Pop-up</th><th style="width:16%">Catatan</th></tr></thead>
+    <tbody>
+      <tr><td>Mission dimulai</td><td>—</td><td><span class="pill info">info</span></td></tr>
+      <tr><td>Robot tiba di station</td><td>Hijau: "AMR-02 reached Poin2" · "Tets · step 2 of 3"</td><td><span class="pill info">info</span></td></tr>
+      <tr><td>Mission selesai</td><td>Hijau: "AMR-02 finished Tets"</td><td><span class="pill info">info</span></td></tr>
+      <tr><td>Mission gagal</td><td>Merah: "Tets failed on AMR-02" + alasannya</td><td><span class="pill fault">fault</span></td></tr>
+      <tr><td>Mission dibatalkan</td><td>Kuning (tidak muncul jika Anda sendiri yang membatalkan)</td><td><span class="pill warn">warning</span></td></tr>
+    </tbody>
+  </table>
+  <div class="grid2">
+    <figure>
+      <img src="../images/web-ui/06-notifications-bell.png" alt="Lonceng" />
+      <figcaption><b>Gambar 16.</b> Lonceng: 3 catatan terbaru, <span class="ui">Acknowledge all</span>, dan <span class="ui">View all alarms</span>.</figcaption>
+    </figure>
+    <figure>
+      <img src="../images/web-ui/17-alarms.png" alt="Alarm" />
+      <figcaption><b>Gambar 17.</b> Halaman Alarm: daftar Active dan Acknowledged.</figcaption>
+    </figure>
+  </div>
+  <ul>
+    <li><span class="ui">Acknowledge</span> menandai sudah dibaca: hilang dari hitungan lonceng, tetapi tetap ada di riwayat.</li>
+    <li>Catatan disimpan di <b>browser masing-masing</b> (maksimal 200 terakhir), bukan dibagikan antar operator. Riwayat resmi run tetap ada di halaman Mission.</li>
+    <li>Saat ini hanya kejadian mission yang menghasilkan alarm; robot offline ditampilkan di Dashboard, bukan sebagai alarm.</li>
+  </ul>
+</section>
+
+<!-- ═════════════════════════════ 5. AGENT ════════════════════════════════════ -->
+<section class="chapter" id="agent">
+  <h2><span class="num">5</span>Robot Agent</h2>
+  <p class="lead">Program yang berjalan di komputer setiap robot. Ia adalah "penghubung" antara apa yang Anda atur di Web UI dan apa yang benar-benar dikerjakan robot.</p>
+
+  <h3><span class="num">5.1</span>Tugas agent</h3>
+  <div class="cards">
+    <div class="card"><h4>Mengatur mode robot</h4><p>Menyalakan/mematikan Nav2 (navigasi) atau SLAM (membuat peta) sesuai keinginan di backend: Working, Parked, Surveying.</p></div>
+    <div class="card"><h4>Mengurus peta</h4><p>Mengunduh peta yang ditugaskan, mengecek keutuhannya (hash), menyimpannya di cache robot, dan memuatnya ke Nav2.</p></div>
+    <div class="card"><h4>Station &amp; zone</h4><p>Mengambil station dan zone peta aktif, menyimpannya di disk robot, dan meneruskan zone ke Nav2.</p></div>
+    <div class="card"><h4>Menjalankan mission</h4><p>Mengambil run, mengirim robot ke setiap station, melaporkan step, tiba, selesai, gagal, atau dibatalkan.</p></div>
+  </div>
+
+  <h3><span class="num">5.2</span>Siklus sinkronisasi (setiap ±10 detik)</h3>
+  <div class="diagram">
+    <svg viewBox="0 0 720 210" xmlns="http://www.w3.org/2000/svg" font-family="Inter, Noto Sans, sans-serif">
+      <defs><marker id="b1" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#1a6ef5"/></marker></defs>
+      <g font-size="11.5" fill="#111827">
+        <rect x="10" y="20" width="160" height="62" rx="10" fill="#e8f0fe" stroke="#1a6ef5"/>
+        <text x="90" y="46" text-anchor="middle" font-weight="700">1. Baca registry</text>
+        <text x="90" y="64" text-anchor="middle" fill="#374151">peta &amp; mode diminta</text>
+        <rect x="190" y="20" width="160" height="62" rx="10" fill="#e8f0fe" stroke="#1a6ef5"/>
+        <text x="270" y="46" text-anchor="middle" font-weight="700">2. Kirim laporan</text>
+        <text x="270" y="64" text-anchor="middle" fill="#374151">yang tertunda (outbox)</text>
+        <rect x="370" y="20" width="160" height="62" rx="10" fill="#e8f0fe" stroke="#1a6ef5"/>
+        <text x="450" y="46" text-anchor="middle" font-weight="700">3. Siapkan peta</text>
+        <text x="450" y="64" text-anchor="middle" fill="#374151">unduh/cek hash, muat</text>
+        <rect x="550" y="20" width="160" height="62" rx="10" fill="#e8f0fe" stroke="#1a6ef5"/>
+        <text x="630" y="46" text-anchor="middle" font-weight="700">4. Sesuaikan mode</text>
+        <text x="630" y="64" text-anchor="middle" fill="#374151">nyalakan/matikan Nav2</text>
+        <rect x="190" y="125" width="160" height="62" rx="10" fill="#e6f6ee" stroke="#0f9d58"/>
+        <text x="270" y="151" text-anchor="middle" font-weight="700">5. Station &amp; zone</text>
+        <text x="270" y="169" text-anchor="middle" fill="#374151">simpan ke disk, publish</text>
+        <rect x="370" y="125" width="160" height="62" rx="10" fill="#e6f6ee" stroke="#0f9d58"/>
+        <text x="450" y="151" text-anchor="middle" font-weight="700">6. Cek mission</text>
+        <text x="450" y="169" text-anchor="middle" fill="#374151">ada run? jalankan</text>
+      </g>
+      <g stroke="#1a6ef5" stroke-width="2" fill="none">
+        <line x1="170" y1="51" x2="186" y2="51" marker-end="url(#b1)"/>
+        <line x1="350" y1="51" x2="366" y2="51" marker-end="url(#b1)"/>
+        <line x1="530" y1="51" x2="546" y2="51" marker-end="url(#b1)"/>
+        <path d="M630,82 C630,110 520,110 500,122" marker-end="url(#b1)"/>
+        <line x1="370" y1="156" x2="354" y2="156" marker-end="url(#b1)"/>
+        <path d="M190,156 C90,156 90,110 90,86" marker-end="url(#b1)"/>
+      </g>
+      <text x="40" y="132" font-size="10.5" fill="#1a6ef5">ulangi ±10 s</text>
+    </svg>
+  </div>
+  <p>Karena robot yang <b>menarik</b> data (bukan server yang mendorong), robot tetap bekerja walau berada di belakang NAT atau berpindah-pindah access point WiFi. Konsekuensinya: perubahan di Web UI butuh hingga ±10 detik untuk sampai ke robot.</p>
+
+  <h3><span class="num">5.3</span>Mode robot</h3>
+  <table>
+    <thead><tr><th style="width:22%">Di Web UI</th><th style="width:16%">Di agent</th><th>Yang terjadi</th></tr></thead>
+    <tbody>
+      <tr><td>Working (Release)</td><td><code>nav</code></td><td>Nav2 + peta aktif menyala. Robot siap menerima goal dan mission. Ini kondisi normal.</td></tr>
+      <tr><td>Parked (Park / Stop)</td><td><code>idle</code></td><td>Nav2 dimatikan; robot diam dan tidak menerima mission.</td></tr>
+      <tr><td>Surveying</td><td><code>map</code></td><td>SLAM menyala untuk membuat peta (dari halaman Survey).</td></tr>
+    </tbody>
+  </table>
+  <p>Saat Nav2 menyala, agent juga menjalankan <code>zone_mask_server</code> yang mengubah zone menjadi "mask" untuk filter Nav2 — dimatikan bersamaan saat Nav2 berhenti.</p>
+
+  <h3><span class="num">5.4</span>Menjalankan mission</h3>
+  <ol class="steps">
+    <li><b>Ambil run.</b> Agent menemukan run untuk robotnya di backend (lengkap dengan daftar step).</li>
+    <li><b>Setiap step:</b> lapor "sedang ke step N" → kirim goal Nav2 ke pose station → tunggu hasilnya. Selama berjalan, setiap 2 detik agent memeriksa apakah run dibatalkan; bila ya, goal dibatalkan saat itu juga.</li>
+    <li><b>Tiba:</b> lapor "reached" (memicu notifikasi di Web UI) lalu lanjut ke step berikutnya.</li>
+    <li><b>Akhir lap:</b> cek "Stop after lap" dan jumlah lap; lapor <i>done</i>. Bila satu step gagal, seluruh run dihentikan dan dilaporkan <i>failed</i> — robot tidak mencoba ulang otomatis (agar tidak terus menabrak pintu tertutup tanpa pengawasan).</li>
+  </ol>
+
+  <h3><span class="num">5.5</span>Saat server (backend) tidak terjangkau</h3>
+  <p>Agent menyimpan "ingatan" di disk robot (folder <code>~/amr_agent/state/</code>) sehingga robot tetap aman bekerja ketika jaringan ke server putus:</p>
+  <table>
+    <thead><tr><th style="width:30%">Situasi</th><th>Perilaku</th></tr></thead>
+    <tbody>
+      <tr><td>Robot dinyalakan saat server mati</td><td>Memakai catatan registry terakhir (mode &amp; peta) dan peta dari cache — <b>hanya jika</b> peta cache cocok dengan hash yang tercatat. Station dan zone dibaca dari disk.</td></tr>
+      <tr><td>Jaringan putus di tengah mission</td><td>Mission tetap dilanjutkan. Laporan progres, tiba dan hasil disimpan di <code>outbox.json</code> dan dikirim berurutan saat server kembali.</td></tr>
+      <tr><td>Jaringan kembali</td><td>Laporan tertunda dikirim dulu, baru robot meminta pekerjaan baru.</td></tr>
+      <tr><td>Server masih mengira mission "berjalan" padahal robot sudah selesai</td><td>Robot ingat run yang sudah ia selesaikan dan hanya mengirim ulang hasilnya — <b>tidak menjalankan rute dua kali</b>.</td></tr>
+      <tr><td>Operator membatalkan saat robot offline</td><td>Robot baru tahu setelah jaringan kembali. Untuk hal mendesak gunakan tombol stop/E-STOP di robot.</td></tr>
+    </tbody>
+  </table>
+
+  <h3><span class="num">5.6</span>File agent di robot</h3>
+  <table class="plain">
+    <thead><tr><th style="width:36%">File / folder</th><th>Isi</th></tr></thead>
+    <tbody>
+      <tr><td><code>~/amr_agent/robot_agent_node.py</code></td><td>Program agent.</td></tr>
+      <tr><td><code>~/amr_agent/agent_state.py</code></td><td>Penyimpanan "ingatan" offline.</td></tr>
+      <tr><td><code>~/amr_agent/backend_client.py</code></td><td>Komunikasi HTTP ke backend.</td></tr>
+      <tr><td><code>~/amr_agent/zone_mask_server.py</code></td><td>Pengubah zone menjadi mask Nav2.</td></tr>
+      <tr><td><code>~/amr_agent/run_agent_gprp.sh</code></td><td>Script untuk menjalankan agent (parameter peluncuran).</td></tr>
+      <tr><td><code>~/amr_agent/state/</code></td><td><code>registry.json</code>, <code>stations_&lt;peta&gt;.json</code>, <code>zones_&lt;peta&gt;.json</code>, <code>outbox.json</code>, <code>finished_runs.json</code>.</td></tr>
+      <tr><td><code>~/map_cache/&lt;id-peta&gt;/</code></td><td>Salinan peta (map.yaml + map.pgm).</td></tr>
+    </tbody>
+  </table>
+
+  <h3><span class="num">5.7</span>Instalasi &amp; menjalankan</h3>
+  <p>Dari komputer pengembang, kirim agent ke robot (sumber file ada di <code>ros2_ws/src/amr_bringup/scripts</code>):</p>
+  <pre><code>./scripts/deploy_agent.sh user@ip-robot     # salin ke ~/amr_agent dan verifikasi checksum</code></pre>
+  <p>Di robot, jalankan dengan ID robot (dari Web UI) dan alamat backend:</p>
+  <pre><code>~/amr_agent/run_agent_gprp.sh &lt;robot-id&gt; http://&lt;ip-server&gt;:3002
+# contoh:
+~/amr_agent/run_agent_gprp.sh 7fc87960-8c98-4d98-8a83-a4401d6bef0a http://192.168.2.48:3002</code></pre>
+  <p>rosbridge dijalankan terpisah pada port 9090:</p>
+  <pre><code>ros2 launch rosbridge_server rosbridge_websocket_launch.xml port:=9090</code></pre>
+  <div class="note"><b>Robot simulasi vs robot asli</b><code>run_agent_gprp.sh</code> saat ini disetel untuk simulasi Isaac Sim (<code>*_sim_launch.py</code>, <code>use_sim_time:=true</code>). Robot fisik memerlukan paket launch-nya sendiri dan <code>use_sim_time_arg:=false</code>. Untuk produksi, agent sebaiknya dijalankan sebagai <i>systemd service</i> agar menyala otomatis (lihat <code>docs/runbooks/PRODUCTION_DEPLOYMENT.md</code>).</div>
+</section>
+
+<!-- ═════════════════════════════ 6. MULTI ROBOT ════════════════════════════ -->
+<section class="chapter" id="multi">
+  <h2><span class="num">6</span>Operasi Banyak Robot (Multi-Robot)</h2>
+  <p class="lead">Sistem ini dirancang untuk banyak robot sejak awal: satu Web UI dan satu backend melayani seluruh armada, sementara setiap robot mengurus dirinya sendiri.</p>
+
+  <h3><span class="num">6.1</span>Gambaran arsitektur</h3>
+  <div class="diagram">
+    <svg viewBox="0 0 720 330" xmlns="http://www.w3.org/2000/svg" font-family="Inter, Noto Sans, sans-serif">
+      <defs>
+        <marker id="c1" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#1a6ef5"/></marker>
+        <marker id="c2" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#9ca3af"/></marker>
+      </defs>
+      <rect x="40" y="18" width="250" height="78" rx="12" fill="#e8f0fe" stroke="#1a6ef5"/>
+      <text x="165" y="48" text-anchor="middle" font-weight="700" font-size="14.5" fill="#111827">Operator (browser)</text>
+      <text x="165" y="70" text-anchor="middle" font-size="11" fill="#374151">satu Web UI untuk semua robot</text>
+      <rect x="430" y="18" width="250" height="78" rx="12" fill="#f3f4f6" stroke="#6b7280"/>
+      <text x="555" y="48" text-anchor="middle" font-weight="700" font-size="14.5" fill="#111827">Server: backend + DB</text>
+      <text x="555" y="70" text-anchor="middle" font-size="11" fill="#374151">registry bersama seluruh armada</text>
+      <line x1="290" y1="57" x2="426" y2="57" stroke="#9ca3af" stroke-width="2" marker-end="url(#c2)"/>
+
+      <g font-size="11" fill="#111827">
+        <rect x="20" y="200" width="210" height="110" rx="12" fill="#e6f6ee" stroke="#0f9d58"/>
+        <text x="125" y="226" text-anchor="middle" font-weight="700" font-size="13.5">AMR-01</text>
+        <text x="125" y="246" text-anchor="middle" fill="#374151">agent · robot_id A</text>
+        <text x="125" y="263" text-anchor="middle" fill="#374151">rosbridge ws://10.0.0.21:9090</text>
+        <text x="125" y="280" text-anchor="middle" fill="#374151">ROS_DOMAIN_ID 11</text>
+        <text x="125" y="297" text-anchor="middle" fill="#374151">peta: Gudang v3</text>
+
+        <rect x="255" y="200" width="210" height="110" rx="12" fill="#e6f6ee" stroke="#0f9d58"/>
+        <text x="360" y="226" text-anchor="middle" font-weight="700" font-size="13.5">AMR-02</text>
+        <text x="360" y="246" text-anchor="middle" fill="#374151">agent · robot_id B</text>
+        <text x="360" y="263" text-anchor="middle" fill="#374151">rosbridge ws://10.0.0.22:9090</text>
+        <text x="360" y="280" text-anchor="middle" fill="#374151">ROS_DOMAIN_ID 12</text>
+        <text x="360" y="297" text-anchor="middle" fill="#374151">peta: Gudang v3</text>
+
+        <rect x="490" y="200" width="210" height="110" rx="12" fill="#e6f6ee" stroke="#0f9d58"/>
+        <text x="595" y="226" text-anchor="middle" font-weight="700" font-size="13.5">AMR-03</text>
+        <text x="595" y="246" text-anchor="middle" fill="#374151">agent · robot_id C</text>
+        <text x="595" y="263" text-anchor="middle" fill="#374151">rosbridge ws://10.0.0.23:9090</text>
+        <text x="595" y="280" text-anchor="middle" fill="#374151">ROS_DOMAIN_ID 13</text>
+        <text x="595" y="297" text-anchor="middle" fill="#374151">peta: Lantai 2 v1</text>
+      </g>
+      <g stroke="#1a6ef5" stroke-width="2" stroke-dasharray="6 4" fill="none">
+        <line x1="140" y1="198" x2="500" y2="100" marker-end="url(#c1)"/>
+        <line x1="360" y1="198" x2="530" y2="100" marker-end="url(#c1)"/>
+        <line x1="595" y1="198" x2="575" y2="100" marker-end="url(#c1)"/>
+      </g>
+      <g stroke="#9ca3af" stroke-width="1.5" fill="none">
+        <line x1="110" y1="96" x2="110" y2="196" marker-end="url(#c2)"/>
+        <line x1="190" y1="96" x2="330" y2="196" marker-end="url(#c2)"/>
+        <line x1="240" y1="96" x2="560" y2="196" marker-end="url(#c2)"/>
+      </g>
+      <text x="610" y="150" font-size="10.5" fill="#1a6ef5">tiap agent menarik</text>
+      <text x="610" y="164" font-size="10.5" fill="#1a6ef5">tugasnya sendiri</text>
+      <text x="40" y="150" font-size="10.5" fill="#6b7280">browser → rosbridge</text>
+      <text x="40" y="164" font-size="10.5" fill="#6b7280">robot yang dibuka (live)</text>
+    </svg>
+  </div>
+
+  <h3><span class="num">6.2</span>Aturan dasar</h3>
+  <table>
+    <thead><tr><th style="width:28%">Hal</th><th>Aturan</th></tr></thead>
+    <tbody>
+      <tr><td>Satu robot, satu agent</td><td>Setiap robot menjalankan agent-nya sendiri dengan <b>robot_id unik</b> (ID dari Web UI). Agent hanya mengurus robot itu.</td></tr>
+      <tr><td>Satu robot, satu rosbridge</td><td>Setiap robot didaftarkan dengan alamat rosbridge-nya sendiri. Web UI menolak dua robot dengan alamat yang sama.</td></tr>
+      <tr><td>ROS_DOMAIN_ID berbeda</td><td>Beri setiap robot domain DDS berbeda (mis. 11, 12, 13) agar topik ROS robot satu tidak tercampur dengan robot lain di jaringan yang sama.</td></tr>
+      <tr><td>Peta bersama</td><td>Banyak robot boleh memakai versi peta yang sama. Station dan zone milik peta, jadi otomatis berlaku untuk semua robot di peta itu.</td></tr>
+      <tr><td>Satu run aktif per robot</td><td>Satu robot hanya bisa menjalankan satu mission dalam satu waktu (tidak ada antrean). Mission yang sama boleh dijalankan oleh robot berbeda.</td></tr>
+      <tr><td>Robot harus di peta mission</td><td>Mission hanya bisa dijalankan oleh robot yang memakai peta tempat mission dibuat.</td></tr>
+    </tbody>
+  </table>
+
+  <h3><span class="num">6.3</span>Menambah robot baru ke armada</h3>
+  <ol class="steps">
+    <li>Siapkan robot: ROS 2, stack navigasi, rosbridge di port 9090, dan <code>ROS_DOMAIN_ID</code> unik.</li>
+    <li>Di Web UI: <span class="ui">Robot</span> → <span class="ui">+ Add robot</span> (nama + <code>ws://ip-robot:9090</code>). Salin ID robot yang dibuat.</li>
+    <li>Kirim agent: <code>./scripts/deploy_agent.sh user@ip-robot</code>, lalu jalankan dengan ID tersebut (sebaiknya sebagai systemd service).</li>
+    <li>Di <span class="ui">Maps</span>, <span class="ui">Assign</span> peta ke robot baru. Dalam ±10 detik robot memuat peta dan menyalakan navigasi.</li>
+    <li>Buka halaman navigasinya, lakukan <span class="ui">Set pose</span>. Robot siap menerima mission.</li>
+  </ol>
+
+  <h3><span class="num">6.4</span>Bagaimana Web UI menangani banyak robot</h3>
+  <ul>
+    <li><b>Dashboard</b> menampilkan semua robot sekaligus, dengan robot bermasalah di bagian atas.</li>
+    <li>Browser membuka koneksi ke setiap robot, tetapi hanya robot yang <b>halamannya sedang dibuka</b> yang mengirim data lengkap (peta, laser, costmap). Robot lain hanya mengirim data penting (baterai, status) agar jaringan tidak berat.</li>
+    <li>Notifikasi mission dan alarm berlaku untuk semua robot, dengan nama robot sebagai sumbernya.</li>
+    <li>Gunakan <span class="ui">Stop monitoring</span> untuk robot yang sedang diservis agar tidak mengganggu Dashboard.</li>
+  </ul>
+
+  <h3><span class="num">6.5</span>Batasan saat ini (perlu diketahui)</h3>
+  <div class="warn"><b>Robot belum saling berkoordinasi</b><p>Setiap robot merencanakan jalurnya sendiri. Robot lain hanya terlihat sebagai rintangan oleh sensornya — tidak ada pengaturan lalu lintas, antrean di lorong sempit, atau pembagian tugas otomatis. Di lorong satu jalur, dua robot yang berpapasan bisa saling menunggu.</p></div>
+  <ul>
+    <li><b>Penugasan mission manual:</b> operator memilih robot untuk setiap run; belum ada pemilihan robot terdekat/teranggur secara otomatis.</li>
+    <li><b>Tanpa antrean:</b> mission baru ditolak bila robot masih menjalankan mission lain. Gabungkan "A lalu B" menjadi satu mission.</li>
+    <li><b>Keamanan jaringan:</b> backend dan rosbridge belum memakai login. Simpan seluruh armada di jaringan tertutup/VPN.</li>
+    <li><b>Kebutuhan jaringan:</b> browser harus bisa menjangkau rosbridge setiap robot (atau lewat proxy nginx di server), dan setiap robot harus bisa menjangkau backend.</li>
+  </ul>
+  <div class="tip"><b>Saran untuk armada</b><p>Pakai satu peta per area kerja dan tugaskan ke semua robot di area itu; buat zone "Speed limit" atau "Avoid" di lorong sempit dan persimpangan; jadwalkan mission panjang ke robot berbeda agar tidak memakai lorong yang sama pada waktu yang sama.</p></div>
+</section>
+
+<!-- ═════════════════════════════ 7. KIOSK ═══════════════════════════════════ -->
+<section class="chapter" id="kiosk">
+  <h2><span class="num">7</span>Kiosk — Layar di Robot</h2>
+  <p class="lead">Tampilan untuk orang di sekitar robot (tamu, pelanggan, staf). Dirancang agar bisa dibaca dari jarak 1–2 meter dalam 2 detik: teks besar, satu pesan per layar, dan warna yang langsung menunjukkan kondisi.</p>
+
+  <div class="warn"><b>Status: mockup</b>Kiosk saat ini adalah <b>purwarupa tampilan</b> (folder <code>kiosk-mockup/</code>) dengan data simulasi. Belum tersambung ke robot; rencana integrasinya ada di Bab 7.5.</div>
+
+  <h3><span class="num">7.1</span>Wajah robot — layar utama</h3>
+  <p>Saat tidak ada hal penting, layar menampilkan dua "mata" yang berkedip, melirik sekitar, dan mengikuti sentuhan — orang cenderung lebih ramah pada robot yang punya wajah. Status bar kecil di atas menampilkan nama robot, status, jam dan baterai.</p>
+  <div class="grid2">
+    <figure><img src="../images/kiosk/kiosk-idle.png" alt="Idle" /><figcaption><b>Gambar 18.</b> Siap — "Halo! Saya siap mengantar".</figcaption></figure>
+    <figure><img src="../images/kiosk/kiosk-moving.png" alt="Moving" /><figcaption><b>Gambar 19.</b> Mengantar — tujuan dan progres rute.</figcaption></figure>
+    <figure><img src="../images/kiosk/kiosk-blocked.png" alt="Blocked" /><figcaption><b>Gambar 20.</b> Terhalang — mata kuning cemas, "Permisi 🙏".</figcaption></figure>
+    <figure><img src="../images/kiosk/kiosk-thanks.png" alt="Thanks" /><figcaption><b>Gambar 21.</b> Terima kasih — mata tersenyum setelah barang diambil.</figcaption></figure>
+  </div>
+
+  <h3><span class="num">7.2</span>Tiba di tujuan — layar konfirmasi</h3>
+  <p>Layar terpenting. Saat robot tiba di step bertanda <b>Wait for confirm</b>, layar penuh menampilkan nama tujuan dan satu tombol besar. Ada bunyi "ding-dong" dan hitungan mundur: bila tidak ada yang menekan dalam 45 detik, robot melanjutkan sendiri.</p>
+  <div class="grid-wide">
+    <figure>
+      <img src="../images/kiosk/kiosk-arrived.png" alt="Arrived" />
+      <figcaption><b>Gambar 22.</b> "Pesanan Anda sudah tiba! — MEJA 5" dengan tombol <b>SUDAH DIAMBIL</b> dan hitung mundur.</figcaption>
+    </figure>
+    <figure>
+      <img src="../images/kiosk/kiosk-arrived-portrait.png" alt="Arrived portrait" />
+      <figcaption><b>Gambar 23.</b> Versi layar tegak (portrait).</figcaption>
+    </figure>
+  </div>
+
+  <h4>Alur konfirmasi</h4>
+  <div class="diagram">
+    <svg viewBox="0 0 720 120" xmlns="http://www.w3.org/2000/svg" font-family="Inter, Noto Sans, sans-serif">
+      <defs><marker id="d1" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#1a6ef5"/></marker></defs>
+      <g font-size="11" fill="#111827" text-anchor="middle">
+        <rect x="5" y="25" width="130" height="64" rx="10" fill="#e8f0fe" stroke="#1a6ef5"/><text x="70" y="52" font-weight="700">Robot tiba</text><text x="70" y="70" fill="#374151">step "confirm"</text>
+        <rect x="150" y="25" width="130" height="64" rx="10" fill="#e8f0fe" stroke="#1a6ef5"/><text x="215" y="52" font-weight="700">Kiosk</text><text x="215" y="70" fill="#374151">layar "tiba" + bunyi</text>
+        <rect x="295" y="25" width="130" height="64" rx="10" fill="#e6f6ee" stroke="#0f9d58"/><text x="360" y="52" font-weight="700">Orang menekan</text><text x="360" y="70" fill="#374151">SUDAH DIAMBIL</text>
+        <rect x="440" y="25" width="130" height="64" rx="10" fill="#e8f0fe" stroke="#1a6ef5"/><text x="505" y="52" font-weight="700">/mission_confirm</text><text x="505" y="70" fill="#374151">ke agent</text>
+        <rect x="585" y="25" width="130" height="64" rx="10" fill="#e8f0fe" stroke="#1a6ef5"/><text x="650" y="52" font-weight="700">Robot lanjut</text><text x="650" y="70" fill="#374151">ke step berikutnya</text>
+      </g>
+      <g stroke="#1a6ef5" stroke-width="2"><line x1="135" y1="57" x2="146" y2="57" marker-end="url(#d1)"/><line x1="280" y1="57" x2="291" y2="57" marker-end="url(#d1)"/><line x1="425" y1="57" x2="436" y2="57" marker-end="url(#d1)"/><line x1="570" y1="57" x2="581" y2="57" marker-end="url(#d1)"/></g>
+      <text x="360" y="112" text-anchor="middle" font-size="10.5" fill="#6b7280">Tanpa tombol ditekan selama 45 detik → robot lanjut otomatis</text>
+    </svg>
+  </div>
+
+  <h3><span class="num">7.3</span>Layar kondisi khusus</h3>
+  <div class="grid2">
+    <figure><img src="../images/kiosk/kiosk-charging.png" alt="Charging" /><figcaption><b>Gambar 24.</b> Mengisi daya — baterai besar beranimasi.</figcaption></figure>
+    <figure><img src="../images/kiosk/kiosk-lowbat.png" alt="Low battery" /><figcaption><b>Gambar 25.</b> Baterai lemah — kembali ke charger.</figcaption></figure>
+    <figure><img src="../images/kiosk/kiosk-error.png" alt="Error" /><figcaption><b>Gambar 26.</b> Butuh bantuan — tidak bisa melanjutkan rute.</figcaption></figure>
+    <figure><img src="../images/kiosk/kiosk-estop.png" alt="E-STOP" /><figcaption><b>Gambar 27.</b> E-STOP — layar merah berkedip.</figcaption></figure>
+  </div>
+
+  <h3><span class="num">7.4</span>Menu staf &amp; mencoba mockup</h3>
+  <ul>
+    <li><b>Menu staf</b> tersembunyi dari tamu: <b>tekan lama pojok kiri atas 1,2 detik</b>, masukkan PIN (mockup: <code>1234</code>). Isinya: <i>Batalkan misi</i>, <i>Kembali ke charger</i>, <i>Info teknis</i> (IP, mode, baterai, rute).</li>
+    <li><b>Bahasa:</b> Indonesia dan Inggris (tombol ID/EN di panel simulasi).</li>
+  </ul>
+  <p>Untuk mencoba di laptop, buka <code>kiosk-mockup/index.html</code> di browser (F11 untuk layar penuh). Panel simulasi ⚙ (tombol <code>D</code>) mengganti layar dengan tombol 1–9; tekan 2 untuk menjalankan seluruh rute contoh: Dapur → Meja 5 (konfirmasi) → Meja 8 (konfirmasi) → Dapur.</p>
+  <figure>
+    <img src="../images/kiosk/kiosk-sim-panel.png" alt="Panel simulasi" />
+    <figcaption><b>Gambar 28.</b> Mockup dengan panel simulasi terbuka (kanan bawah). Panel ini tidak ada di kiosk sesungguhnya.</figcaption>
+  </figure>
+
+  <h3><span class="num">7.5</span>Rencana integrasi ke robot</h3>
+  <table>
+    <thead><tr><th style="width:34%">Di mockup</th><th>Di robot sesungguhnya</th></tr></thead>
+    <tbody>
+      <tr><td>Tombol panel simulasi</td><td>Status dari agent lewat topik <code>/robot_mode_status</code> (rosbridge lokal <code>ws://localhost:9090</code>).</td></tr>
+      <tr><td>Rute &amp; nama tujuan</td><td>Rencana run yang sudah dipegang agent (step + nama station).</td></tr>
+      <tr><td>Tombol SUDAH DIAMBIL</td><td>Memanggil service <code>/mission_confirm</code>; agent menunggu di step "Wait for confirm".</td></tr>
+      <tr><td>Hitung mundur 45 detik</td><td>Dijalankan di agent, agar tetap berlaku meski layar mati.</td></tr>
+      <tr><td>Baterai, E-STOP, error</td><td><code>/battery_state</code>, status agent, <code>/robot_status</code>.</td></tr>
+    </tbody>
+  </table>
+  <p>Di robot, kiosk dijalankan sebagai halaman layar penuh: <code>chromium --kiosk file:///…/index.html</code>. Karena berbicara langsung dengan rosbridge di robot, kiosk tetap berfungsi walau server atau WiFi putus. Web UI operator juga akan menampilkan "menunggu konfirmasi" beserta tombol <i>Continue</i> jarak jauh sebagai cadangan.</p>
+</section>
+
+<!-- ═════════════════════════ 8. MASALAH ═════════════════════════════════════ -->
+<section class="chapter" id="masalah">
+  <h2><span class="num">8</span>Mengatasi Masalah</h2>
+  <p class="lead">Masalah yang paling sering ditemui dan cara menanganinya.</p>
+  <table>
+    <thead><tr><th style="width:30%">Gejala</th><th style="width:30%">Kemungkinan penyebab</th><th>Yang dilakukan</th></tr></thead>
+    <tbody>
+      <tr><td>Robot "Offline" di Dashboard</td><td>Robot mati, rosbridge tidak jalan, atau beda jaringan.</td><td>Nyalakan robot; jalankan rosbridge port 9090; cek alamat <i>Bridge WebSocket</i> di halaman Robot.</td></tr>
+      <tr><td>Status "Stale"</td><td>Data berhenti datang (program di robot macet atau jaringan lambat).</td><td>Buka <span class="ui">Details</span> untuk melihat topik mana yang Stale; matikan layer Costmap bila jaringan lemah.</td></tr>
+      <tr><td>"This robot cannot reach the registry"</td><td>Agent tidak bisa menghubungi backend.</td><td>Cek alamat backend saat menjalankan agent dan apakah server bisa di-ping dari robot.</td></tr>
+      <tr><td>"Should be navigating, but is not"</td><td>Nav2 belum/ gagal menyala.</td><td>Tunggu ±20 detik; bila tetap, lihat log agent di robot.</td></tr>
+      <tr><td>Tombol <span class="ui">Start mission</span> tidak aktif</td><td>Lihat kalimat di bawah kartu Mission.</td><td>Biasanya: <span class="ui">Set pose</span> dulu, atau <span class="ui">Release</span> robot di Dashboard.</td></tr>
+      <tr><td>Robot diam dengan goal aktif ("Not moving for…")</td><td>Jalur terhalang/terlalu sempit, atau robot tidak yakin posisinya.</td><td>Cek layer Laser/Costmap; singkirkan halangan; <span class="ui">Cancel goal</span> lalu kirim ulang.</td></tr>
+      <tr><td>Goal ditolak / "Could not reach it"</td><td>Tujuan di dalam zone Keep out atau menempel dinding.</td><td>Pilih titik lain atau ubah zone.</td></tr>
+      <tr><td>Robot macet menempel dinding ("Start occupied")</td><td>Badan robot sudah menyentuh area terlarang.</td><td>Geser robot sedikit secara manual, lalu kirim goal lagi.</td></tr>
+      <tr><td>Simulasi: robot diam &amp; "invalid source"</td><td>Isaac Sim di-Stop lalu Play sehingga jam kamera dan jam simulasi berbeda.</td><td>Gunakan <b>Pause</b>, bukan Stop. Bila terlanjur, tutup dan buka ulang Isaac Sim.</td></tr>
+      <tr><td>Zone tidak berpengaruh</td><td>Zone nonaktif, di peta lain, atau robot belum sinkron.</td><td>Pastikan zone <i>Active</i> di peta yang dipakai robot; tunggu ±10 detik; nyalakan layer Costmap untuk memastikan.</td></tr>
+      <tr><td>Notifikasi tidak muncul</td><td>Halaman dibuka setelah kejadian, atau agent versi lama.</td><td>Notifikasi hanya untuk kejadian setelah halaman dibuka; pastikan agent sudah diperbarui.</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ═════════════════════════ 9. GLOSARIUM ═══════════════════════════════════ -->
+<section class="chapter" id="glosarium">
+  <h2><span class="num">9</span>Glosarium</h2>
+  <table>
+    <thead><tr><th style="width:26%">Istilah</th><th>Penjelasan</th></tr></thead>
+    <tbody>
+      <tr><td>AMCL</td><td>Metode robot untuk menentukan posisinya di peta dengan mencocokkan data laser. Butuh posisi awal dari <i>Set pose</i>.</td></tr>
+      <tr><td>Agent</td><td>Program di robot yang menjalankan perintah dari backend (Bab 5).</td></tr>
+      <tr><td>Backend / registry</td><td>Server + database yang menyimpan semua data sistem.</td></tr>
+      <tr><td>Costmap</td><td>Peta "biaya" yang dipakai perencana jalur: dinding dan zone terlarang bernilai paling tinggi.</td></tr>
+      <tr><td>E-STOP</td><td>Tombol berhenti darurat. Yang fisik memutus daya motor; yang di layar menghentikan perintah perangkat lunak.</td></tr>
+      <tr><td>Goal</td><td>Satu tujuan perjalanan robot (posisi + arah hadap).</td></tr>
+      <tr><td>Lap</td><td>Satu putaran lengkap sebuah mission.</td></tr>
+      <tr><td>Nav2</td><td>Sistem navigasi ROS 2 yang merencanakan jalur dan menggerakkan robot.</td></tr>
+      <tr><td>rosbridge</td><td>Jembatan WebSocket (port 9090) agar browser bisa membaca data ROS robot.</td></tr>
+      <tr><td>ROS_DOMAIN_ID</td><td>Nomor "saluran" komunikasi ROS; robot berbeda sebaiknya memakai nomor berbeda.</td></tr>
+      <tr><td>Run</td><td>Satu eksekusi mission oleh satu robot.</td></tr>
+      <tr><td>SLAM</td><td>Membuat peta sambil berjalan.</td></tr>
+      <tr><td>Step</td><td>Satu langkah mission = satu station yang dituju.</td></tr>
+      <tr><td>Topic</td><td>Saluran data ROS (mis. <code>/scan</code> untuk laser, <code>/odom</code> untuk odometri).</td></tr>
+    </tbody>
+  </table>
+  <p class="small muted" style="margin-top:8mm">Dokumen ini dibuat dari kode sumber <code>new_webui/</code>, <code>amr_agent/</code> dan <code>kiosk-mockup/</code>. Sumber HTML: <code>docs/manual/manual.html</code>; gambar diperbarui dengan <code>docs/manual/screenshots.js</code>, PDF dengan <code>docs/manual/build_pdf.sh</code>.</p>
+</section>
+
+</body>
+</html>

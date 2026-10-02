@@ -1,3 +1,0 @@
-string robot_mode       # Target robot mode: "map" or "nav"
----
-string result

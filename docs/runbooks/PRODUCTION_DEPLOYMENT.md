@@ -92,12 +92,12 @@ even that from the operators' network — only from the server.
 1. **Agent files.** From a checkout:
 
    ```bash
-   ./scripts/deploy_agent.sh user@jetson     # copies to ~/amr_agent and verifies checksums
+   ssh user@jetson 'mkdir -p ~/amr_agent'
+   scp amr_agent/*.py amr_agent/*.sh user@jetson:~/amr_agent/
    ```
 
-   Edit sources under `ros2_ws/src/amr_bringup/scripts/`, never the copy in
-   `amr_agent/` — the script assembles that directory from the sources. The
-   robot's runtime state in `~/amr_agent/state/` is never touched by a deploy.
+   `amr_agent/` in this repository is the source. Copy the named files only:
+   the robot's runtime state in `~/amr_agent/state/` must never be overwritten.
 
 2. **rosbridge** on 9090 (the agent's launches are run with
    `launch_websocket:=false`, so it is started separately):

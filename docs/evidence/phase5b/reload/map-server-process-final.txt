@@ -1,4 +1,0 @@
-## nodes
-/phase4_bridge
-/robot_state_publisher
-## map server processes

@@ -27,25 +27,16 @@ log/
 # Large/generated files
 *.log
 *.snap.partial
-figma-linux_197.snap.partial
-docs/evidence/phase4o/semantics/runtime-engine.log
 
 # Working backups taken before an edit. Recovery aids, not source: the history
 # is the real safety net once a file is tracked.
 *.bak.*
-
-# Runtime map directory: mounted into amr-sim (docker-compose.yml) and written
-# by `scripts/docker_run.sh save-map`, plus a robot's own cache of assigned maps
-# (maps/cache/). Maps live in the backend registry, not in git — a stale copy
-# here is worse than none at all.
-maps/
 
 # Backend runtime state: the registry database and the map files it serves.
 # Written by the running service, different on every machine, and restored by
 # migrations rather than by checkout.
 new_webui/backend/data/
 
-# Assembled by scripts/deploy_agent.sh from ros2_ws/src/amr_bringup/scripts.
-# Not checked in: a second copy is a second source of truth, and the two drift
-# the first time someone edits whichever one they happened to open.
-amr_agent/
+# Tool caches.
+.pytest_cache/
+.ruff_cache/

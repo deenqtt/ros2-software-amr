@@ -1,1 +1,0 @@
-docker_compose_config_exit=0

@@ -1,5 +1,0 @@
-## service list
-## runtime save service type
-nav2_msgs/srv/SaveMap
-## save map
-map_saver_exit=0
