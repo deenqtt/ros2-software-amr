@@ -30,7 +30,7 @@ import {
   type ZoneKind,
   type ZonePoint,
 } from '@/domain/types'
-import { ZONE_KIND_LIST, ZONE_KIND_STYLE, zoneSetting } from '../zoneKind'
+import { avoidLevel, ZONE_KIND_LIST, ZONE_KIND_STYLE, zoneSetting } from '../zoneKind'
 import ZoneMapCanvas from '../components/ZoneMapCanvas.vue'
 import { Button } from '@/shared/ui/button'
 import { Input } from '@/shared/ui/input'
@@ -51,7 +51,15 @@ const mapLoading = ref(false)
 const mapError = ref<string | null>(null)
 
 const selectedId = ref<string | null>(null)
-const panelOpen = ref(true)
+function wideScreen(): boolean {
+  try {
+    return window.matchMedia?.('(min-width: 1024px)')?.matches ?? true
+  } catch {
+    return true
+  }
+}
+/** Starts collapsed below 1024px, where the open list leaves the map half the screen. */
+const panelOpen = ref(wideScreen())
 
 /** Corners dropped so far, in metres. Null when not drawing. */
 const drawing = ref<ZonePoint[] | null>(null)
@@ -226,11 +234,23 @@ const nameProblem = computed(() => {
   return null
 })
 
-const kindOptions = ZONE_KIND_LIST.map((kind) => ({
-  value: kind.value,
-  label: kind.label,
-  hint: kind.hint,
-}))
+// A zone already of an unavailable kind keeps its kind when edited; it just
+// cannot be switched to one.
+const kindOptions = computed(() =>
+  ZONE_KIND_LIST.map((kind) => ({
+    value: kind.value,
+    label: kind.label,
+    hint: kind.unavailable ?? kind.hint,
+    disabled: Boolean(kind.unavailable) && form.value.editing?.kind !== kind.value,
+  })),
+)
+
+/** Kinds worth a legend entry: the ones that can be drawn, and any on the map. */
+const legendKinds = computed(() =>
+  ZONE_KIND_LIST.filter(
+    (kind) => !kind.unavailable || zones.zones.some((zone) => zone.kind === kind.value),
+  ),
+)
 
 async function onSubmit() {
   if (nameProblem.value || !selectedMapId.value) return
@@ -268,12 +288,19 @@ async function onSubmit() {
   }
 }
 
+/** The zone whose switch is in flight, so a double click is not two requests. */
+const togglingId = ref<string | null>(null)
+
 async function toggleEnabled(zone: Zone) {
+  if (togglingId.value) return
+  togglingId.value = zone.id
   try {
     const updated = await zones.update(zone.id, { enabled: !zone.enabled })
     toast.success(updated.enabled ? `${updated.name} is on` : `${updated.name} is off`)
   } catch (error) {
     toast.error('Could not change the zone', { description: zones.describeError(error) })
+  } finally {
+    togglingId.value = null
   }
 }
 
@@ -358,13 +385,15 @@ function areaLabel(zone: Zone): string {
         decides the colour of the outline being drawn, so it has to be chosen
         before the first corner, not after the last one.
       -->
-      <div class="flex flex-wrap gap-xxs">
+      <!-- "Draw" makes these read as actions; on their own they looked like the legend. -->
+      <div class="flex flex-wrap items-center gap-xxs">
+        <span class="mr-xxs text-caption text-muted">Draw</span>
         <button
           v-for="kind in ZONE_KIND_LIST"
           :key="kind.value"
           type="button"
-          :title="`${kind.hint} (${kind.filter})`"
-          :disabled="!grid"
+          :title="kind.unavailable ?? `Draw a ${kind.label.toLowerCase()} zone — ${kind.hint} (${kind.filter})`"
+          :disabled="!grid || Boolean(kind.unavailable)"
           :class="
             cn(
               'flex h-control-sm items-center gap-xs rounded-control border px-sm text-body-sm transition-colors disabled:cursor-not-allowed disabled:opacity-50',
@@ -387,9 +416,6 @@ function areaLabel(zone: Zone): string {
         <Button size="sm" variant="ghost" @click="cancelDrawing">Cancel</Button>
       </template>
 
-      <span class="ml-auto font-data text-caption text-muted-soft">
-        {{ selectedMap ? `${selectedMap.name} v${selectedMap.version}` : '' }}
-      </span>
     </div>
 
     <div class="flex min-h-0 flex-1">
@@ -422,7 +448,7 @@ function areaLabel(zone: Zone): string {
           @move-point="movePoint"
         >
           <template #legend>
-            <span v-for="kind in ZONE_KIND_LIST" :key="kind.value" class="flex items-center gap-xxs">
+            <span v-for="kind in legendKinds" :key="kind.value" class="flex items-center gap-xxs">
               <span class="h-2.5 w-2.5 rounded-[2px]" :style="{ backgroundColor: kind.colour }" />
               {{ kind.label }}
             </span>
@@ -432,7 +458,7 @@ function areaLabel(zone: Zone): string {
 
       <aside
         class="flex shrink-0 flex-col border-l border-hairline bg-surface transition-[width] duration-150"
-        :class="panelOpen ? 'w-[21rem]' : 'w-[3rem]'"
+        :class="panelOpen ? 'w-[18rem]' : 'w-[3rem]'"
       >
         <button
           type="button"
@@ -501,14 +527,29 @@ function areaLabel(zone: Zone): string {
                 </span>
               </button>
 
+              <!--
+                On/off in the row, not the menu: switching a zone off for a
+                shift and back on is the most common thing done to one.
+              -->
+              <button
+                type="button"
+                role="switch"
+                :aria-checked="zone.enabled"
+                :aria-label="`${zone.name} active`"
+                :title="zone.enabled ? `Switch ${zone.name} off` : `Switch ${zone.name} on`"
+                :disabled="togglingId === zone.id"
+                class="mt-[3px] flex h-5 w-9 shrink-0 items-center rounded-full p-[2px] transition-colors disabled:opacity-50"
+                :class="zone.enabled ? 'bg-primary' : 'bg-hairline'"
+                @click="toggleEnabled(zone)"
+              >
+                <span
+                  class="h-4 w-4 rounded-full bg-white shadow-soft transition-transform"
+                  :class="zone.enabled ? 'translate-x-4' : 'translate-x-0'"
+                />
+              </button>
+
               <RowActions :label="`More actions for ${zone.name}`">
                 <RowActionItem :icon="Pencil" @select="openEdit(zone)">Edit</RowActionItem>
-                <RowActionItem
-                  :icon="ZONE_KIND_STYLE[zone.kind].icon"
-                  @select="toggleEnabled(zone)"
-                >
-                  {{ zone.enabled ? 'Switch off' : 'Switch on' }}
-                </RowActionItem>
                 <RowActionSeparator class="my-xxs h-px bg-hairline" />
                 <RowActionItem :icon="Trash2" destructive @select="pendingRemoval = zone">
                   Remove
@@ -570,9 +611,9 @@ function areaLabel(zone: Zone): string {
 
         <FormField
           v-if="form.kind === 'avoid'"
-          label="Reluctance"
+          label="Avoid strength (1–99)"
           required
-          hint="Higher means the robot tries harder to go around. 100 would be a keep-out."
+          :hint="`${avoidLevel(form.avoidCost)}. Higher means the robot tries harder to go around; 100 would be a keep-out.`"
         >
           <template #default="{ id }">
             <Input

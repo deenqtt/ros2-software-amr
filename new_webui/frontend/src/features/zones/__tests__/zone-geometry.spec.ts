@@ -7,7 +7,8 @@
  * enforce as another, and nothing on screen would say so.
  */
 import { describe, expect, it } from 'vitest'
-import { polygonArea, pointInPolygon, type ZonePoint } from '@/domain/types'
+import { polygonArea, pointInPolygon, type Zone, type ZonePoint } from '@/domain/types'
+import { avoidLevel, ZONE_KIND_STYLE, zoneSetting } from '../zoneKind'
 
 const SQUARE: ZonePoint[] = [
   [0, 0],
@@ -76,5 +77,21 @@ describe('polygonArea', () => {
 
   it('is zero for a line', () => {
     expect(polygonArea([[0, 0], [3, 3]] as ZonePoint[])).toBeCloseTo(0, 9)
+  })
+})
+
+describe('zone kinds', () => {
+  it('says how hard an avoid zone pushes in words, with the number beside it', () => {
+    expect(avoidLevel(10)).toBe('Low')
+    expect(avoidLevel(50)).toBe('Medium')
+    expect(avoidLevel(90)).toBe('High')
+    expect(zoneSetting({ kind: 'avoid', avoidCost: 60, speedLimit: null } as Zone)).toBe(
+      'Medium (60)',
+    )
+  })
+
+  it('does not offer a trigger zone the robots would ignore', () => {
+    expect(ZONE_KIND_STYLE.binary.unavailable).toBeTruthy()
+    expect(ZONE_KIND_STYLE.keepout.unavailable).toBeUndefined()
   })
 })
