@@ -15,10 +15,10 @@ withDefaults(defineProps<{ rows?: number }>(), { rows: 3 })
           <Skeleton class="h-4 w-32" />
         </div>
       </TableCell>
-      <TableCell><Skeleton class="h-3.5 w-24" /></TableCell>
-      <TableCell><Skeleton class="h-3.5 w-16" /></TableCell>
+      <TableCell class="hidden lg:table-cell"><Skeleton class="h-3.5 w-24" /></TableCell>
+      <TableCell class="hidden xl:table-cell"><Skeleton class="h-3.5 w-16" /></TableCell>
       <TableCell><Skeleton class="h-5 w-20" /></TableCell>
-      <TableCell><Skeleton class="h-3.5 w-20" /></TableCell>
+      <TableCell class="hidden xl:table-cell"><Skeleton class="h-3.5 w-20" /></TableCell>
       <TableCell align="right">
         <div class="flex justify-end gap-xs">
           <Skeleton class="h-7 w-7" />

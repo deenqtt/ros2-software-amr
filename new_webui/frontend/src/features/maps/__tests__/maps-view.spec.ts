@@ -230,9 +230,33 @@ describe('MapsView — table', () => {
       [mapRecord({ id: 'm1' })],
       [robot({ id: 'r1', name: 'AMR-01', activeMapId: 'm1' }), robot({ id: 'r2', name: 'AMR-02' })],
     )
-    const html = wrapper.html()
-    expect(html).toContain('AMR-01')
-    expect(html).not.toContain('title="AMR-02"')
+    // Written out, not only in a tooltip: hover does not exist on a touch screen.
+    const row = wrapper.findAll('tbody tr').at(0)!
+    expect(row.text()).toContain('AMR-01')
+    expect(row.text()).not.toContain('AMR-02')
+  })
+
+  it('lists two robots by name and counts the rest', async () => {
+    const { wrapper } = await mountView(
+      [mapRecord({ id: 'm1' })],
+      ['AMR-01', 'AMR-02', 'AMR-03', 'AMR-04'].map((name, i) =>
+        robot({ id: `r${i}`, name, activeMapId: 'm1' }),
+      ),
+    )
+    const row = wrapper.findAll('tbody tr').at(0)!
+    expect(row.text()).toContain('AMR-02')
+    expect(row.text()).not.toContain('AMR-03')
+    expect(row.text()).toContain('+2')
+  })
+
+  it('hides the pager while everything fits on one page', async () => {
+    const one = await mountView([mapRecord({ id: 'm1' })])
+    expect(one.wrapper.text()).not.toContain('Page 1 of 1')
+
+    const many = await mountView(
+      Array.from({ length: 11 }, (_, i) => mapRecord({ id: `m${i}`, name: `Map ${i}` })),
+    )
+    expect(many.wrapper.text()).toContain('Page 1 of 2')
   })
 
   it('reports a retired surveying robot rather than a dangling id', async () => {

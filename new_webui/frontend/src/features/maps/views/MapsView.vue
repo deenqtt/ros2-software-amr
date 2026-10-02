@@ -14,7 +14,6 @@
  */
 import { computed, onMounted, ref, watch } from 'vue'
 import {
-  Bot,
   Brush,
   ChevronDown,
   ChevronRight,
@@ -158,6 +157,9 @@ const subtitle = computed(() => {
 })
 
 // ── Robots on a map ──────────────────────────────────────────────────────────
+/** Robot names listed in a row before the rest collapse into "+N". */
+const ROBOTS_SHOWN = 2
+
 function robotsOn(mapId: string) {
   return fleet.robots.filter((robot) => robot.activeMapId === mapId)
 }
@@ -337,12 +339,17 @@ async function confirmRemoval() {
               content, so a long note used to widen the table and put the whole
               thing behind a horizontal scrollbar. This makes the column take
               whatever is left and lets its text truncate against that.
+
+              min-w keeps the name itself: on a narrow screen the column that
+              gives way has to be one of the others, not the map's identity.
+              They go in order of how rarely they decide anything — size, who
+              surveyed it, then extent (the subtitle still carries the grid).
             -->
-            <TableHead class="w-full max-w-0">Map</TableHead>
-            <TableHead class="whitespace-nowrap">Extent</TableHead>
-            <TableHead class="whitespace-nowrap">Size</TableHead>
+            <TableHead class="w-full min-w-[12rem] max-w-0">Map</TableHead>
+            <TableHead class="hidden whitespace-nowrap lg:table-cell">Extent</TableHead>
+            <TableHead class="hidden whitespace-nowrap xl:table-cell">Size</TableHead>
             <TableHead class="whitespace-nowrap">Robots</TableHead>
-            <TableHead class="whitespace-nowrap">Surveyed by</TableHead>
+            <TableHead class="hidden whitespace-nowrap xl:table-cell">Surveyed by</TableHead>
             <TableHead align="right">Actions</TableHead>
           </TableRow>
         </TableHeader>
@@ -351,7 +358,7 @@ async function confirmRemoval() {
 
         <TableBody v-else-if="maps.count > 0">
           <TableRow v-for="row in rendered" :key="row.map.id" interactive>
-            <TableCell class="w-full max-w-0">
+            <TableCell class="w-full min-w-[12rem] max-w-0">
               <div class="flex items-center gap-sm" :class="row.child ? 'pl-lg' : ''">
                 <!--
                   The expander replaces the icon on a map with history, so the
@@ -414,34 +421,51 @@ async function confirmRemoval() {
               </div>
             </TableCell>
 
-            <TableCell>
+            <TableCell class="hidden lg:table-cell">
               <span class="whitespace-nowrap font-data text-body-sm text-body">
                 {{ extentLabel(row.map) }}
               </span>
             </TableCell>
 
-            <TableCell>
+            <TableCell class="hidden xl:table-cell">
               <span class="whitespace-nowrap font-data text-body-sm text-body">
                 {{ sizeLabel(row.map.imageBytes) }}
               </span>
             </TableCell>
 
             <TableCell>
-              <div v-if="robotsOn(row.map.id).length" class="flex items-center gap-xxs whitespace-nowrap">
+              <!--
+                Names, not bare dots: which robot runs which map is the question
+                this column exists to answer, and a hover tooltip answers it for
+                nobody on a touch screen. Two names, then a count.
+              -->
+              <div
+                v-if="robotsOn(row.map.id).length"
+                class="flex items-center gap-xs whitespace-nowrap"
+                :title="robotsOn(row.map.id).map((r) => r.name).join(', ')"
+              >
                 <span
-                  v-for="robot in robotsOn(row.map.id)"
+                  v-for="robot in robotsOn(row.map.id).slice(0, ROBOTS_SHOWN)"
                   :key="robot.id"
-                  class="flex h-6 w-6 items-center justify-center rounded-full text-white"
-                  :style="{ backgroundColor: `rgb(var(--robot-accent-${robot.accent}))` }"
-                  :title="robot.name"
+                  class="flex items-center gap-xxs text-body-sm text-body"
                 >
-                  <Bot :size="11" />
+                  <span
+                    class="h-2 w-2 shrink-0 rounded-full"
+                    :style="{ backgroundColor: `rgb(var(--robot-accent-${robot.accent}))` }"
+                  />
+                  {{ robot.name }}
+                </span>
+                <span
+                  v-if="robotsOn(row.map.id).length > ROBOTS_SHOWN"
+                  class="rounded-chip bg-surface-strong px-xxs text-caption text-muted"
+                >
+                  +{{ robotsOn(row.map.id).length - ROBOTS_SHOWN }}
                 </span>
               </div>
               <span v-else class="text-body-sm text-muted-soft">—</span>
             </TableCell>
 
-            <TableCell>
+            <TableCell class="hidden xl:table-cell">
               <span class="whitespace-nowrap text-body-sm text-body">
                 {{ robotName(row.map.createdByRobotId) }}
               </span>
@@ -504,8 +528,9 @@ async function confirmRemoval() {
         </TableBody>
       </Table>
 
+      <!-- "Page 1 of 1" says nothing; the pager appears once there is a second page. -->
       <Pagination
-        v-if="!maps.error && !showSkeleton"
+        v-if="!maps.error && !showSkeleton && groups.length > PAGE_SIZES[0]"
         :page="page"
         :page-size="pageSize"
         :total="groups.length"
