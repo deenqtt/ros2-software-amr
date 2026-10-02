@@ -49,6 +49,28 @@ export function routePreview(
 }
 
 /**
+ * Where a live run is, for a person: the stop it is heading to and how far
+ * along the route that is. "step 2" alone made the operator open the route to
+ * find out what step 2 was.
+ *
+ * Falls back to the bare index when the route is not loaded here — a run on
+ * another map, or one whose route was deleted while it ran.
+ */
+export function runProgress(
+  stepIndex: number,
+  stationIds: string[] | null,
+  nameOf: (id: string) => string,
+): string {
+  const step = stepIndex + 1
+  if (!stationIds?.length) return `step ${step}`
+  const target = stationIds[stepIndex]
+  // Past the end means the route was edited under a live run; a count like
+  // "6/2" would only confuse.
+  if (target === undefined) return `step ${step}`
+  return `→ ${nameOf(target)} (${step}/${stationIds.length})`
+}
+
+/**
  * A server timestamp as epoch milliseconds.
  *
  * SQLite's `datetime('now')` is UTC but carries no zone, and `Date` reads a

@@ -27,8 +27,12 @@ const ROUTE_WIDTHS = ['w-56', 'w-40', 'w-48']
           </div>
         </div>
       </TableCell>
-      <TableCell><Skeleton class="h-5 w-16 rounded-chip" /></TableCell>
-      <TableCell><Skeleton class="h-3.5 w-24" /></TableCell>
+      <TableCell>
+        <div class="space-y-xxs">
+          <Skeleton class="h-3.5 w-24" />
+          <Skeleton class="h-3 w-16" />
+        </div>
+      </TableCell>
       <TableCell align="right">
         <div class="flex justify-end gap-xs">
           <Skeleton class="h-7 w-14" />

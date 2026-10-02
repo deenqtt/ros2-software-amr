@@ -342,7 +342,7 @@ watch(
       </PanelToolbar>
 
       <CardContent>
-        <div v-if="loading" class="grid gap-base lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+        <div v-if="loading" class="grid gap-base xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
           <div class="space-y-base">
             <div class="grid gap-base md:grid-cols-2">
               <div class="space-y-xs">
@@ -364,10 +364,10 @@ watch(
               <Skeleton class="h-9 w-36" />
             </div>
           </div>
-          <Skeleton class="h-[24rem] w-full rounded-surface lg:h-[32rem]" />
+          <Skeleton class="h-[24rem] w-full rounded-surface xl:h-[32rem]" />
         </div>
 
-        <div v-else class="grid items-start gap-base lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+        <div v-else class="grid items-start gap-base xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
           <div class="min-w-0 space-y-base">
             <div class="grid gap-base md:grid-cols-2">
               <FormField label="Name" required :error="saveError ?? nameProblem ?? undefined">
@@ -439,27 +439,34 @@ watch(
                   {{ index + 1 }}
                 </span>
 
-                <!-- One line per step at any width the editor column has: the
-                     controls used to wrap and strand the arrows on a row of their own. -->
-                <div
-                  class="grid min-w-0 flex-1 grid-cols-1 gap-xs sm:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,1fr)]"
-                >
+                <!--
+                  Station on its own line, then what happens there. Three selects
+                  side by side were switched on by the screen width, but the step
+                  list only ever gets part of the screen — at 1024px each select
+                  was cut to a single letter. Two rows fit any width the column has.
+
+                  The second-row labels are visible: "Pass through" and
+                  "Continue" read as nothing without saying what they answer.
+                -->
+                <div class="grid min-w-0 flex-1 grid-cols-2 gap-x-xs gap-y-xxs">
                   <Select
                     label="Station"
                     :model-value="step.stationId"
                     :options="stationOptions"
-                    class="w-full"
+                    class="col-span-2 w-full"
                     @update:model-value="patch(step.key, { stationId: $event })"
                   />
+                  <span class="mt-xxs text-caption text-muted" aria-hidden="true">At the station</span>
+                  <span class="mt-xxs text-caption text-muted" aria-hidden="true">Then</span>
                   <Select
-                    label="What to do"
+                    label="At the station"
                     :model-value="step.task"
                     :options="taskOptions"
                     class="w-full"
                     @update:model-value="patch(step.key, { task: $event as StepTask })"
                   />
                   <Select
-                    label="After arriving"
+                    label="Then"
                     :model-value="step.confirm"
                     :options="confirmOptions"
                     class="w-full"
@@ -467,7 +474,7 @@ watch(
                   />
                   <p
                     v-if="stations.byId(step.stationId) === null"
-                    class="text-caption text-status-fault sm:col-span-3"
+                    class="col-span-2 text-caption text-status-fault"
                   >
                     {{ stationName(step.stationId) }} — pick another before saving.
                   </p>
@@ -520,7 +527,7 @@ watch(
 
           <!-- Sticky, so a long route can be scrolled while its shape stays in view. -->
           <div
-            class="relative h-[24rem] overflow-hidden rounded-surface border border-hairline lg:sticky lg:top-base lg:h-[calc(100vh-10rem)] lg:min-h-[28rem]"
+            class="relative h-[24rem] overflow-hidden rounded-surface border border-hairline xl:sticky xl:top-base xl:h-[calc(100vh-10rem)] xl:min-h-[28rem]"
           >
             <Skeleton v-if="mapLoading" class="h-full w-full rounded-none" />
             <EmptyState

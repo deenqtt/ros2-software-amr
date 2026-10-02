@@ -13,7 +13,7 @@
  */
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
-import { ChevronRight, ListOrdered, Pencil, Play, Plus, Square, Trash2, X } from 'lucide-vue-next'
+import { ChevronRight, Eye, ListOrdered, Pencil, Play, Plus, Square, Trash2, X } from 'lucide-vue-next'
 import { toast } from 'vue-sonner'
 import { useMapStore } from '@/stores/maps'
 import { useFleetStore } from '@/stores/fleet'
@@ -41,7 +41,7 @@ import ConfirmDialog from '@/shared/components/ConfirmDialog.vue'
 import { cn } from '@/shared/lib/utils'
 import { STATION_TYPE_STYLE } from '@/features/stations/stationType'
 import MissionTableSkeleton from '../components/MissionTableSkeleton.vue'
-import { lastFinishedRun, routePreview, RUN_RESULT, timeAgo } from '../missionList'
+import { lastFinishedRun, routePreview, runProgress, RUN_RESULT, timeAgo } from '../missionList'
 
 const maps = useMapStore()
 const fleet = useFleetStore()
@@ -225,12 +225,6 @@ function openDispatch(mission: MissionSummary) {
 }
 
 /** A route with a step that waits for a person should not be left to loop. */
-/** Shown on hover, so the coarse "3h ago" can still be pinned to a time. */
-function resultTitle(run: MissionRun): string {
-  const who = robotName(run.robotId)
-  return run.detail ? `${who} · ${run.detail}` : who
-}
-
 const loopNeedsSomeone = computed(
   () => dispatchMode.value !== 'once' && Boolean(dispatching.value?.note?.includes('confirm')),
 )
@@ -294,6 +288,11 @@ async function cancelRun(run: MissionRun) {
   } finally {
     runPending.value = false
   }
+}
+
+function progressOf(run: MissionRun): string {
+  const mission = missions.missions.find((m) => m.id === run.missionId)
+  return runProgress(run.stepIndex, mission?.stationIds ?? null, stationLabel)
 }
 
 function lapLabel(run: MissionRun): string {
@@ -389,9 +388,15 @@ watch(createOpen, (open) => {
           <div class="min-w-0 flex-1">
             <p class="truncate text-body-md text-ink">{{ run.missionName }}</p>
             <p class="truncate font-data text-caption text-muted">
-              {{ robotName(run.robotId) }} · step {{ run.stepIndex + 1 }} · {{ lapLabel(run) }}
+              {{ robotName(run.robotId) }} · {{ progressOf(run) }} · {{ lapLabel(run) }}
             </p>
           </div>
+          <!-- The run is a robot moving somewhere; watching it is one click. -->
+          <Button v-if="run.robotId" variant="ghost" size="sm" as-child>
+            <RouterLink :to="`/robot/${run.robotId}/nav`" :title="`Watch ${robotName(run.robotId)}`">
+              <Eye :size="13" /> Watch
+            </RouterLink>
+          </Button>
 
           <!-- `stopping` is not a failure and not finished: it is a lap in
                progress that will be the last one. -->
@@ -474,7 +479,6 @@ watch(createOpen, (open) => {
               <TableRow>
                 <TableHead class="w-full max-w-0">Mission</TableHead>
                 <TableHead class="whitespace-nowrap">Status</TableHead>
-                <TableHead class="whitespace-nowrap">Last run</TableHead>
                 <TableHead align="right">Actions</TableHead>
               </TableRow>
             </TableHeader>
@@ -507,28 +511,31 @@ watch(createOpen, (open) => {
                       class="flex min-w-0 flex-wrap items-center gap-x-xxs gap-y-0 text-caption text-body"
                       :title="mission.stationIds.map(stationLabel).join(' → ')"
                     >
-                      <template v-for="(id, index) in preview(mission).ids" :key="index">
+                      <!-- Each arrow travels with the stop after it, so a wrap never
+                           leaves a "›" stranded at the start of a line. -->
+                      <span
+                        v-for="(id, index) in preview(mission).ids"
+                        :key="index"
+                        class="inline-flex min-w-0 items-center gap-xxs whitespace-nowrap"
+                      >
                         <template v-if="index > 0">
                           <ChevronRight :size="11" class="shrink-0 text-muted-soft" />
-                          <span
+                          <template
                             v-if="
                               index === preview(mission).ids.length - 1 && preview(mission).hidden
                             "
-                            class="font-data text-muted"
                           >
-                            +{{ preview(mission).hidden }}
-                            <ChevronRight :size="11" class="inline shrink-0 text-muted-soft" />
-                          </span>
+                            <span class="font-data text-muted">+{{ preview(mission).hidden }}</span>
+                            <ChevronRight :size="11" class="shrink-0 text-muted-soft" />
+                          </template>
                         </template>
-                        <span class="inline-flex min-w-0 items-center gap-xxs">
-                          <span
-                            class="h-2 w-2 shrink-0 rounded-full"
-                            :style="{ backgroundColor: stationDot(id) }"
-                          />
-                          <span class="max-w-[9rem] truncate">{{ stationLabel(id) }}</span>
-                        </span>
-                      </template>
-                      <span class="ml-xxs font-data text-muted-soft">
+                        <span
+                          class="h-2 w-2 shrink-0 rounded-full"
+                          :style="{ backgroundColor: stationDot(id) }"
+                        />
+                        <span class="max-w-[9rem] truncate">{{ stationLabel(id) }}</span>
+                      </span>
+                      <span class="ml-xxs whitespace-nowrap font-data text-muted-soft">
                         · {{ mission.stepCount }} step{{ mission.stepCount === 1 ? '' : 's' }}
                       </span>
                     </div>
@@ -542,35 +549,41 @@ watch(createOpen, (open) => {
                   </div>
                 </TableCell>
 
+                <!--
+                  One column for what the route is doing: running now, or how it
+                  last ended. A separate Status column said "Idle" on nearly
+                  every row. The robot is written out, not left to a tooltip.
+                -->
                 <TableCell>
-                  <span
+                  <div
                     v-if="liveRunOf(mission)"
-                    class="inline-flex items-center gap-xxs whitespace-nowrap rounded-chip bg-status-run/12 px-xs py-[2px] text-caption text-status-run"
-                    :title="`${robotName(liveRunOf(mission)!.robotId)} · step ${liveRunOf(mission)!.stepIndex + 1}`"
+                    class="flex flex-col items-start gap-xxs whitespace-nowrap"
                   >
-                    <span class="h-1.5 w-1.5 animate-pulse rounded-full bg-status-run" />
-                    {{ liveRunOf(mission)!.state === 'stopping' ? 'Stopping' : 'Running' }}
-                  </span>
-                  <span
-                    v-else
-                    class="inline-flex items-center gap-xxs whitespace-nowrap rounded-chip bg-surface-strong px-xs py-[2px] text-caption text-muted"
+                    <span
+                      class="inline-flex items-center gap-xxs rounded-chip bg-status-run/12 px-xs py-[2px] text-caption text-status-run"
+                    >
+                      <span class="h-1.5 w-1.5 animate-pulse rounded-full bg-status-run" />
+                      {{ liveRunOf(mission)!.state === 'stopping' ? 'Stopping' : 'Running' }}
+                    </span>
+                    <span class="text-caption text-muted">
+                      {{ robotName(liveRunOf(mission)!.robotId) }} ·
+                      {{ progressOf(liveRunOf(mission)!) }}
+                    </span>
+                  </div>
+                  <div
+                    v-else-if="lastResult(mission)"
+                    class="flex flex-col whitespace-nowrap"
+                    :title="lastResult(mission)!.run.detail ?? undefined"
                   >
-                    Idle
-                  </span>
-                </TableCell>
-
-                <TableCell>
-                  <span
-                    v-if="lastResult(mission)"
-                    class="whitespace-nowrap text-body-sm"
-                    :title="resultTitle(lastResult(mission)!.run)"
-                  >
-                    <span :class="lastResult(mission)!.tone">{{ lastResult(mission)!.label }}</span>
-                    <span class="text-muted"> · {{ lastResult(mission)!.ago }}</span>
-                  </span>
-                  <span v-else class="whitespace-nowrap text-body-sm text-muted-soft"
-                    >Never run</span
-                  >
+                    <span class="text-body-sm">
+                      <span :class="lastResult(mission)!.tone">{{ lastResult(mission)!.label }}</span>
+                      <span class="text-muted"> · {{ lastResult(mission)!.ago }}</span>
+                    </span>
+                    <span class="text-caption text-muted">
+                      {{ robotName(lastResult(mission)!.run.robotId) }}
+                    </span>
+                  </div>
+                  <span v-else class="whitespace-nowrap text-body-sm text-muted-soft">Never run</span>
                 </TableCell>
 
                 <TableCell align="right">

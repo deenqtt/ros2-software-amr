@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { lastFinishedRun, routePreview, serverTime, timeAgo } from '../missionList'
+import { lastFinishedRun, routePreview, runProgress, serverTime, timeAgo } from '../missionList'
 import type { MissionRun } from '@/domain/types'
 
 function run(overrides: Partial<MissionRun> = {}): MissionRun {
@@ -72,5 +72,23 @@ describe('server time', () => {
     expect(timeAgo('2026-10-01 11:55:00', now)).toBe('5m ago')
     expect(timeAgo('2026-10-01 09:00:00', now)).toBe('3h ago')
     expect(timeAgo('2026-09-29 12:00:00', now)).toBe('2d ago')
+  })
+})
+
+describe('runProgress', () => {
+  const names: Record<string, string> = { a: 'Dock', b: 'Line 1', c: 'Line 2' }
+  const nameOf = (id: string) => names[id] ?? id
+
+  it('names the stop the robot is heading to, and how far along it is', () => {
+    expect(runProgress(1, ['a', 'b', 'c'], nameOf)).toBe('→ Line 1 (2/3)')
+  })
+
+  it('falls back to the bare index when the route is not loaded', () => {
+    expect(runProgress(1, null, nameOf)).toBe('step 2')
+    expect(runProgress(0, [], nameOf)).toBe('step 1')
+  })
+
+  it('drops the count when the route was shortened under a live run', () => {
+    expect(runProgress(5, ['a', 'b'], nameOf)).toBe('step 6')
   })
 })
