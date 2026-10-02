@@ -85,6 +85,11 @@ export default {
         nav: '38px',
       },
       width: {
+        // Square icon buttons: same figures as the heights above. Without
+        // these, size="icon" asked for a w-control that did not exist and
+        // every icon button rendered as a sliver.
+        control: '36px',
+        'control-sm': '30px',
         sidebar: '232px',
         'sidebar-collapsed': '64px',
       },
