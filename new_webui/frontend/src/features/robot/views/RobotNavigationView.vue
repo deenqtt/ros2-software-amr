@@ -9,25 +9,28 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import {
-  ArrowLeft,
-  Bell,
-  BellOff,
-  Bot,
   Crosshair,
+  Eye,
+  EyeOff,
   Hand,
+  Layers,
   Navigation,
   Play,
-  OctagonX,
-  Radio,
+  PanelRightClose,
+  PanelRightOpen,
   Square,
+  WifiOff,
   X,
 } from 'lucide-vue-next'
 import { toast } from 'vue-sonner'
+import { PopoverContent, PopoverPortal, PopoverRoot, PopoverTrigger } from 'reka-ui'
 import { useMissionStore } from '@/stores/missions'
 import { useFleetStore } from '@/stores/fleet'
 import { useLinkStore } from '@/stores/links'
 import { useZoneStore } from '@/stores/zones'
 import { useStationStore } from '@/stores/stations'
+import { useMapStore } from '@/stores/maps'
+import { useUiStore } from '@/stores/ui'
 import { missionsApi } from '@/shared/api/missions'
 import { useRosPool } from '@/app/ros/pool'
 import { useRobotTelemetry } from '@/features/mapping/useRobotTelemetry'
@@ -38,17 +41,15 @@ import { cancelAllGoals } from '../cancelGoal'
 import { stallLabel } from '../stall'
 import { SERVICE_TYPES } from '@/domain/ros/topics'
 import RobotMapCanvas, { type MapTool } from '../components/RobotMapCanvas.vue'
+import RobotBar from '../components/RobotBar.vue'
+import { useRobotStop } from '../useRobotStop'
 import { missionOverlay } from '../missionMarkers'
 import { RUN_MODE_LABEL, RUN_MODES, type Mission, type RunMode } from '@/domain/types'
 import { activityStatus, dockingStatus } from '@/domain/ros/status'
 import { Button } from '@/shared/ui/button'
-import { Card, CardContent } from '@/shared/ui/card'
 import { Input } from '@/shared/ui/input'
 import { Select } from '@/shared/ui/select'
-import PanelToolbar from '@/shared/components/PanelToolbar.vue'
 import StatusBadge from '@/shared/components/StatusBadge.vue'
-import LinkIndicator from '@/shared/components/LinkIndicator.vue'
-import MetricTile from '@/shared/components/MetricTile.vue'
 import EmptyState from '@/shared/components/EmptyState.vue'
 import { cn, formatNumber, formatPercent } from '@/shared/lib/utils'
 
@@ -63,7 +64,17 @@ const link = computed(() => links.linkFor(robotId.value))
 const vitals = computed(() => links.vitalsFor(robotId.value))
 const muted = computed(() => links.isMuted(robotId.value))
 
+const maps = useMapStore()
+const ui = useUiStore()
+
+// The map wants the width; the rail folds while this page is open and comes
+// back as it was on the way out.
+onMounted(() => ui.foldNav(true))
+onBeforeUnmount(() => ui.foldNav(false))
+
 onMounted(async () => {
+  // For the active map's name; the id alone means nothing to an operator.
+  if (!maps.loaded) void maps.load()
   if (!fleet.loaded) await fleet.load()
   links.sync(fleet.robots)
   links.focus(robotId.value)
@@ -214,7 +225,99 @@ const TOOLS = [
 
 const agentMode = computed(() => telemetry.agent.value?.mode ?? 'unknown')
 const agentState = computed(() => telemetry.agent.value?.state ?? 'waiting')
-const localization = computed(() => (telemetry.pose.value ? 'Pose available' : 'Waiting for pose'))
+
+/**
+ * Whether anything shown below is live.
+ *
+ * Offline, the tiles used to say "UNKNOWN" and "WAITING" — true, and a
+ * misreading of the actual problem, which is that nothing is connected.
+ */
+const online = computed(() => link.value.state === 'online' || link.value.state === 'stale')
+
+const mapLabel = computed(() => {
+  const id = robot.value?.activeMapId
+  if (!id) return null
+  const map = maps.byId(id)
+  return map ? `${map.name} v${map.version}` : 'Unknown map'
+})
+
+/**
+ * Why a map tool cannot be used right now, or null when it can.
+ *
+ * Both tools publish to the robot, and a goal into a stack that is not running
+ * goes nowhere without a word. Disabled with the reason, like Start mission,
+ * rather than enabled and failing in a toast.
+ */
+function toolBlocker(value: MapTool): string | null {
+  if (value === 'view') return null
+  if (!online.value) return 'Robot is not connected.'
+  if (agentMode.value !== 'nav' || agentState.value !== 'running') return 'Nav2 is not running.'
+  if (value === 'goal' && !telemetry.pose.value) return 'Set the pose first.'
+  return null
+}
+
+// A tool that stops being usable mid-gesture drops back to panning.
+watch(
+  () => toolBlocker(tool.value),
+  (blocked) => {
+    if (blocked) tool.value = 'view'
+  },
+)
+
+/** How many optional layers are on, for the Layers button. */
+const layersOn = computed(() => LAYER_LIST.filter((layer) => layers.value[layer.key]).length)
+
+/**
+ * The stack in one line: which one is up and in what state.
+ *
+ * Mode and stack used to be two tiles that were only ever read together.
+ */
+const stackLine = computed(() => {
+  if (!online.value) return { text: '—', tone: 'text-muted' }
+  const name = agentMode.value === 'nav' ? 'Nav2' : agentMode.value === 'map' ? 'SLAM' : null
+  if (!name) return { text: 'Stopped', tone: 'text-muted' }
+  const state = agentState.value
+  const tone =
+    state === 'running'
+      ? 'text-status-ok'
+      : state === 'failed'
+        ? 'text-status-fault'
+        : 'text-status-warn'
+  return { text: `${name} ${state}`, tone }
+})
+
+const batteryLine = computed(() => {
+  const percent = vitals.value.battery.percent
+  if (percent === null || percent === undefined) return '—'
+  const volts = vitals.value.battery.voltage
+  return [
+    formatPercent(percent),
+    vitals.value.battery.charging ? 'charging' : null,
+    volts !== null && volts !== undefined ? `${formatNumber(volts, 1)} V` : null,
+  ]
+    .filter(Boolean)
+    .join(' · ')
+})
+
+/**
+ * The side panel, collapsible like the Station and Zone lists. Starts closed
+ * below 1024px, where open it would leave the map a strip.
+ */
+function wideScreen(): boolean {
+  try {
+    return window.matchMedia?.('(min-width: 1024px)')?.matches ?? true
+  } catch {
+    return true
+  }
+}
+const panelOpen = ref(wideScreen())
+
+/** Kinds worth a legend entry: drawable ones, and any present on this map. */
+const legendKinds = computed(() =>
+  ZONE_KIND_LIST.filter(
+    (kind) => !kind.unavailable || zones.zones.some((zone) => zone.kind === kind.value),
+  ),
+)
 
 function onPick(pose: PlanarPose) {
   const client = pool.clientFor(robotId.value)
@@ -277,6 +380,7 @@ async function stopMissionAfterLap() {
 }
 
 const stopPending = ref(false)
+const { stopAndPark, stopPending: parkPending } = useRobotStop(robotId)
 
 /**
  * Stop driving, now, without ending anything else.
@@ -302,65 +406,6 @@ async function cancelGoal() {
     toast.error('Could not cancel the goal', {
       description: error instanceof Error ? error.message : String(error),
     })
-  } finally {
-    stopPending.value = false
-  }
-}
-
-/**
- * Everything stops, and stays stopped.
- *
- * Three separate things, in this order and for a reason. Cancelling the goal
- * alone leaves the agent free to send the next step; cancelling the run alone
- * leaves the robot finishing the goal it already has. Parking last is what
- * stops it resuming: without it the registry still says `nav`, and the agent
- * reconciles back within its sync period.
- *
- * Each step is attempted even if an earlier one failed. A stop that gives up
- * halfway is worse than no stop at all, because it looks like it worked.
- *
- * This is not the physical E-STOP. It cuts what the software is asking for,
- * not power to the motors, and the button says so.
- */
-async function emergencyStop() {
-  const target = robot.value
-  if (!target) return
-  const failures: string[] = []
-  stopPending.value = true
-  try {
-    const client = pool.clientFor(target.id)
-    if (client) {
-      try {
-        await client.callService('cancelNavGoal', SERVICE_TYPES.cancelGoal, cancelAllGoals())
-      } catch (error) {
-        failures.push(`goal: ${error instanceof Error ? error.message : String(error)}`)
-      }
-    } else {
-      failures.push('goal: no connection to this robot')
-    }
-
-    const run = activeRun.value
-    if (run) {
-      try {
-        await missions.cancel(run.id)
-      } catch (error) {
-        failures.push(`mission: ${missions.describeError(error)}`)
-      }
-    }
-
-    try {
-      await fleet.setMode(target.id, 'idle')
-    } catch (error) {
-      failures.push(`park: ${error instanceof Error ? error.message : String(error)}`)
-    }
-
-    if (failures.length === 0) {
-      toast.error('Stopped', {
-        description: 'Goal canceled, mission canceled, robot parked. Use the physical E-STOP to cut power.',
-      })
-    } else {
-      toast.error('Stopped, but not completely', { description: failures.join(' · ') })
-    }
   } finally {
     stopPending.value = false
   }
@@ -392,112 +437,254 @@ async function cancelMission() {
 </script>
 
 <template>
-  <div class="space-y-base p-lg">
-    <EmptyState
-      v-if="!robot"
-      title="Robot not found"
-      description="It may have been removed from the registry."
-    >
+  <div v-if="!robot" class="p-lg">
+    <EmptyState title="Robot not found" description="It may have been removed from the registry.">
       <template #action>
         <Button size="sm" variant="secondary" as-child>
           <RouterLink to="/robot">Back to robots</RouterLink>
         </Button>
       </template>
     </EmptyState>
+  </div>
 
-    <template v-else>
-      <Card>
-        <PanelToolbar :title="`${robot.name} navigation`" :subtitle="robot.bridgeUrl">
-          <template #icon>
-            <span
-              class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-white"
-              :style="{ backgroundColor: `rgb(var(--robot-accent-${robot.accent}))` }"
-            >
-              <Bot :size="14" />
+  <!--
+    One bar, then the map. Everything else that used to stack above the map —
+    an offline banner, a row of tools, a row of layer chips — now sits on the
+    map or in the side panel, so the map starts right under the robot's name.
+    The bar is outside any scrolling region: Stop & park is always on screen.
+  -->
+  <div v-else class="flex h-full min-h-0 flex-col">
+    <RobotBar
+      :robot="robot"
+      :link-state="link.state"
+      :attempt="link.attempt"
+      :stop-pending="parkPending"
+      @stop="stopAndPark"
+    />
+
+    <div class="flex min-h-0 flex-1">
+      <!-- The map, with its controls on it rather than in rows above it. -->
+      <section class="relative min-w-0 flex-1">
+        <RobotMapCanvas
+          :grid="telemetry.grid.value"
+          :costmap="telemetry.costmap.value"
+          :plan="telemetry.plan.value"
+          :particles="telemetry.particles.value"
+          :scan="telemetry.scan.value"
+          :pose="telemetry.pose.value"
+          :sensor-offset="telemetry.sensorOffset.value"
+          :zones="zones.zones"
+          :footprint="telemetry.footprint.value"
+          :mission="missionMap"
+          :layers="layers"
+          :tool="tool"
+          @pick="onPick"
+        >
+          <template #legend>
+            <span v-for="kind in legendKinds" :key="kind.value" class="flex items-center gap-xxs">
+              <span class="h-2.5 w-2.5 rounded-[2px]" :style="{ backgroundColor: kind.colour }" />
+              {{ kind.label }}
             </span>
           </template>
-          <template #actions>
-            <LinkIndicator :state="link.state" :attempt="link.attempt" />
-            <!-- Always reachable, whatever else is on screen. A stop that has
-                 to be found is not a stop. -->
-            <Button
-              variant="danger"
-              size="sm"
-              :disabled="stopPending"
-              title="Cancel the goal, cancel the mission, and park the robot. Not the physical E-STOP."
-              @click="emergencyStop"
-            >
-              <OctagonX :size="13" /> Stop
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              :title="muted ? 'Resume monitoring' : 'Stop monitoring this robot'"
-              @click="links.setMuted(robotId, !muted)"
-            >
-              <component :is="muted ? BellOff : Bell" :size="14" />
-              {{ muted ? 'Muted' : 'Monitoring' }}
-            </Button>
-            <Button variant="ghost" size="sm" as-child>
-              <RouterLink :to="`/robot/${robotId}/detail`"><Radio :size="14" /> Details</RouterLink>
-            </Button>
-            <!-- The dashboard, not the robot list. This page is opened from the
-                 dashboard's Navigation button, and back should undo that. -->
-            <Button variant="ghost" size="sm" as-child>
-              <RouterLink to="/"><ArrowLeft :size="14" /> Back</RouterLink>
-            </Button>
-          </template>
-        </PanelToolbar>
-      </Card>
+        </RobotMapCanvas>
 
-      <Card>
-        <CardContent class="grid gap-sm sm:grid-cols-2 lg:grid-cols-5">
-          <div class="rounded-control bg-surface-soft px-sm py-xs">
-            <div class="text-label uppercase text-muted">Mode</div>
-            <div class="mt-xxs text-body-sm font-medium uppercase">{{ agentMode }}</div>
+        <!-- Above the offline veil: they stay readable, and Layers stays usable. -->
+        <div class="absolute left-sm top-sm z-[2] flex items-center gap-xs">
+          <!-- One at a time: a segmented control, not a row of toggles. -->
+          <div
+            role="radiogroup"
+            aria-label="Map tool"
+            class="inline-flex rounded-control border border-hairline bg-surface p-[2px] shadow-soft"
+          >
+            <button
+              v-for="item in TOOLS"
+              :key="item.value"
+              type="button"
+              role="radio"
+              :aria-checked="tool === item.value"
+              :disabled="toolBlocker(item.value) !== null"
+              :title="toolBlocker(item.value) ?? item.hint"
+              :class="
+                cn(
+                  'flex h-[26px] items-center gap-xs rounded-[6px] px-sm text-body-sm transition-colors disabled:cursor-not-allowed disabled:opacity-40',
+                  tool === item.value ? 'bg-primary text-on-primary' : 'text-body hover:text-ink',
+                )
+              "
+              @click="tool = item.value"
+            >
+              <component :is="item.icon" :size="13" />
+              <span class="hidden sm:inline">{{ item.label }}</span>
+            </button>
           </div>
-          <div class="rounded-control bg-surface-soft px-sm py-xs">
-            <div class="text-label uppercase text-muted">Stack</div>
-            <div class="mt-xxs text-body-sm font-medium uppercase">{{ agentState }}</div>
+
+          <!-- Six layer chips were a second toolbar; one button holds them. -->
+          <PopoverRoot>
+            <PopoverTrigger
+              class="flex h-[32px] items-center gap-xs rounded-control border border-hairline bg-surface px-sm text-body-sm text-body shadow-soft transition-colors hover:text-ink"
+              aria-label="Map layers"
+            >
+              <Layers :size="14" />
+              <span class="hidden sm:inline">Layers</span>
+              <span class="font-data text-caption text-muted">{{ layersOn }}</span>
+            </PopoverTrigger>
+            <PopoverPortal>
+              <PopoverContent
+                side="bottom"
+                align="start"
+                :side-offset="6"
+                class="z-50 w-[15rem] rounded-surface border border-hairline bg-surface p-xxs shadow-soft"
+              >
+                <button
+                  v-for="layer in LAYER_LIST"
+                  :key="layer.key"
+                  type="button"
+                  role="menuitemcheckbox"
+                  :aria-checked="layers[layer.key]"
+                  class="flex w-full items-start gap-xs rounded-control px-xs py-xs text-left transition-colors hover:bg-surface-soft"
+                  @click="layers[layer.key] = !layers[layer.key]"
+                >
+                  <component
+                    :is="layers[layer.key] ? Eye : EyeOff"
+                    :size="14"
+                    :class="cn('mt-[2px] shrink-0', layers[layer.key] ? 'text-primary' : 'text-muted-soft')"
+                  />
+                  <span class="min-w-0">
+                    <span
+                      class="block text-body-sm"
+                      :class="layers[layer.key] ? 'text-ink' : 'text-muted'"
+                    >
+                      {{ layer.label }}
+                    </span>
+                    <span class="block text-caption text-muted-soft">{{ layer.hint }}</span>
+                  </span>
+                </button>
+              </PopoverContent>
+            </PopoverPortal>
+          </PopoverRoot>
+        </div>
+
+        <!-- Offline: said once, where the map would be, instead of a banner
+             above it and "unknown" in every field. -->
+        <div
+          v-if="!online"
+          class="absolute inset-0 z-[1] flex items-center justify-center bg-canvas/70 p-base backdrop-blur-[1px]"
+        >
+          <div
+            class="max-w-[22rem] rounded-surface border border-hairline bg-surface px-base py-sm text-center shadow-soft"
+          >
+            <WifiOff :size="18" class="mx-auto text-status-warn" />
+            <p class="mt-xs text-body-md text-ink">
+              {{ muted ? 'Monitoring is off' : `${robot.name} is not connected` }}
+            </p>
+            <p class="mt-xxs text-caption text-muted">
+              <template v-if="muted">
+                Turn it on in
+                <RouterLink :to="`/robot/${robotId}/detail`" class="text-primary hover:underline">
+                  Details
+                </RouterLink>
+                to see the live map.
+              </template>
+              <template v-else>
+                {{ link.attempt > 0 ? `Reconnecting, attempt ${link.attempt}. ` : '' }}The map and
+                the controls come back when it does.
+              </template>
+            </p>
           </div>
-          <div class="rounded-control bg-surface-soft px-sm py-xs">
-            <div class="text-label uppercase text-muted">Localization</div>
-            <div class="mt-xxs text-body-sm font-medium">{{ localization }}</div>
-          </div>
-          <!-- Goals leave on a topic, so nothing here waits on a result. This is
-               the only place the answer arrives. -->
-          <div class="rounded-control bg-surface-soft px-sm py-xs">
-            <div class="text-label uppercase text-muted">Goal</div>
+        </div>
+      </section>
+
+      <!-- Status and mission. Collapsible to a strip, like Station and Zone. -->
+      <aside
+        class="flex shrink-0 flex-col border-l border-hairline bg-surface transition-[width] duration-150"
+        :class="panelOpen ? 'w-[19rem]' : 'w-[3rem]'"
+      >
+        <button
+          type="button"
+          class="flex h-10 shrink-0 items-center gap-xs border-b border-hairline px-sm text-body-sm text-body transition-colors hover:text-ink"
+          :aria-expanded="panelOpen"
+          :title="panelOpen ? 'Hide the panel' : 'Show status and mission'"
+          @click="panelOpen = !panelOpen"
+        >
+          <component :is="panelOpen ? PanelRightClose : PanelRightOpen" :size="15" class="shrink-0" />
+          <span v-if="panelOpen">Status &amp; mission</span>
+        </button>
+
+        <div v-if="panelOpen" class="min-h-0 flex-1 space-y-base overflow-y-auto p-base scrollbar-thin">
+          <!-- A short list, not ten tiles: these are read at a glance. -->
+          <dl class="space-y-xs text-body-sm">
+            <div class="flex items-baseline justify-between gap-sm">
+              <dt class="text-muted">Stack</dt>
+              <dd class="font-medium" :class="stackLine.tone">{{ stackLine.text }}</dd>
+            </div>
+            <div class="flex items-baseline justify-between gap-sm">
+              <dt class="text-muted">Pose</dt>
+              <dd
+                class="font-medium"
+                :class="!online ? 'text-muted' : telemetry.pose.value ? 'text-ink' : 'text-status-warn'"
+              >
+                {{ !online ? '—' : telemetry.pose.value ? 'Localized' : 'Not set' }}
+              </dd>
+            </div>
             <!-- A stalled goal is still "executing" as far as Nav2 is
                  concerned, so saying so would be true and useless. -->
-            <div
-              class="mt-xxs text-body-sm font-medium"
-              :class="{
-                'text-status-ok': telemetry.goalOutcome.value === 'arrived',
-                'text-status-fault': telemetry.goalOutcome.value === 'failed',
-                'text-status-warn': telemetry.stall.value.stalled,
-                'text-muted': telemetry.goalOutcome.value === 'none',
-              }"
-            >
-              {{
-                telemetry.stall.value.stalled
-                  ? stallLabel(telemetry.stall.value.stillFor)
-                  : GOAL_OUTCOME_LABEL[telemetry.goalOutcome.value]
-              }}
+            <div class="flex items-baseline justify-between gap-sm">
+              <dt class="text-muted">Goal</dt>
+              <dd
+                class="text-right font-medium"
+                :class="
+                  !online
+                    ? 'text-muted'
+                    : telemetry.stall.value.stalled
+                      ? 'text-status-warn'
+                      : telemetry.goalOutcome.value === 'arrived'
+                        ? 'text-status-ok'
+                        : telemetry.goalOutcome.value === 'failed'
+                          ? 'text-status-fault'
+                          : 'text-muted'
+                "
+              >
+                {{
+                  !online
+                    ? '—'
+                    : telemetry.stall.value.stalled
+                      ? stallLabel(telemetry.stall.value.stillFor)
+                      : GOAL_OUTCOME_LABEL[telemetry.goalOutcome.value]
+                }}
+              </dd>
             </div>
-          </div>
-          <div class="rounded-control bg-surface-soft px-sm py-xs">
-            <div class="text-label uppercase text-muted">Active map</div>
-            <div class="mt-xxs truncate text-body-sm font-medium" :title="robot.activeMapId ?? undefined">
-              {{ robot.activeMapId || 'Not assigned' }}
+            <div class="flex items-baseline justify-between gap-sm">
+              <dt class="text-muted">Map</dt>
+              <dd class="min-w-0 truncate font-medium">
+                <RouterLink
+                  v-if="mapLabel"
+                  to="/maps"
+                  class="text-ink hover:text-primary hover:underline"
+                  :title="robot.activeMapId ?? undefined"
+                >
+                  {{ mapLabel }}
+                </RouterLink>
+                <span v-else class="text-status-warn">Not assigned</span>
+              </dd>
             </div>
-          </div>
-        </CardContent>
-      </Card>
+            <div class="flex items-baseline justify-between gap-sm">
+              <dt class="text-muted">Battery</dt>
+              <dd class="font-data font-medium text-ink">{{ batteryLine }}</dd>
+            </div>
+            <!-- Only when the robot reports them; "not reported" twice was noise. -->
+            <div v-if="activity" class="flex items-center justify-between gap-sm">
+              <dt class="text-muted">Activity</dt>
+              <dd><StatusBadge :tone="activity.tone" :label="activity.label" /></dd>
+            </div>
+            <div v-if="docking" class="flex items-center justify-between gap-sm">
+              <dt class="text-muted">Docking</dt>
+              <dd><StatusBadge :tone="docking.tone" :label="docking.label" /></dd>
+            </div>
+          </dl>
 
-      <Card>
-        <PanelToolbar title="Mission" subtitle="Run a saved route on this robot" />
-        <CardContent class="space-y-base">
+          <section class="space-y-sm border-t border-hairline pt-base">
+            <p class="text-label uppercase text-muted">Mission</p>
+
+
           <div v-if="activeRun" class="rounded-control border border-primary/30 bg-primary/5 p-sm">
             <div class="flex flex-wrap items-start justify-between gap-sm">
               <div>
@@ -550,14 +737,15 @@ async function cancelMission() {
           </div>
 
           <template v-else>
-            <div class="grid gap-sm md:grid-cols-[minmax(0,1fr)_minmax(0,12rem)]">
+            <!-- Stacked: the panel is narrow at any screen width. -->
+            <div class="grid grid-cols-[minmax(0,1fr)_7.5rem] gap-xs">
               <div class="space-y-xxs">
-                <p class="text-label uppercase text-muted">Mission</p>
+                <p class="text-label uppercase text-muted">Route</p>
                 <Select
-                  label="Mission"
+                  label="Route"
                   :model-value="selectedMissionId"
                   :options="missionOptions"
-                  placeholder="Choose a mission"
+                  placeholder="Choose…"
                   class="w-full"
                   @update:model-value="selectedMissionId = $event"
                 />
@@ -600,115 +788,9 @@ async function cancelMission() {
               </Button>
             </div>
           </template>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardContent class="space-y-xs">
-          <div class="flex flex-wrap items-center gap-base">
-            <div class="flex gap-xxs">
-              <button
-                v-for="item in TOOLS"
-                :key="item.value"
-                type="button"
-                :title="item.hint"
-                :aria-pressed="tool === item.value"
-                :class="
-                  cn(
-                    'flex h-control-sm items-center gap-xs rounded-control border px-sm text-body-sm transition-colors',
-                    tool === item.value
-                      ? 'border-primary bg-primary/10 text-ink'
-                      : 'border-hairline text-body hover:border-primary',
-                  )
-                "
-                @click="tool = item.value"
-              >
-                <component :is="item.icon" :size="13" />
-                {{ item.label }}
-              </button>
-            </div>
-
-            <span class="h-5 w-px bg-hairline" />
-
-            <div class="flex flex-wrap gap-xxs">
-              <button
-                v-for="layer in LAYER_LIST"
-                :key="layer.key"
-                type="button"
-                :title="layer.hint"
-                :aria-pressed="layers[layer.key]"
-                :class="
-                  cn(
-                    'rounded-chip border px-sm py-xxs text-caption transition-colors',
-                    layers[layer.key]
-                      ? 'border-primary bg-primary/10 text-ink'
-                      : 'border-hairline text-muted hover:text-ink',
-                  )
-                "
-                @click="layers[layer.key] = !layers[layer.key]"
-              >
-                {{ layer.label }}
-              </button>
-            </div>
-          </div>
-
-          <div class="h-[min(68vh,42rem)] overflow-hidden rounded-surface border border-hairline">
-            <RobotMapCanvas
-              :grid="telemetry.grid.value"
-              :costmap="telemetry.costmap.value"
-              :plan="telemetry.plan.value"
-              :particles="telemetry.particles.value"
-              :scan="telemetry.scan.value"
-              :pose="telemetry.pose.value"
-              :sensor-offset="telemetry.sensorOffset.value"
-              :zones="zones.zones"
-              :footprint="telemetry.footprint.value"
-              :mission="missionMap"
-              :layers="layers"
-              :tool="tool"
-              @pick="onPick"
-            >
-              <template #legend>
-                <span
-                  v-for="kind in ZONE_KIND_LIST"
-                  :key="kind.value"
-                  class="flex items-center gap-xxs"
-                >
-                  <span class="h-2.5 w-2.5 rounded-[2px]" :style="{ backgroundColor: kind.colour }" />
-                  {{ kind.label }}
-                </span>
-              </template>
-            </RobotMapCanvas>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardContent class="grid gap-sm sm:grid-cols-2 lg:grid-cols-4">
-          <MetricTile
-            label="Battery"
-            :value="formatPercent(vitals.battery.percent)"
-            :unit="vitals.battery.charging ? 'charging' : undefined"
-            size="lg"
-          />
-          <MetricTile label="Voltage" :value="formatNumber(vitals.battery.voltage, 1)" unit="V" size="lg" />
-          <div class="rounded-control bg-surface-soft px-sm py-xs">
-            <div class="text-label uppercase text-muted">Activity</div>
-            <div class="mt-xxs">
-              <StatusBadge v-if="activity" :tone="activity.tone" :label="activity.label" />
-              <span v-else class="text-body-sm text-muted-soft">Not reported yet</span>
-            </div>
-          </div>
-          <div class="rounded-control bg-surface-soft px-sm py-xs">
-            <div class="text-label uppercase text-muted">Docking</div>
-            <div class="mt-xxs">
-              <StatusBadge v-if="docking" :tone="docking.tone" :label="docking.label" />
-              <span v-else class="text-body-sm text-muted-soft">Not reported yet</span>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-    </template>
+          </section>
+        </div>
+      </aside>
+    </div>
   </div>
 </template>

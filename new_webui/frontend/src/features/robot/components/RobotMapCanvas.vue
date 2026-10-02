@@ -692,7 +692,8 @@ defineExpose({ resetView })
       <span v-if="props.pose" class="font-data text-ink">
         {{ props.pose.x.toFixed(2) }}, {{ props.pose.y.toFixed(2) }} m
       </span>
-      <span v-else class="text-status-warn">no pose — is AMCL localised?</span>
+      <!-- Only once there is a map: before that the question is the link, not AMCL. -->
+      <span v-else-if="props.grid" class="text-status-warn">no pose — is AMCL localised?</span>
     </div>
   </div>
 </template>
