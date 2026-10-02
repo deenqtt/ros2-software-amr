@@ -20,7 +20,25 @@ export interface Alarm {
   message: string
   raisedAt: number
   acknowledgedAt: number | null
+  /** The robot it concerns, so the alarm can link to it. */
+  robotId?: string | null
+  /** The mission it concerns, likewise. */
+  missionId?: string | null
 }
+
+/**
+ * Only faults and warnings are alarms.
+ *
+ * An alarm is something an operator has to act on (ISA-18.2). "Started",
+ * "reached a stop" and "finished" are the system working; they go in the log.
+ * Making them alarms put five acknowledge buttons per route in front of the one
+ * fault that mattered, and taught "Acknowledge all" as a reflex.
+ */
+export function isAlarm(alarm: Pick<Alarm, 'severity'>): boolean {
+  return alarm.severity !== 'info'
+}
+
+const SEVERITY_RANK: Record<AlarmSeverity, number> = { fault: 0, warning: 1, info: 2 }
 
 /**
  * Kept in this browser so a refresh does not wipe "what happened at 14:20".
@@ -58,12 +76,20 @@ export const useAlarmStore = defineStore('alarms', () => {
     { deep: true },
   )
 
-  const active = computed(() => alarms.value.filter((a) => a.acknowledgedAt === null))
+  /** Newest first — an operator reads the most recent event, not the oldest. */
+  const ordered = computed(() => [...alarms.value].sort((a, b) => b.raisedAt - a.raisedAt))
+
+  /** Unacknowledged faults, then warnings, newest first within each. */
+  const active = computed(() =>
+    alarms.value
+      .filter((a) => isAlarm(a) && a.acknowledgedAt === null)
+      .sort((a, b) => SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity] || b.raisedAt - a.raisedAt),
+  )
   const activeCount = computed(() => active.value.length)
   const faultCount = computed(() => active.value.filter((a) => a.severity === 'fault').length)
 
-  /** Newest first — an operator reads the most recent event, not the oldest. */
-  const ordered = computed(() => [...alarms.value].sort((a, b) => b.raisedAt - a.raisedAt))
+  /** Everything that is not waiting on the operator: events, and handled alarms. */
+  const history = computed(() => ordered.value.filter((a) => !isAlarm(a) || a.acknowledgedAt !== null))
 
   function raise(alarm: Omit<Alarm, 'id' | 'raisedAt' | 'acknowledgedAt'>): Alarm {
     const created: Alarm = {
@@ -93,5 +119,22 @@ export const useAlarmStore = defineStore('alarms', () => {
     alarms.value = []
   }
 
-  return { alarms, active, activeCount, faultCount, ordered, raise, acknowledge, acknowledgeAll, clear }
+  /** Drop the log, keeping anything still waiting to be acknowledged. */
+  function clearHistory() {
+    alarms.value = alarms.value.filter((a) => isAlarm(a) && a.acknowledgedAt === null)
+  }
+
+  return {
+    alarms,
+    active,
+    activeCount,
+    faultCount,
+    history,
+    ordered,
+    raise,
+    acknowledge,
+    acknowledgeAll,
+    clear,
+    clearHistory,
+  }
 })

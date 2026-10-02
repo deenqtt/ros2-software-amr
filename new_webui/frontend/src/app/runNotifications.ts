@@ -80,8 +80,14 @@ export function useRunNotifications() {
     return (run.robotId && fleet.byId(run.robotId)?.name) || 'Robot'
   }
 
-  function record(severity: AlarmSeverity, source: string, message: string) {
-    alarms.raise({ severity, source, message })
+  function record(severity: AlarmSeverity, run: MissionRun, message: string) {
+    alarms.raise({
+      severity,
+      source: robotName(run),
+      message,
+      robotId: run.robotId,
+      missionId: run.missionId,
+    })
   }
 
   async function announce(event: RunEvent): Promise<void> {
@@ -92,7 +98,7 @@ export function useRunNotifications() {
     switch (event.kind) {
       case 'started':
         // The operator who started it has had a toast already.
-        record('info', robot, `Started ${mission}`)
+        record('info', run, `Started ${mission}`)
         return
 
       case 'reached': {
@@ -102,25 +108,29 @@ export function useRunNotifications() {
         const progress = total ? `step ${index + 1} of ${total}` : `step ${index + 1}`
         const lap = run.mode === 'once' ? '' : ` · lap ${run.reachedLap ?? run.lap}`
         toast.success(`${robot} reached ${place}`, { description: `${mission} · ${progress}${lap}` })
-        record('info', robot, `Reached ${place} (${mission}, ${progress}${lap})`)
+        record('info', run, `Reached ${place} (${mission}, ${progress}${lap})`)
         return
       }
 
       case 'done':
         toast.success(`${robot} finished ${mission}`)
-        record('info', robot, `Finished ${mission}`)
+        record('info', run, `Finished ${mission}`)
         return
 
       case 'failed':
         toast.error(`${mission} failed on ${robot}`, { description: run.detail ?? undefined })
-        record('fault', robot, `${mission} failed${run.detail ? `: ${run.detail}` : ''}`)
+        record('fault', run, `${mission} failed${run.detail ? `: ${run.detail}` : ''}`)
         return
 
       case 'canceled':
-        if (run.detail !== OPERATOR_CANCEL) {
-          toast.warning(`${mission} canceled on ${robot}`, { description: run.detail ?? undefined })
+        // An operator's own cancel is a decision, not a problem: it goes in the
+        // log. Anything else stopping a run is a warning someone should see.
+        if (run.detail === OPERATOR_CANCEL) {
+          record('info', run, `${mission} canceled by the operator`)
+          return
         }
-        record('warning', robot, `${mission} canceled${run.detail ? `: ${run.detail}` : ''}`)
+        toast.warning(`${mission} canceled on ${robot}`, { description: run.detail ?? undefined })
+        record('warning', run, `${mission} canceled${run.detail ? `: ${run.detail}` : ''}`)
         return
     }
   }

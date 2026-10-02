@@ -11,12 +11,15 @@ import { RouterView } from 'vue-router'
 import { Toaster } from 'vue-sonner'
 import { useUiStore } from '@/stores/ui'
 import { useRunNotifications } from '@/app/runNotifications'
+import { useLinkAlarms } from '@/app/linkAlarms'
 
 // Instantiate early so the persisted theme is applied on first paint.
 useUiStore()
 // Here rather than on one page: a robot reaching a stop or failing matters to
 // whoever is watching, whichever screen they are on.
 useRunNotifications()
+// Also where link monitoring starts, so every page sees real link state.
+useLinkAlarms()
 </script>
 
 <template>

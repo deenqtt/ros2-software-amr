@@ -4,8 +4,9 @@
  *
  * The count dot is the only place a fault colour appears in the header chrome,
  * so it reads immediately against otherwise monochrome type. The popover lists
- * the three most recent unacknowledged alarms and hands off to the Alarm
- * destination rather than trying to be that screen.
+ * the three most pressing unacknowledged alarms — faults before warnings — and
+ * hands off to the Alarm destination rather than trying to be that screen.
+ * Routine events never reach the count; it is red only while a fault is open.
  */
 import { computed } from 'vue'
 import { RouterLink } from 'vue-router'
@@ -24,7 +25,7 @@ import type { AlarmSeverity } from '@/stores/alarms'
 
 const alarms = useAlarmStore()
 
-const recent = computed(() => alarms.ordered.filter((a) => a.acknowledgedAt === null).slice(0, 3))
+const recent = computed(() => alarms.active.slice(0, 3))
 
 const SEVERITY_CLASS: Record<AlarmSeverity, string> = {
   fault: 'bg-status-fault',
@@ -52,7 +53,12 @@ function relativeTime(at: number): string {
       <Bell :size="17" />
       <span
         v-if="alarms.activeCount > 0"
-        class="absolute right-[5px] top-[5px] flex h-[15px] min-w-[15px] items-center justify-center rounded-chip bg-status-fault px-[4px] text-[10px] font-semibold leading-none text-white"
+        :class="
+          cn(
+            'absolute right-[5px] top-[5px] flex h-[15px] min-w-[15px] items-center justify-center rounded-chip px-[4px] text-[10px] font-semibold leading-none text-white',
+            alarms.faultCount > 0 ? 'bg-status-fault' : 'bg-status-warn',
+          )
+        "
       >
         {{ alarms.activeCount > 99 ? '99+' : alarms.activeCount }}
       </span>
@@ -88,7 +94,7 @@ function relativeTime(at: number): string {
               aria-hidden="true"
             />
             <div class="min-w-0 flex-1">
-              <p class="truncate text-body-sm text-ink">{{ alarm.message }}</p>
+              <p class="line-clamp-2 text-body-sm text-ink">{{ alarm.message }}</p>
               <p class="mt-[2px] text-caption text-muted">
                 {{ alarm.source }} · {{ relativeTime(alarm.raisedAt) }}
               </p>
