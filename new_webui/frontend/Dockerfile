@@ -12,8 +12,14 @@ COPY package.json package-lock.json ./
 RUN npm ci --no-audit --no-fund
 
 COPY . .
-# Relative URLs only: the same image works under any host name or IP.
-RUN cp .env.production.example .env.production && npm run build
+# Relative URLs only: the same image works under any host name or IP. Set
+# here rather than read from an .env file, which is not in the repository.
+ENV VITE_API_BASE_URL=/backend/api \
+    VITE_API_STATIC_URL=/backend \
+    VITE_DEFAULT_ROS_URL=ws://192.168.10.21:9090 \
+    VITE_DEFAULT_CAMERA_PORT=8080 \
+    VITE_DEV_LATENCY_MS=0
+RUN npm run build
 
 # ── Serve ─────────────────────────────────────────────────────────────────────
 # Unprivileged nginx: listens on 8080 and runs as a non-root user.
