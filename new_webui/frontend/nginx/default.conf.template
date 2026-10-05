@@ -1,0 +1,53 @@
+# Rendered by the nginx image at start-up: ${AMR_BACKEND_URL} comes from the
+# environment (see frontend/Dockerfile and deploy/docker-compose.yml).
+
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    ''      close;
+}
+
+server {
+    listen 8080;
+    server_name _;
+
+    root /usr/share/nginx/html;
+    index index.html;
+
+    # Map uploads are a PGM plus its YAML; a large warehouse map is tens of MB.
+    client_max_body_size 64m;
+
+    location = /healthz {
+        access_log off;
+        return 200 "ok\n";
+    }
+
+    # Client-side routes (/robot/…/nav, /missions, …) all serve the app.
+    # index.html itself is never cached, so a new release is picked up on the
+    # next load.
+    location / {
+        try_files $uri $uri/ /index.html;
+        add_header Cache-Control "no-cache";
+    }
+
+    # Hashed assets never change under the same name; cache them hard.
+    location /assets/ {
+        expires 30d;
+        add_header Cache-Control "public, immutable";
+        try_files $uri =404;
+    }
+
+    # Trailing slash strips /backend: /backend/api/runs reaches the backend as
+    # /api/runs. Robots use this too: run_agent_gprp.sh <id> http://<host>/backend
+    location /backend/ {
+        proxy_pass ${AMR_BACKEND_URL}/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 60s;
+    }
+
+    # Per-site extras, e.g. /robot/<name> proxies to each robot's rosbridge so
+    # browsers need not reach the Jetsons directly. Mounted from the host; see
+    # deploy/robots.conf.example.
+    include /etc/nginx/amr.d/*.conf;
+}

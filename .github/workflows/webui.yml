@@ -1,0 +1,197 @@
+# Web UI: test, then build the two images for amd64 and arm64 on native runners
+# (no QEMU emulation), and publish them as one multi-arch tag each:
+#
+#   ghcr.io/deenqtt/amr-backend   FastAPI
+#   ghcr.io/deenqtt/amr-web       nginx + the built frontend, proxies /backend/
+#
+# Tags: a push to main gives :main and :sha-<short>; a git tag v1.2.0 gives
+# :1.2.0, :1.2 and :latest. Pull requests build but publish nothing.
+#
+# No secrets are baked into the images. Site settings, including the first
+# super admin, live in the .env on the machine that runs them (deploy/).
+
+name: Web UI
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*.*.*"]
+    paths:
+      - "new_webui/**"
+      - ".github/workflows/webui.yml"
+  pull_request:
+    paths:
+      - "new_webui/**"
+      - ".github/workflows/webui.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: webui-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  REGISTRY: ghcr.io
+  # Image names must be lowercase.
+  OWNER: ${{ github.repository_owner }}
+
+jobs:
+  backend-test:
+    name: Backend tests
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: new_webui/backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: new_webui/backend/pyproject.toml
+      - run: pip install -e ".[dev]"
+      - run: ruff check .
+      - run: pytest
+
+  frontend-test:
+    name: Frontend tests
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: new_webui/frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: new_webui/frontend/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      # Not `npm run lint`: that one has --fix, which would hide a problem
+      # rather than fail on it.
+      - run: npx eslint .
+      - run: npm run typecheck
+      - run: npm test
+
+  build:
+    name: Build ${{ matrix.image }} (${{ matrix.arch }})
+    needs: [backend-test, frontend-test]
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [backend, web]
+        arch: [amd64, arm64]
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+          - image: backend
+            context: new_webui/backend
+          - image: web
+            context: new_webui/frontend
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Image name
+        run: echo "IMAGE=${REGISTRY}/${OWNER,,}/amr-${{ matrix.image }}" >> "$GITHUB_ENV"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        if: github.event_name != 'pull_request'
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/metadata-action@v5
+        id: meta
+        with:
+          images: ${{ env.IMAGE }}
+
+      # Pushed by digest only; the merge job below puts the tags on the
+      # combined amd64 + arm64 manifest.
+      - uses: docker/build-push-action@v6
+        id: build
+        with:
+          context: ${{ matrix.context }}
+          platforms: linux/${{ matrix.arch }}
+          labels: ${{ steps.meta.outputs.labels }}
+          outputs: >-
+            type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=${{ github.event_name != 'pull_request' }}
+          cache-from: type=gha,scope=${{ matrix.image }}-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image }}-${{ matrix.arch }}
+
+      - name: Keep the digest
+        if: github.event_name != 'pull_request'
+        run: |
+          mkdir -p "${{ runner.temp }}/digests"
+          digest="${{ steps.build.outputs.digest }}"
+          touch "${{ runner.temp }}/digests/${digest#sha256:}"
+
+      - uses: actions/upload-artifact@v4
+        if: github.event_name != 'pull_request'
+        with:
+          name: digest-${{ matrix.image }}-${{ matrix.arch }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  publish:
+    name: Publish ${{ matrix.image }}
+    if: github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        image: [backend, web]
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Image name
+        run: echo "IMAGE=${REGISTRY}/${OWNER,,}/amr-${{ matrix.image }}" >> "$GITHUB_ENV"
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: ${{ runner.temp }}/digests
+          pattern: digest-${{ matrix.image }}-*
+          merge-multiple: true
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/metadata-action@v5
+        id: meta
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix=sha-
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+
+      - name: Tag the amd64 + arm64 manifest
+        working-directory: ${{ runner.temp }}/digests
+        run: |
+          # Word splitting wanted: each tag and digest is its own argument.
+          # shellcheck disable=SC2046
+          docker buildx imagetools create \
+            $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+            $(printf "${IMAGE}@sha256:%s " *)
+
+      - name: Show it
+        run: docker buildx imagetools inspect "${IMAGE}:${{ steps.meta.outputs.version }}"

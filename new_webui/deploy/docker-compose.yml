@@ -1,0 +1,48 @@
+# AMR web UI on one machine: a server (amd64) or a Raspberry Pi 4/5 (arm64).
+# The same file and the same images on both; Docker pulls the right one.
+#
+#   mkdir -p /opt/amr && cd /opt/amr
+#   cp <repo>/new_webui/deploy/docker-compose.yml .
+#   cp <repo>/new_webui/deploy/.env.example .env      # then edit it
+#   mkdir -p data maps nginx && sudo chown 10001:10001 data maps
+#   docker compose up -d
+#
+# The chown: the backend runs as uid 10001, not root, and a directory Docker
+# creates on first start belongs to root — the database could not be written.
+#
+# Update: set AMR_VERSION in .env, then `docker compose pull && docker compose up -d`.
+# Everything that must survive an update is in ./data and ./maps — back them up.
+
+name: amr
+
+services:
+  backend:
+    image: ghcr.io/deenqtt/amr-backend:${AMR_VERSION:-latest}
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # Fixed by the image layout; not for .env.
+      AMR_DB_PATH: /data/amr.db
+      AMR_MAPS_DIR: /maps
+      AMR_HOST: 0.0.0.0
+      AMR_PORT: "3002"
+    volumes:
+      - ./data:/data
+      - ./maps:/maps
+    # Not published: only the web container talks to it, on the compose
+    # network. Robots reach it through the web container at /backend.
+
+  web:
+    image: ghcr.io/deenqtt/amr-web:${AMR_VERSION:-latest}
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    environment:
+      AMR_BACKEND_URL: http://backend:3002
+    ports:
+      - "${AMR_HTTP_PORT:-80}:8080"
+    volumes:
+      # Optional: one .conf per site extra, e.g. robots.conf (see
+      # robots.conf.example). An empty directory is fine.
+      - ./nginx:/etc/nginx/amr.d:ro

@@ -41,7 +41,44 @@ rosbridge (live map, laser, goals, teleop) — directly, or through nginx.
 Nothing needs to reach the robot except rosbridge, and with the nginx proxy not
 even that from the operators' network — only from the server.
 
-## Server
+## Server with Docker (recommended)
+
+Two images, built by `.github/workflows/webui.yml` for **amd64 and arm64**, so
+the same steps work on a PC server and on a **Raspberry Pi 4/5 with a 64-bit
+OS** (32-bit Raspberry Pi OS is not supported):
+
+| Image | |
+|---|---|
+| `ghcr.io/deenqtt/amr-backend` | FastAPI backend, SQLite, migrations on start-up |
+| `ghcr.io/deenqtt/amr-web` | nginx serving the built UI, proxying `/backend/` to the backend |
+
+Tags: `latest` and `1.2.0` from a git tag `v1.2.0`; `main` and `sha-<short>`
+from every push to main. Run a release tag in production.
+
+```bash
+sudo mkdir -p /opt/amr && sudo chown "$USER" /opt/amr && cd /opt/amr
+curl -fsSLO https://raw.githubusercontent.com/deenqtt/ros2-software-amr/main/new_webui/deploy/docker-compose.yml
+curl -fsSL -o .env https://raw.githubusercontent.com/deenqtt/ros2-software-amr/main/new_webui/deploy/.env.example
+nano .env          # AMR_VERSION, AMR_CORS_ORIGINS, first admin
+mkdir -p data maps nginx && sudo chown 10001:10001 data maps
+docker compose up -d
+```
+
+- **First super admin** comes from `AMR_BOOTSTRAP_USER` / `AMR_BOOTSTRAP_PASSWORD`
+  in that `.env`, only while the database has no accounts; it must choose its
+  own password at the first sign-in. Delete both lines afterwards. Never put
+  them in the images or in GitHub: the images are public.
+- **Update:** set `AMR_VERSION`, then `docker compose pull && docker compose up -d`.
+- **Back up** `/opt/amr/data` and `/opt/amr/maps`; everything else is in the image.
+- **Robots** point at `http://<server>/backend`
+  (`run_agent_gprp.sh <robot_id> http://<server>/backend`).
+- **rosbridge through the server** (optional): copy
+  `new_webui/deploy/robots.conf.example` to `/opt/amr/nginx/robots.conf`, one
+  block per robot, then `docker compose restart web`.
+- **Raspberry Pi:** keep `/opt/amr` on an SSD or USB drive rather than the SD
+  card; SQLite writes on every report and sign-in, and SD cards wear out.
+
+## Server without Docker
 
 1. **Backend** (`new_webui/backend`):
 
@@ -147,11 +184,11 @@ missions, and anything in the browser that goes through the server.
 
 ## Not done yet
 
-- **No authentication** on the backend or on rosbridge. Keep both on a trusted
-  network or VPN; put nginx in front with TLS and, at minimum, HTTP basic auth
-  until real accounts exist.
-- `confirm` steps are not waited on in `mission_via=nav` mode (see
-  `kiosk-mockup/README.md`).
+- **Robot agents are not authenticated yet** (`AMR_AGENT_AUTH=optional`), and
+  rosbridge has no authentication at all. Keep robots on a trusted network or
+  VPN.
+- The kiosk's waiting at `confirm` steps (`mission_via=nav`) has been tested
+  without a robot only; see `amr_agent/kiosk/README.md`.
 
 ## Checklist
 
