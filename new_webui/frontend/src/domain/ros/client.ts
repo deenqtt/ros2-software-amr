@@ -78,6 +78,8 @@ export class RosClient {
   private connecting = false
   private attempt = 0
   private tier: Tier | null = null
+  /** Optional topics a page has asked for. See TopicSpec.optional. */
+  private optional = new Set<string>()
   private lastError: string | null = null
   private retryHandle: ReturnType<typeof setTimeout> | null = null
   private disposed = false
@@ -249,7 +251,7 @@ export class RosClient {
    * does not reset its diagnostics to zero.
    */
   private applyTier(tier: Tier): void {
-    const wanted = new Map(specsForTier(tier).map((spec) => [spec.key, spec]))
+    const wanted = new Map(specsForTier(tier, this.optional).map((spec) => [spec.key, spec]))
 
     for (const [key, record] of this.records) {
       if (!wanted.has(key) && record.topic) {
@@ -272,6 +274,17 @@ export class RosClient {
       record.topic = this.openTopic(spec)
       this.records.set(key, record)
     }
+  }
+
+  /**
+   * Which optional topics to carry. Applied at once when connected; otherwise
+   * remembered for the next connect.
+   */
+  setOptionalTopics(keys: Iterable<string>): void {
+    const next = new Set(keys)
+    if (next.size === this.optional.size && [...next].every((key) => this.optional.has(key))) return
+    this.optional = next
+    if (this.socketOpen && this.tier !== null) this.applyTier(this.tier)
   }
 
   private openTopic(spec: TopicSpec): Topic | null {

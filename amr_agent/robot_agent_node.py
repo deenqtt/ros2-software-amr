@@ -266,6 +266,57 @@ TELEOP_TIMEOUT_S = 0.3
 TELEOP_STOP_REPEATS = 5
 
 
+# Where each stack's console output is kept, one file per mode, the previous
+# run's beside it as .1. Capped so a robot left running for a week does not
+# fill its disk with "Optimizer reset".
+LAUNCH_LOG_DIR = Path(os.path.expanduser("~/.ros/amr_agent"))
+LAUNCH_LOG_MAX_BYTES = 20 * 1024 * 1024
+
+
+def launch_log_path(mode: str) -> Path:
+    return LAUNCH_LOG_DIR / f"{mode}.log"
+
+
+def _rotate(path: Path) -> None:
+    try:
+        if path.exists():
+            path.replace(path.with_suffix(path.suffix + ".1"))
+    except OSError:
+        pass
+
+
+def _tee_child_output(stream, path: Path) -> None:
+    """Copy a launch's stdout to the console and to its log file, line by line."""
+    log = None
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        _rotate(path)
+        log = open(path, "ab")  # noqa: SIM115 — closed below, lives as long as the stream
+    except OSError:
+        log = None
+    try:
+        for line in iter(stream.readline, b""):
+            try:
+                sys.stdout.buffer.write(line)
+                sys.stdout.buffer.flush()
+            except (OSError, ValueError):
+                pass
+            if log is not None:
+                try:
+                    log.write(line)
+                    log.flush()
+                    if log.tell() > LAUNCH_LOG_MAX_BYTES:
+                        log.close()
+                        _rotate(path)
+                        log = open(path, "ab")  # noqa: SIM115
+                except OSError:
+                    log = None
+    finally:
+        stream.close()
+        if log is not None:
+            log.close()
+
+
 class RobotAgent(Node):
     def __init__(self) -> None:
         super().__init__("robot_agent")
@@ -2012,8 +2063,21 @@ class RobotAgent(Node):
         # it, killing `ros2 launch` leaves its children running and the next
         # start collides with the previous stack.
         self._child = subprocess.Popen(
-            cmd, start_new_session=True, stderr=self._child_errors
+            cmd,
+            start_new_session=True,
+            stdout=subprocess.PIPE,
+            stderr=self._child_errors,
         )
+        # Nav2 logs to stdout, so a goal that fails says why on a terminal and
+        # nowhere else: diagnosing a robot meant asking whoever was next to it
+        # to copy lines across. Every line still goes to the console, and also
+        # to a file that outlives the launch.
+        threading.Thread(
+            target=_tee_child_output,
+            args=(self._child.stdout, launch_log_path(mode)),
+            name=f"launch-log-{mode}",
+            daemon=True,
+        ).start()
         if mode == MODE_NAV:
             self._start_zone_mask()
 

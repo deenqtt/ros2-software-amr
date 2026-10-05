@@ -36,6 +36,8 @@ export class RosPool {
   private listeners = new Set<PoolListener>()
   private muted = new Set<string>()
   private focusedId: string | null = null
+  /** Optional topics asked for per robot, kept across client rebuilds. */
+  private optional = new Map<string, string[]>()
   private pollHandle: ReturnType<typeof setInterval> | null = null
 
   onSnapshot(listener: PoolListener): () => void {
@@ -86,6 +88,7 @@ export class RosPool {
     const unsubscribe = client.subscribeToSnapshots((snapshot) => {
       for (const listener of this.listeners) listener(robot.id, snapshot)
     })
+    client.setOptionalTopics(this.optional.get(robot.id) ?? [])
     this.entries.set(robot.id, {
       client,
       unsubscribe,
@@ -103,6 +106,12 @@ export class RosPool {
   focus(robotId: string | null): void {
     this.focusedId = robotId
     this.applyTiers()
+  }
+
+  /** Carry these optional topics for one robot (only used on its full tier). */
+  setOptionalTopics(robotId: string, keys: string[]): void {
+    this.optional.set(robotId, keys)
+    this.entries.get(robotId)?.client.setOptionalTopics(keys)
   }
 
   setMuted(robotId: string, muted: boolean): void {

@@ -45,6 +45,8 @@ export interface RosNames {
      * turns "Goal sent" into an answer.
      */
     navGoalStatus: string
+    /** Every node's log. Read for Nav2's own account of why a goal failed. */
+    rosout: string
   }
   services: {
     mapSave: string
@@ -76,6 +78,7 @@ export interface RosMessageTypes {
   twist: string
   poseStamped: string
   goalStatusArray: string
+  log: string
   missionPlanFeedback: string
 }
 
@@ -93,6 +96,7 @@ export const MESSAGE_TYPES: RosMessageTypes = {
   twist: 'geometry_msgs/msg/Twist',
   poseStamped: 'geometry_msgs/msg/PoseStamped',
   goalStatusArray: 'action_msgs/msg/GoalStatusArray',
+  log: 'rcl_interfaces/msg/Log',
   missionPlanFeedback: 'custom_interfaces/action/MissionPlan_FeedbackMessage',
 }
 
@@ -156,6 +160,7 @@ export function rosNames(namespace = ''): RosNames {
       cmdVel: n('/cmd_vel'),
       goalPose: n('/goal_pose'),
       navGoalStatus: n('/navigate_to_pose/_action/status'),
+      rosout: '/rosout',
       initialPose: n('/initialpose'),
       zones: n('/amr/zones'),
       missionPayload: n('/amr/mission_payload'),

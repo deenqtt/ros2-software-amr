@@ -28,6 +28,14 @@ export interface TopicSpec {
   messageType: string
   cadence: Cadence
   tier: Tier
+  /**
+   * Opened only when a page asks for it, even on the full tier.
+   *
+   * The particle cloud and the costmap are each ~180 KB of JSON per message
+   * and were 78% of a navigation page's traffic — while their layers were
+   * switched off and nothing drew them. The page that draws them asks.
+   */
+  optional?: boolean
   /** Milliseconds of silence before a periodic topic is stale. */
   budgetMs?: number
   /** rosbridge throttle_rate. 0 or absent means unthrottled. */
@@ -144,11 +152,21 @@ export const TOPIC_SPECS: readonly TopicSpec[] = [
     budgetMs: 6000,
     throttleMs: THROTTLE_MS.costmap,
     tier: 'full',
+    optional: true,
   },
   {
     key: 'plan',
     label: 'Planned path',
     messageType: MESSAGE_TYPES.path,
+    cadence: 'event',
+    tier: 'full',
+  },
+  {
+    key: 'rosout',
+    label: 'Node log',
+    messageType: MESSAGE_TYPES.log,
+    // Says why a goal failed, which the goal status cannot. Event cadence:
+    // a quiet log is a healthy one.
     cadence: 'event',
     tier: 'full',
   },
@@ -168,6 +186,7 @@ export const TOPIC_SPECS: readonly TopicSpec[] = [
     cadence: 'event',
     throttleMs: THROTTLE_MS.particleCloud,
     tier: 'full',
+    optional: true,
   },
   {
     key: 'robotDescription',
@@ -178,10 +197,10 @@ export const TOPIC_SPECS: readonly TopicSpec[] = [
   },
 ] as const
 
-export function specsForTier(tier: Tier): TopicSpec[] {
+export function specsForTier(tier: Tier, optional: ReadonlySet<string> = new Set()): TopicSpec[] {
   return tier === 'vitals'
     ? TOPIC_SPECS.filter((spec) => spec.tier === 'vitals')
-    : [...TOPIC_SPECS]
+    : TOPIC_SPECS.filter((spec) => !spec.optional || optional.has(spec.key))
 }
 
 /** What we know about one topic on one robot, right now. */

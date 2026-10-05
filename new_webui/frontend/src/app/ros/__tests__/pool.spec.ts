@@ -16,6 +16,7 @@ const instances = vi.hoisted(() => [] as Array<{
   poll: ReturnType<typeof vi.fn>
   subscribeToSnapshots: ReturnType<typeof vi.fn>
   onMessage: ReturnType<typeof vi.fn>
+  setOptionalTopics: ReturnType<typeof vi.fn>
 }>)
 
 vi.mock('@/domain/ros/client', () => ({
@@ -29,6 +30,7 @@ vi.mock('@/domain/ros/client', () => ({
       poll: vi.fn(),
       subscribeToSnapshots: vi.fn(() => () => {}),
       onMessage: vi.fn(() => () => {}),
+      setOptionalTopics: vi.fn(),
     }
     instances.push(instance)
     return instance
@@ -100,6 +102,14 @@ describe('sync', () => {
     pool.sync([robot('r1', { namespace: '' })])
     pool.sync([robot('r1', { namespace: 'amr_01' })])
     expect(instances).toHaveLength(2)
+  })
+
+  it('passes the optional topics a page asked for on to a rebuilt client', () => {
+    pool.sync([robot('r1', { bridgeUrl: 'ws://old:8765' })])
+    pool.setOptionalTopics('r1', ['costmap'])
+    expect(instances[0]?.setOptionalTopics).toHaveBeenLastCalledWith(['costmap'])
+    pool.sync([robot('r1', { bridgeUrl: 'ws://new:8765' })])
+    expect(instances[1]?.setOptionalTopics).toHaveBeenCalledWith(['costmap'])
   })
 })
 

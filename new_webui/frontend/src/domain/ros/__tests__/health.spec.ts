@@ -80,8 +80,17 @@ describe('tiers', () => {
     expect(vitals.every((s) => s.tier === 'vitals')).toBe(true)
   })
 
-  it('includes every topic in the full tier', () => {
-    expect(specsForTier('full')).toHaveLength(TOPIC_SPECS.length)
+  it('includes every topic in the full tier once its optional ones are asked for', () => {
+    const optional = new Set(TOPIC_SPECS.filter((s) => s.optional).map((s) => s.key))
+    expect(specsForTier('full', optional)).toHaveLength(TOPIC_SPECS.length)
+  })
+
+  it('leaves the heavy layers out of the full tier until a page asks for them', () => {
+    const keys = specsForTier('full').map((s) => s.key)
+    expect(keys).not.toContain('costmap')
+    expect(keys).not.toContain('particleCloud')
+    expect(keys).toContain('scan')
+    expect(specsForTier('full', new Set(['costmap'])).map((s) => s.key)).toContain('costmap')
   })
 
   it('gives every periodic topic a budget, and no other topic one', () => {

@@ -10,7 +10,7 @@
  * feeding a component that is no longer on screen.
  */
 
-import { onBeforeUnmount, onMounted, ref, shallowRef } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, shallowRef } from 'vue'
 import {
   latestGoal,
   outcomeOf,
@@ -18,6 +18,12 @@ import {
   type GoalStatusArrayLike,
 } from '@/features/robot/goalStatus'
 import { isMoving, stallState, type StallState } from '@/features/robot/stall'
+import {
+  explainGoalFailure,
+  LOG_WARN,
+  NAV2_NODES,
+  type NavLogLine,
+} from '@/features/robot/goalFailure'
 import { useRosPool } from '@/app/ros/pool'
 import { parseUrdfFootprint, type Footprint } from '@/domain/ros/urdf'
 import { quaternionToYaw } from '@/domain/ros/quaternion'
@@ -46,6 +52,9 @@ function emptyStatus(): AgentStatus {
     teleop: false,
   }
 }
+
+/** Lines of Nav2 log kept per goal: enough to cover a recovery cycle. */
+const NAV_LOG_KEEP = 60
 
 export function useRobotTelemetry(robotId: () => string) {
   const pool = useRosPool()
@@ -79,6 +88,12 @@ export function useRobotTelemetry(robotId: () => string) {
    * again, whatever the robot went on to do.
    */
   const goalOutcome = ref<GoalOutcome>('none')
+  /** Nav2's warnings and errors since the current goal began. */
+  const navLog = ref<NavLogLine[]>([])
+  /** Why the last goal failed, read from navLog; null unless it did. */
+  const goalFailure = computed(() =>
+    goalOutcome.value === 'failed' ? explainGoalFailure(navLog.value) : null,
+  )
 
   /**
    * A goal that is still running while the robot is not moving.
@@ -179,6 +194,8 @@ export function useRobotTelemetry(robotId: () => string) {
       case 'navGoalStatus': {
         const before = goalOutcome.value
         goalOutcome.value = outcomeOf(latestGoal(message as GoalStatusArrayLike))
+        // A new goal starts a new account of what went wrong.
+        if (before !== 'running' && goalOutcome.value === 'running') navLog.value = []
         // Drop the route when the goal that produced it ends. Nav2 publishes no
         // empty path on abort or cancel, so the last one drawn stays on screen
         // for good — a robot with no plan, still showing where it was going.
@@ -192,6 +209,18 @@ export function useRobotTelemetry(robotId: () => string) {
       case 'robotDescription': {
         const msg = message as { data?: string }
         if (msg.data) footprint.value = parseUrdfFootprint(msg.data)
+        break
+      }
+      case 'rosout': {
+        const msg = message as { level?: number; name?: string; msg?: string }
+        const node = (msg.name ?? '').split('.').pop() ?? ''
+        // Only complaints from the navigation nodes, and only during or just
+        // after a goal: the log is busy, and this is the one thing read from it.
+        if ((msg.level ?? 0) < LOG_WARN || !NAV2_NODES.has(node)) break
+        if (goalOutcome.value === 'none') break
+        navLog.value = [...navLog.value, { level: msg.level ?? 0, node, text: msg.msg ?? '' }].slice(
+          -NAV_LOG_KEEP,
+        )
         break
       }
       case 'robotModeStatus': {
@@ -238,6 +267,7 @@ export function useRobotTelemetry(robotId: () => string) {
     velocity.value = { linear: 0, angular: 0 }
     sensorOffset.value = null
     goalOutcome.value = 'none'
+    navLog.value = []
     stall.value = { stalled: false, stillFor: 0 }
     movingSince = null
   }
@@ -261,6 +291,7 @@ export function useRobotTelemetry(robotId: () => string) {
     sensorOffset,
     agent,
     goalOutcome,
+    goalFailure,
     stall,
     clear,
     reattach,
