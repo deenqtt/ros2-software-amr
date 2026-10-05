@@ -1,0 +1,30 @@
+# The kiosk, full screen on the robot's display, in cage: no desktop, no
+# taskbar, nothing a guest can switch to. Its own login session on tty7 so it
+# owns the display and input without a display manager.
+[Unit]
+Description=AMR kiosk (robot screen)
+After=systemd-user-sessions.service plymouth-quit-wait.service amr-agent.service
+Conflicts=getty@tty7.service
+
+[Service]
+User=@USER@
+EnvironmentFile=/etc/amr/robot.env
+PAMName=login
+TTYPath=/dev/tty7
+TTYReset=yes
+TTYVHangup=yes
+TTYVTDisallocate=yes
+StandardInput=tty-fail
+StandardOutput=journal
+StandardError=journal
+UtmpIdentifier=tty7
+UtmpMode=user
+Environment=XDG_SESSION_TYPE=wayland
+ExecStartPre=-/usr/bin/chvt 7
+# -d: no window decorations.
+ExecStart=/usr/bin/cage -d -- @AGENT@/deploy/start_kiosk.sh
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=graphical.target multi-user.target

@@ -328,6 +328,8 @@ ros2-software-amr/
 │   ├── delivery.py           tunggu konfirmasi, hampir sampai / terhalang (tanpa ROS)
 │   ├── kiosk/                layar di robot (PySide6/QML)
 │   ├── tests/                test tanpa ROS (pytest)
+│   ├── deploy/               install_robot.sh, push_to_robot.sh, service systemd
+│   ├── requirements.txt      paket pip (PySide6 untuk kiosk)
 │   └── run_agent_gprp.sh     peluncur agent (+ --kiosk)
 ├── kiosk-mockup/          desain awal layar robot (HTML/CSS/JS statis)
 ├── docs/                  panduan PDF, runbook produksi, kontrak ROS, screenshot
@@ -425,15 +427,8 @@ berurutan saat koneksi kembali, dan run yang sudah selesai tidak pernah dijalank
 
 ### Instalasi di robot
 
-```bash
-# dari komputer pengembang: seluruh folder agent (termasuk kiosk), tanpa venv lokal
-rsync -a --exclude .venv --exclude __pycache__ amr_agent/ user@ip-robot:~/amr_agent/
-
-# di robot: rosbridge, lalu agent (+ kiosk di layar robot)
-ros2 launch rosbridge_server rosbridge_websocket_launch.xml port:=9090
-pip install PySide6        # sekali, untuk kiosk
-~/amr_agent/run_agent_gprp.sh --kiosk <robot-id> http://<server>/backend
-```
+Satu perintah dari laptop: `./amr_agent/deploy/push_to_robot.sh <user>@<ip-robot> --robot-id … --backend …`
+— memasang agent dan kiosk sebagai service. Langkah lengkap: [Deployment Produksi](#deployment-produksi), langkah ④.
 
 > `run_agent_gprp.sh` saat ini disetel untuk simulasi **Isaac Sim** (`*_sim_launch.py`, `use_sim_time:=true`).
 > Robot fisik memerlukan paket launch-nya sendiri dan `use_sim_time_arg:=false`.
@@ -546,23 +541,115 @@ Image tidak berisi rahasia apa pun — akun super admin pertama diatur di `.env`
 
 ## Deployment Produksi
 
-Server (PC amd64) atau **Raspberry Pi 4/5 dengan OS 64-bit** — file dan image yang sama:
+Dua bagian yang dideploy terpisah:
+
+| Bagian | Di mana | Cara | Oleh |
+|---|---|---|---|
+| **Web UI + Backend** | Server (PC amd64) atau Raspberry Pi 4/5 (64-bit) | Docker compose, image dari GHCR | Tim software |
+| **Robot Agent + Kiosk** | Setiap robot (Jetson) | `push_to_robot.sh` dari laptop → 2 service systemd | Tim software |
+| Stack robot (ROS 2, Nav2, workspace, rosbridge :9090) | Setiap robot | — | **Tim robot** |
+
+**Urutan:** ① deploy Web UI → ② login & daftarkan robot (dapat *robot id*) → ③ stack robot siap
+(tim robot) → ④ deploy Agent + Kiosk ke robot.
+
+### ① Web UI + Backend (server / Raspberry Pi)
+
+**Prasyarat:** Docker + plugin compose (`curl -fsSL https://get.docker.com | sh`). Jangan pakai Docker
+versi snap — tidak bisa membaca file `.env`. Raspberry Pi harus **OS 64-bit**; simpan `/opt/amr` di
+SSD/USB, bukan SD card.
 
 ```bash
-mkdir -p /opt/amr && cd /opt/amr
-# docker-compose.yml dan .env.example dari new_webui/deploy/
-cp .env.example .env && nano .env        # versi, CORS, super admin pertama
+sudo mkdir -p /opt/amr && sudo chown "$USER" /opt/amr && cd /opt/amr
+curl -fsSLO https://raw.githubusercontent.com/deenqtt/ros2-software-amr/main/new_webui/deploy/docker-compose.yml
+curl -fsSL -o .env https://raw.githubusercontent.com/deenqtt/ros2-software-amr/main/new_webui/deploy/.env.example
+nano .env
 mkdir -p data maps nginx && sudo chown 10001:10001 data maps
-docker compose up -d                     # UI di http://<server>/
+docker compose up -d
 ```
 
-- **Update:** ubah `AMR_VERSION` di `.env`, lalu `docker compose pull && docker compose up -d`.
-- **Backup:** `/opt/amr/data` dan `/opt/amr/maps`.
-- **Robot** mengarah ke `http://<server>/backend`.
-- **Raspberry Pi:** simpan `/opt/amr` di SSD/USB, bukan SD card.
+Isi `.env` yang wajib diubah:
 
-Panduan lengkap — port, proxy rosbridge lewat server, instalasi tanpa Docker, perilaku saat
-jaringan putus — ada di [`docs/runbooks/PRODUCTION_DEPLOYMENT.md`](docs/runbooks/PRODUCTION_DEPLOYMENT.md).
+| Variabel | Isi |
+|---|---|
+| `AMR_VERSION` | Tag image: `main` (terbaru) atau rilis seperti `1.0.0` |
+| `AMR_HTTP_PORT` | Port Web UI (default `80`) |
+| `AMR_CORS_ORIGINS` | Semua alamat yang dipakai membuka UI, mis. `http://192.168.2.84,http://amr.local` |
+| `AMR_BOOTSTRAP_USER` / `AMR_BOOTSTRAP_PASSWORD` | Super admin pertama — hapus kedua baris setelah login pertama |
+| `AMR_COOKIE_SECURE` | `true` hanya bila diakses lewat HTTPS |
+
+Buka `http://<ip-server>/`, login dengan akun di atas, lalu buat password sendiri.
+
+| Perlu | Perintah (di `/opt/amr`) |
+|---|---|
+| Status / log | `docker compose ps` · `docker compose logs -f backend` |
+| Update versi | ubah `AMR_VERSION` → `docker compose pull && docker compose up -d` |
+| Backup | salin folder `data/` dan `maps/` |
+| Proxy rosbridge lewat server (opsional) | `new_webui/deploy/robots.conf.example` → `nginx/robots.conf`, lalu `docker compose restart web` |
+
+### ② Daftarkan robot
+
+Di Web UI: **Robot** → **Add robot** → isi nama dan alamat rosbridge (`ws://<ip-robot>:9090`).
+Buka robotnya → **Details** untuk melihat **robot id** yang dipakai di langkah ④.
+
+### ③ Stack robot (tim robot)
+
+ROS 2 (Humble/Jazzy), Nav2, workspace robot yang sudah di-build (berisi `custom_interfaces`), dan
+rosbridge di port 9090. Langkah ④ hanya **mengecek** ini dan berhenti dengan daftar yang kurang —
+tidak pernah meng-install atau mengubah stack robot.
+
+### ④ Robot Agent + Kiosk (setiap robot)
+
+Satu perintah **dari laptop** (folder repo ini) — menyalin `amr_agent/` ke `~/amr_agent` di robot lalu
+menjalankan [`install_robot.sh`](amr_agent/deploy/install_robot.sh) di sana:
+
+```bash
+# pertama kali
+./amr_agent/deploy/push_to_robot.sh <user>@<ip-robot> \
+    --robot-id <robot id dari langkah ②> \
+    --backend http://<ip-server>/backend \
+    --name AMR-02
+
+# cek saja dulu apa yang kurang, tanpa mengubah apa pun
+./amr_agent/deploy/push_to_robot.sh <user>@<ip-robot> --check
+
+# update setelah ada perubahan kode
+./amr_agent/deploy/push_to_robot.sh <user>@<ip-robot>
+```
+
+| Opsi | Keterangan |
+|---|---|
+| `--robot-id`, `--backend` | Wajib saat pertama kali (bila tidak diisi, ditanyakan) |
+| `--name` | Nama di status bar kiosk |
+| `--ros-ws PATH` | Workspace robot, default `~/ros2_gprp_amr_ws` |
+| `--domain N` | `ROS_DOMAIN_ID`, default `10` |
+| `--no-kiosk` | Agent saja, untuk robot tanpa layar |
+| `--check` | Hanya melaporkan, tidak mengubah apa pun |
+
+Yang dilakukan `install_robot.sh` — setiap langkah mengecek dulu dan hanya meng-install yang belum ada,
+jadi aman dijalankan berulang:
+
+1. **Cek stack robot**: ROS 2, workspace, `rclpy`, `nav2_msgs`, `nav2_map_server`, `custom_interfaces`, …
+2. **Paket sistem** untuk agent & kiosk: `cage`, `espeak-ng`, `alsa-utils`, `python3-venv`, library Qt.
+3. **Paket Python** dari [`requirements.txt`](amr_agent/requirements.txt) (PySide6) ke `~/amr_agent/.venv`.
+4. **Setting** `/etc/amr/robot.env` (dibuat sekali, dengan **PIN staf kiosk acak** yang ditampilkan — catat).
+5. **Service** `amr-agent` dan `amr-kiosk` (kiosk layar penuh di `cage`, tty7), aktif saat boot dan di-restart.
+
+Data robot sendiri (`state/`, `station_data.yaml`, `.venv`) tidak pernah tertimpa saat update.
+
+Setelah terpasang, di robot:
+
+| Perlu | Perintah |
+|---|---|
+| Log | `journalctl -u amr-agent -f` · `journalctl -u amr-kiosk -f` |
+| Ubah setting (server, nama, PIN, suara Piper) | `sudo nano /etc/amr/robot.env` → `sudo systemctl restart amr-agent amr-kiosk` |
+| Restart | `sudo systemctl restart amr-agent amr-kiosk` |
+| Matikan | `sudo systemctl disable --now amr-agent amr-kiosk` |
+
+> `amr-agent` jalan otomatis saat boot dan **menyalakan Nav2/SLAM sendiri**. Bila tim robot masih
+> menjalankan agent atau Nav2 secara manual, koordinasikan dulu agar tidak jalan dobel.
+
+Panduan lengkap — port, perilaku saat jaringan putus, instalasi tanpa Docker — ada di
+[`docs/runbooks/PRODUCTION_DEPLOYMENT.md`](docs/runbooks/PRODUCTION_DEPLOYMENT.md).
 
 ---
 

@@ -19,6 +19,7 @@
 #   ./run_agent_gprp.sh --kiosk 7fc87960-8c98-4d98-8a83-a4401d6bef0a http://192.168.2.84:3002
 #
 # Environment (optional):
+#   AMR_ROS_DISTRO       ROS 2 under /opt/ros to use (jazzy)
 #   AMR_CONFIRM_TIMEOUT  seconds a `confirm` stop waits before driving on (120)
 #   AMR_KIOSK_NAME       name on the kiosk's status bar (AMR)
 #   AMR_KIOSK_PIN        staff PIN on the kiosk (1234 — change it)
@@ -51,8 +52,8 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # it has sourced anything, with an error that names ament and looks like a broken
 # ROS install rather than our own shell options.
 set +u
-# shellcheck disable=SC1091
-source /opt/ros/jazzy/setup.bash
+# shellcheck disable=SC1090
+source "/opt/ros/${AMR_ROS_DISTRO:-jazzy}/setup.bash"
 # custom_interfaces lives here, and the agent will not import without it.
 # shellcheck disable=SC1091
 source "$ROS_WS/install/setup.bash"

@@ -63,7 +63,12 @@ class Sound:
     def __init__(self, enabled: bool = True, cache: Path | None = None) -> None:
         self.enabled = enabled
         self._cache = cache or Path.home() / ".cache" / "amr_kiosk"
-        self._player = shutil.which("paplay") or shutil.which("aplay")
+        # AMR_KIOSK_PLAYER picks one; aplay works from a service with no
+        # desktop session, where paplay has no sound server to talk to.
+        chosen = os.environ.get("AMR_KIOSK_PLAYER", "")
+        self._player = (shutil.which(chosen) if chosen else None) or (
+            shutil.which("paplay") or shutil.which("aplay")
+        )
         self._piper = shutil.which("piper")
         self._piper_model = os.environ.get("AMR_KIOSK_PIPER_MODEL", "")
         self._espeak = shutil.which("espeak-ng") or shutil.which("espeak")

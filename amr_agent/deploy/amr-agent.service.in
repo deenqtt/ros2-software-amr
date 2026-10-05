@@ -1,0 +1,17 @@
+[Unit]
+Description=AMR robot agent (missions, maps, Nav2/SLAM)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+User=@USER@
+EnvironmentFile=/etc/amr/robot.env
+ExecStart=@AGENT@/run_agent_gprp.sh ${AMR_ROBOT_ID} ${AMR_BACKEND_URL} ${AMR_ROS_WS}
+# The agent starts Nav2/SLAM as its children; stop them with it.
+KillMode=control-group
+TimeoutStopSec=20
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

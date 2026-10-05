@@ -1,0 +1,8 @@
+# Python packages from pip. Everything else the agent uses is the standard
+# library or ROS 2 (rclpy, nav2_msgs, …), which comes from apt with ROS.
+#
+# Installed by deploy/install_robot.sh into ~/amr_agent/.venv, a venv made
+# with --system-site-packages so it still sees rclpy from /opt/ros.
+
+# Kiosk. 6.5+ for QtQuick.Effects (the eyes' glow and mask).
+PySide6>=6.5,<7

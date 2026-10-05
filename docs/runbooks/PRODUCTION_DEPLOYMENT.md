@@ -126,45 +126,63 @@ docker compose up -d
 
 ## Robot (Jetson)
 
-1. **Agent files.** From a checkout:
+One command from your computer copies `amr_agent/` to the robot and installs
+the **agent** and the **kiosk** there as two services. Only those two: the
+robot's own stack — ROS 2, Nav2, its workspace with `custom_interfaces`,
+rosbridge on 9090, how the OS boots — is the robot team's, and must be in
+place first. The installer checks for it and stops with a list if anything is
+missing; it never installs or changes it.
 
-   ```bash
-   ssh user@jetson 'mkdir -p ~/amr_agent'
-   scp amr_agent/*.py amr_agent/*.sh user@jetson:~/amr_agent/
-   ```
+```bash
+# first time
+./amr_agent/deploy/push_to_robot.sh robot@192.168.2.133 \
+    --robot-id <id from the web UI> --backend http://<server>/backend --name AMR-02
 
-   `amr_agent/` in this repository is the source. Copy the named files only:
-   the robot's runtime state in `~/amr_agent/state/` must never be overwritten.
+# every update after that
+./amr_agent/deploy/push_to_robot.sh robot@192.168.2.133
+```
 
-2. **rosbridge** on 9090 (the agent's launches are run with
-   `launch_websocket:=false`, so it is started separately):
+Or on the robot itself, from a copied `amr_agent` folder:
+`./deploy/install_robot.sh --robot-id … --backend …` (`--check` reports only).
 
-   ```bash
-   ros2 launch rosbridge_server rosbridge_websocket_launch.xml port:=9090
-   ```
+What `install_robot.sh` does — each step checks first and installs only what
+is missing, so running it again is safe:
 
-3. **Agent as a service**, `/etc/systemd/system/amr-agent.service`:
+1. **Robot stack (checked only)** — ROS 2 in `/opt/ros`, the robot workspace
+   (`--ros-ws`, default `~/ros2_gprp_amr_ws`), and the packages the agent uses:
+   `rclpy`, `nav2_msgs`, `nav2_map_server`, `custom_interfaces`, … Missing
+   ones are listed for the robot team and nothing is installed.
+2. **System packages for the agent and kiosk** — `cage` (full-screen kiosk
+   compositor), `espeak-ng`, `alsa-utils`, `python3-venv` and the libraries Qt
+   needs.
+3. **Python packages** — `amr_agent/requirements.txt` (PySide6) into
+   `amr_agent/.venv`, made with `--system-site-packages` so it still sees
+   `rclpy` from ROS.
+4. **Settings** — `/etc/amr/robot.env` from `deploy/robot.env.example`, with a
+   random kiosk staff PIN (printed once). An existing file is never touched;
+   edit it there afterwards.
+5. **Services** — enabled and (re)started:
 
-   ```ini
-   [Unit]
-   Description=AMR robot agent
-   After=network-online.target
+   | Service | What |
+   |---|---|
+   | `amr-agent` | `run_agent_gprp.sh`: missions, maps, starting Nav2/SLAM |
+   | `amr-kiosk` | the kiosk in `cage` on tty7, full screen, restarted if it ever exits (`--no-kiosk` for a robot without a screen) |
 
-   [Service]
-   User=robot
-   Environment=ROS_DOMAIN_ID=10
-   ExecStart=/home/robot/amr_agent/run_agent_gprp.sh <robot-id> http://amr.example.local/backend
-   Restart=always
-   RestartSec=5
+   If the Ubuntu desktop also runs, the kiosk is on Ctrl+Alt+F7. Booting
+   straight to the kiosk (no desktop) is a robot setting for the robot team:
+   `sudo systemctl set-default multi-user.target`.
 
-   [Install]
-   WantedBy=multi-user.target
-   ```
+The robot's own files survive updates: `state/` (unsent run reports, cached
+registry), `station_data.yaml` and `.venv` are never copied over.
 
-   `<robot-id>` is the id the web UI shows for the robot after it is added.
-   `run_agent_gprp.sh` is set up for the Isaac Sim stack (`*_sim_launch.py`,
-   `use_sim_time:=true`); a physical robot needs its own launch packages and
-   `use_sim_time_arg:=false`.
+```bash
+journalctl -u amr-agent -f                      # or amr-kiosk
+sudo nano /etc/amr/robot.env && sudo systemctl restart amr-agent amr-kiosk
+```
+
+`run_agent_gprp.sh` is set up for the Isaac Sim stack (`*_sim_launch.py`,
+`use_sim_time:=true`); a physical robot needs its own launch packages and
+`use_sim_time_arg:=false`.
 
 ## When the server cannot be reached
 
@@ -195,7 +213,9 @@ missions, and anything in the browser that goes through the server.
 - [ ] Backend `.env`: `AMR_ENV=production`, explicit `AMR_CORS_ORIGINS`
 - [ ] Frontend built with `.env.production`
 - [ ] nginx serves `/` and proxies `/backend/` (and `/robot/<n>` if used)
-- [ ] Each robot: agent deployed, rosbridge on 9090, `amr-agent` service enabled
+- [ ] Each robot: robot stack ready (robot team), rosbridge on 9090
+- [ ] Each robot: `push_to_robot.sh` run; `amr-agent` and `amr-kiosk` active;
+      kiosk staff PIN noted
 - [ ] Each robot registered in the UI with the right `bridge_url`, map assigned
 - [ ] Pull the server's network once with a robot mid-mission: it should finish
       the mission, and the run should show done when the network is back

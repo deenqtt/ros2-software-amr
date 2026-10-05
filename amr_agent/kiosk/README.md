@@ -34,14 +34,13 @@ python3 amr_agent/kiosk/kiosk_app.py --mock --window --size 800x1280   # portrai
 Tap the face while idle; tap it six times quickly. Staff menu: hold the
 top-left corner for 1.2 s, PIN `1234` (set `AMR_KIOSK_PIN`).
 
-On the robot, with the agent:
+On the robot, in production: `amr_agent/deploy/push_to_robot.sh` installs it
+as the `amr-kiosk` service, full screen in `cage`, next to the agent (see the
+runbook, *Robot (Jetson)*). Settings — name, staff PIN, voice — are in
+`/etc/amr/robot.env`.
 
-```bash
-AMR_KIOSK_NAME=AMR-02 AMR_KIOSK_PIN=4821 \
-  ./amr_agent/run_agent_gprp.sh --kiosk <robot_id> <backend_url>
-```
-
-or on its own: `python3 amr_agent/kiosk/kiosk_app.py --robot-name AMR-02`.
+For a quick try on a robot with a desktop:
+`./amr_agent/run_agent_gprp.sh --kiosk <robot_id> <backend_url>`.
 
 ## Options
 
