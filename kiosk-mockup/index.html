@@ -4,37 +4,88 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
   <title>Robot Kiosk — Mockup</title>
+  <!-- Plus Jakarta Sans: drawn in Jakarta, wide open shapes that stay legible
+       from two metres. Falls back to the system sans when offline. -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body data-mode="idle" data-mood="neutral">
+  <!-- Icon set. Drawn for this screen: 24 px grid, 1.5 stroke, round ends.
+       No emoji: they render differently on every OS and can't take a colour. -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <defs>
+      <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol>
+      <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+      <symbol id="i-alert" viewBox="0 0 24 24"><path d="M10.3 4.4L2.9 17.5A2 2 0 0 0 4.6 20.5h14.8a2 2 0 0 0 1.7-3L13.7 4.4a2 2 0 0 0-3.4 0z"/><path d="M12 9.5V14"/><path d="M12 17.2h.01"/></symbol>
+      <symbol id="i-stop" viewBox="0 0 24 24"><path d="M8.2 2.5h7.6l5.7 5.7v7.6l-5.7 5.7H8.2l-5.7-5.7V8.2z"/><path d="M8.5 12h7"/></symbol>
+      <symbol id="i-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3.8"/><path d="M5.6 5.6l3.7 3.7M14.7 14.7l3.7 3.7M18.4 5.6l-3.7 3.7M9.3 14.7l-3.7 3.7"/></symbol>
+      <symbol id="i-cloche" viewBox="0 0 24 24"><path d="M2.5 18.5h19"/><path d="M4.5 18.5a7.5 7.5 0 0 1 15 0"/><path d="M12 9.5V7.5"/><path d="M10.2 7.5h3.6"/><path d="M8 14.5a4.2 4.2 0 0 1 2.4-2.6"/></symbol>
+      <symbol id="i-pin" viewBox="0 0 24 24"><path d="M12 21s-6.5-5.6-6.5-11a6.5 6.5 0 0 1 13 0c0 5.4-6.5 11-6.5 11z"/><circle cx="12" cy="10" r="2.3"/></symbol>
+      <symbol id="i-turn-left" viewBox="0 0 24 24"><path d="M17 20v-6.5A4.5 4.5 0 0 0 12.5 9H5"/><path d="M9 5L5 9l4 4"/></symbol>
+      <symbol id="i-turn-right" viewBox="0 0 24 24"><path d="M7 20v-6.5A4.5 4.5 0 0 1 11.5 9H19"/><path d="M15 5l4 4-4 4"/></symbol>
+      <symbol id="i-pause" viewBox="0 0 24 24"><path d="M9 6v12M15 6v12"/></symbol>
+      <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13.2 2.5L4.8 13.6h6.4l-1 7.9 8.4-11.1h-6.4z"/></symbol>
+      <symbol id="i-battery-low" viewBox="0 0 24 24"><rect x="2.5" y="7" width="16.5" height="10" rx="2.2"/><path d="M21.5 10.5v3"/><path d="M6 10.5v3"/></symbol>
+      <symbol id="i-plug" viewBox="0 0 24 24"><path d="M9 3v5M15 3v5"/><path d="M6.5 8h11v3a5.5 5.5 0 0 1-11 0z"/><path d="M12 16.5V21"/></symbol>
+      <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5.5"/><path d="M12 7.8h.01"/></symbol>
+      <symbol id="i-backspace" viewBox="0 0 24 24"><path d="M9 5h10.5A1.5 1.5 0 0 1 21 6.5v11a1.5 1.5 0 0 1-1.5 1.5H9l-6-7z"/><path d="M12.5 9.5l5 5M17.5 9.5l-5 5"/></symbol>
+      <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="10.5" width="14" height="10" rx="2"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/></symbol>
+      <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></symbol>
+      <symbol id="i-volume" viewBox="0 0 24 24"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="M15.5 9a4 4 0 0 1 0 6"/><path d="M18 6.5a7.5 7.5 0 0 1 0 11"/></symbol>
+      <symbol id="i-volume-off" viewBox="0 0 24 24"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="M16 9.5l5 5M21 9.5l-5 5"/></symbol>
+      <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3c2.5 2.6 3.8 5.6 3.8 9s-1.3 6.4-3.8 9c-2.5-2.6-3.8-5.6-3.8-9S9.5 5.6 12 3z"/></symbol>
+      <symbol id="i-text-size" viewBox="0 0 24 24"><path d="M3 19L8 6l5 13M4.9 14.5h6.2"/><path d="M14.5 19l3.2-7.5 3.3 7.5M15.6 16.5h4.2"/></symbol>
+      <symbol id="i-wifi" viewBox="0 0 24 24"><path d="M2.5 9a14 14 0 0 1 19 0"/><path d="M5.5 12.5a9.5 9.5 0 0 1 13 0"/><path d="M8.7 16a5 5 0 0 1 6.6 0"/><path d="M12 19.5h.01"/></symbol>
+      <symbol id="i-home" viewBox="0 0 24 24"><path d="M4 10.5L12 4l8 6.5V19a1 1 0 0 1-1 1h-4.5v-5.5h-5V20H5a1 1 0 0 1-1-1z"/></symbol>
+      <symbol id="i-play" viewBox="0 0 24 24"><path d="M7.5 5.5v13l11-6.5z"/></symbol>
+    </defs>
+  </svg>
+
   <!-- Status bar: small on purpose. The screen is read from 1–2 m in about two
        seconds, so the face and the one message own the space, not chrome. -->
   <header class="status-bar">
     <div class="status-left">
       <span class="robot-name" id="robotName">AMR-02</span>
-      <span class="status-pill" id="statusPill">Siap</span>
+      <span class="status-pill" id="statusPill">
+        <svg class="icon" id="statusIcon"><use href="#i-check" /></svg>
+        <span id="statusText">Siap</span>
+      </span>
     </div>
     <div class="status-right">
+      <svg class="icon link-icon" aria-label="Terhubung"><use href="#i-wifi" /></svg>
       <span class="clock" id="clock">--:--</span>
       <span class="battery" id="battery" aria-label="Baterai">
-        <span class="battery-body"><span class="battery-fill" id="batteryFill"></span></span>
+        <svg viewBox="0 0 30 16" class="battery-svg" aria-hidden="true">
+          <rect x="1" y="1" width="25" height="14" rx="3.2" class="battery-shell" />
+          <rect x="3" y="3" width="21" height="10" rx="1.6" class="battery-fill" id="batteryFill" />
+          <path d="M28 5.5v5" class="battery-cap" />
+        </svg>
         <span class="battery-text" id="batteryText">82%</span>
       </span>
     </div>
   </header>
 
   <!-- The face. Shown for idle, moving, blocked and thanks. -->
-  <main class="stage">
-    <div class="face" id="face">
-      <div class="eye left"><span class="glint"></span></div>
-      <div class="eye right"><span class="glint"></span></div>
+  <main class="stage" id="stage">
+    <div class="face" id="face" aria-hidden="true">
+      <div class="eye left"><span class="lid top"></span><span class="lid bottom"></span><span class="glint"></span></div>
+      <div class="eye right"><span class="lid top"></span><span class="lid bottom"></span><span class="glint"></span></div>
       <div class="cheek left"></div>
       <div class="cheek right"></div>
     </div>
 
     <div class="caption">
-      <h1 id="title">Halo! 👋</h1>
+      <h1 id="title">Halo!</h1>
       <p id="subtitle">Saya siap mengantar</p>
+    </div>
+
+    <!-- What the robot is about to do, said in its own voice ("Saya belok
+         kiri"), so a passer-by doesn't read it as an order to them. -->
+    <div class="intent" id="intent" aria-live="polite">
+      <svg class="icon" id="intentIcon"><use href="#i-turn-left" /></svg>
+      <span id="intentText">Saya belok kiri</span>
     </div>
 
     <ol class="route" id="route" aria-label="Rute"></ol>
@@ -43,38 +94,52 @@
   <!-- Arrived at a "wait for confirm" step. The most important screen: one
        message, one button, nothing else to read. -->
   <section class="overlay arrived" id="arrived" aria-live="assertive">
-    <div class="arrived-card">
-      <div class="arrived-icon">🍽️</div>
-      <p class="arrived-kicker" id="arrivedKicker">Pesanan Anda sudah tiba!</p>
-      <h2 class="arrived-place" id="arrivedPlace">MEJA 5</h2>
-      <p class="arrived-hint" id="arrivedHint">Silakan ambil pesanan Anda, lalu tekan tombol di bawah</p>
+    <div class="arrived-info">
+      <div class="arrived-badge">
+        <svg class="icon"><use href="#i-cloche" /></svg>
+      </div>
+      <p class="arrived-kicker" id="arrivedKicker">Pesanan Anda sudah tiba</p>
+      <h2 class="arrived-place" id="arrivedPlace">Meja 5</h2>
+      <p class="arrived-hint" id="arrivedHint">Ambil pesanan dari nampan, lalu tekan tombol hijau</p>
+    </div>
+    <div class="arrived-action">
       <button class="confirm-button" id="confirmButton" type="button">
-        <span class="confirm-check">✓</span>
-        <span id="confirmLabel">SUDAH DIAMBIL</span>
+        <span class="confirm-check"><svg class="icon"><use href="#i-check" /></svg></span>
+        <span id="confirmLabel">Sudah diambil</span>
       </button>
-      <div class="countdown">
-        <svg viewBox="0 0 36 36" class="countdown-ring" aria-hidden="true">
-          <circle class="ring-track" cx="18" cy="18" r="16" />
-          <circle class="ring-value" id="ringValue" cx="18" cy="18" r="16" />
-        </svg>
-        <span id="countdownText">Robot lanjut otomatis dalam 45 detik</span>
+      <div class="countdown" id="countdown">
+        <div class="countdown-dial">
+          <svg viewBox="0 0 36 36" class="countdown-ring" aria-hidden="true">
+            <circle class="ring-track" cx="18" cy="18" r="16" />
+            <circle class="ring-value" id="ringValue" cx="18" cy="18" r="16" />
+          </svg>
+          <span class="countdown-time" id="countdownTime">2:00</span>
+        </div>
+        <span class="countdown-text" id="countdownText">Tidak ditekan? Robot lanjut sendiri</span>
       </div>
     </div>
   </section>
 
   <!-- Charging. -->
   <section class="overlay charging" id="charging">
+    <div class="charge-face" aria-hidden="true">
+      <span></span><span></span>
+    </div>
     <div class="big-battery">
-      <div class="big-battery-body"><div class="big-battery-fill" id="bigBatteryFill"></div></div>
+      <div class="big-battery-body">
+        <div class="big-battery-fill" id="bigBatteryFill"></div>
+        <svg class="icon big-battery-bolt"><use href="#i-bolt" /></svg>
+      </div>
       <div class="big-battery-cap"></div>
     </div>
-    <h2 id="chargingTitle">Sedang mengisi daya</h2>
     <p class="charging-percent" id="chargingPercent">64%</p>
+    <h2 id="chargingTitle">Sedang mengisi daya</h2>
+    <p class="charging-sub" id="chargingSub">Sebentar ya, saya istirahat dulu</p>
   </section>
 
   <!-- Faults. One colour per severity, readable from across the room. -->
   <section class="overlay alert" id="alert">
-    <div class="alert-icon" id="alertIcon">⛔</div>
+    <div class="alert-icon"><svg class="icon" id="alertIcon"><use href="#i-stop" /></svg></div>
     <h2 id="alertTitle">Robot berhenti</h2>
     <p id="alertText">Mohon hubungi staf</p>
   </section>
@@ -84,26 +149,48 @@
   <section class="overlay staff" id="staff">
     <div class="staff-card">
       <div class="staff-pin" id="staffPin">
-        <h3 id="pinTitle">Masukkan PIN staf</h3>
+        <div class="staff-head">
+          <svg class="icon"><use href="#i-lock" /></svg>
+          <h3 id="pinTitle">Masukkan PIN staf</h3>
+        </div>
         <div class="pin-dots" id="pinDots"><span></span><span></span><span></span><span></span></div>
         <div class="pin-pad" id="pinPad"></div>
-        <button class="text-button" id="pinCancel" type="button">Batal</button>
+        <button class="text-button" id="pinCancel" type="button" data-i18n="cancel">Batal</button>
       </div>
       <div class="staff-menu" id="staffMenu">
-        <h3 id="menuTitle">Menu staf</h3>
-        <button class="menu-button" data-action="cancel" type="button">✕ <span data-i18n="menuCancel">Batalkan misi</span></button>
-        <button class="menu-button" data-action="charge" type="button">⚡ <span data-i18n="menuCharge">Kembali ke charger</span></button>
-        <button class="menu-button" data-action="info" type="button">ℹ <span data-i18n="menuInfo">Info teknis</span></button>
+        <div class="staff-head">
+          <svg class="icon"><use href="#i-sliders" /></svg>
+          <h3 id="menuTitle">Menu staf</h3>
+        </div>
+        <button class="menu-button danger" data-action="cancel" type="button">
+          <svg class="icon"><use href="#i-x" /></svg><span data-i18n="menuCancel">Batalkan misi</span>
+        </button>
+        <button class="menu-button" data-action="charge" type="button">
+          <svg class="icon"><use href="#i-plug" /></svg><span data-i18n="menuCharge">Kembali ke charger</span>
+        </button>
+        <button class="menu-button" data-action="large" type="button">
+          <svg class="icon"><use href="#i-text-size" /></svg><span data-i18n="menuLarge">Teks besar</span>
+          <span class="switch" aria-hidden="true"></span>
+        </button>
+        <button class="menu-button" data-action="info" type="button">
+          <svg class="icon"><use href="#i-info" /></svg><span data-i18n="menuInfo">Info teknis</span>
+        </button>
         <pre class="tech-info" id="techInfo"></pre>
         <button class="text-button" data-action="close" type="button" data-i18n="menuClose">Tutup</button>
       </div>
     </div>
   </section>
 
+  <!-- Stands in for the LED strip round the robot's base: the same colour
+       story as the screen, for people who can't see the screen. -->
+  <div class="led-strip" id="ledStrip" aria-hidden="true"><span class="led-left"></span><span class="led-right"></span></div>
+
   <!-- Simulation panel: NOT part of the real kiosk. Drives the states the
        robot agent would drive over rosbridge. Toggle with "D". -->
   <aside class="dev-panel" id="devPanel">
-    <button class="dev-toggle" id="devToggle" type="button" title="Panel simulasi (D)">⚙</button>
+    <button class="dev-toggle" id="devToggle" type="button" title="Panel simulasi (D)">
+      <svg class="icon"><use href="#i-sliders" /></svg>
+    </button>
     <div class="dev-body">
       <div class="dev-title">Simulasi state <small>(tombol 1–9, D)</small></div>
       <div class="dev-grid" id="devButtons"></div>
@@ -111,10 +198,10 @@
         <input type="range" min="0" max="100" value="82" id="batterySlider" />
       </label>
       <div class="dev-row">
-        <button type="button" id="langToggle">ID / EN</button>
-        <button type="button" id="soundToggle">🔔 Suara: on</button>
+        <button type="button" id="langToggle"><svg class="icon"><use href="#i-globe" /></svg>ID / EN</button>
+        <button type="button" id="soundToggle"><svg class="icon"><use href="#i-volume" /></svg><span>Suara: on</span></button>
       </div>
-      <p class="dev-note">PIN staf: <b>1234</b> — tekan lama pojok kiri atas.</p>
+      <p class="dev-note">PIN staf: <b>1234</b> — tekan lama pojok kiri atas. Sentuh wajah saat idle. Garis bawah = lampu LED robot.</p>
     </div>
   </aside>
 

@@ -19,20 +19,28 @@ chromium --kiosk --noerrdialogs --disable-translate file:///path/to/index.html
 
 | Key | State | What the guest sees |
 |---|---|---|
-| 1 | Idle | Face, eyes look around and follow a touch |
-| 2 | Moving | "Menuju Meja 5", route progress; arrives by itself after 6 s |
-| 3 | Blocked | Worried yellow eyes, "Permisi 🙏" |
-| 4 | Arrived (confirm) | Big "SUDAH DIAMBIL" button, 45 s countdown, ding-dong |
-| 5 | Thanks | Happy eyes, then on to the next stop |
-| 6 | Charging | Big battery filling |
-| 7 | Low battery | Yellow alert |
+| 1 | Idle | Face, eyes look around and follow a finger; a tap giggles, a burst of taps gets a fed-up look |
+| 2 | Moving | "Menuju Meja 5", route progress, a turn signalled on the way ("Saya belok kiri", eyes and LED strip), "Hampir sampai" just before arriving |
+| 3 | Blocked | Worried amber eyes, "Permisi", spoken "Permisi, saya mau lewat" |
+| 4 | Arrived (confirm) | Big "Sudah diambil" button, **2 minute** countdown, ding-dong + spoken prompt, spoken reminder with 30 s left |
+| 5 | Thanks | Happy ^ ^ eyes, then on to the next stop |
+| 6 | Charging | Sleeping eyes over a battery filling |
+| 7 | Low battery | Amber alert |
 | 8 | Error | "Saya butuh bantuan" |
 | 9 | E-STOP | Flashing red |
+
+Icons are drawn for this screen (inline SVG in `index.html`, 24 px grid,
+1.5 stroke) — no emoji, which render differently on every OS. The thin bar
+along the bottom stands in for the LED strip round the robot's base. Voice
+uses the browser's speech synthesis as a stand-in for the robot's speaker.
 
 Moving runs the whole dummy route by itself: Dapur → **Meja 5** (confirm) →
 **Meja 8** (confirm) → Dapur.
 
-Staff menu: long-press the top-left corner for 1.2 s, PIN `1234`.
+Staff menu: long-press the top-left corner for 1.2 s, PIN `1234`. It also
+has a large-text switch.
+
+URL options for reviewing one screen: `?mode=arrived&lang=en&panel=0&sound=0&large=1`.
 
 ## Wiring it to the robot later
 
