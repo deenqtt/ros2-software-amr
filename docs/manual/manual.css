@@ -1,42 +1,49 @@
-/* Panduan AMR Web UI — print stylesheet for headless Chrome (A4). */
+/* Panduan AMR Control — print stylesheet for headless Chrome (A4).
+   Plain on purpose: white pages, one accent (the GSPE navy), grey for the rest. */
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=block');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=block');
 
 :root {
-  --ink: #111827;
-  --body: #374151;
-  --muted: #6b7280;
-  --line: #e5e7eb;
-  --soft: #f3f4f6;
-  --accent: #1a6ef5;
-  --accent-soft: #e8f0fe;
-  --ok: #0f9d58;
-  --ok-soft: #e6f6ee;
-  --warn: #b7791f;
-  --warn-soft: #fff6e0;
-  --fault: #d93025;
-  --fault-soft: #fdecea;
-  --purple: #7a3df5;
+  --navy: #0b3a78;
+  --navy-soft: #eef3fa;
+  --ink: #1b2330;
+  --body: #3a4352;
+  --muted: #6b7380;
+  --line: #e3e6eb;
+  --soft: #f6f7f9;
+  --ok: #157a4a;
+  --warn: #9a6a12;
+  --fault: #b42318;
 }
 
 @page {
   size: A4;
-  margin: 18mm 17mm 20mm 17mm;
-  @bottom-left {
-    content: "Panduan AMR Control — Web UI, Robot Agent & Kiosk";
-    font: 8pt Inter, "Noto Sans", sans-serif;
-    color: #9ca3af;
+  margin: 22mm 18mm 20mm 18mm;
+  @top-left {
+    content: "AMR Control · Panduan Pengguna";
+    font: 500 8pt Inter, "Noto Sans", sans-serif;
+    color: var(--muted);
+    vertical-align: bottom;
+    padding-bottom: 3mm;
+  }
+  @top-right {
+    content: "PT Graha Sumber Prima Elektronik";
+    font: 500 8pt Inter, "Noto Sans", sans-serif;
+    color: var(--muted);
+    vertical-align: bottom;
+    padding-bottom: 3mm;
   }
   @bottom-right {
     content: counter(page);
     font: 600 8.5pt Inter, "Noto Sans", sans-serif;
-    color: #6b7280;
+    color: var(--navy);
   }
 }
 
 @page cover {
   margin: 0;
-  @bottom-left { content: none; }
+  @top-left { content: none; }
+  @top-right { content: none; }
   @bottom-right { content: none; }
 }
 
@@ -44,8 +51,8 @@
 
 html {
   font-family: Inter, "Noto Sans", "DejaVu Sans", sans-serif;
-  font-size: 10.2pt;
-  line-height: 1.58;
+  font-size: 10pt;
+  line-height: 1.6;
   color: var(--body);
   -webkit-print-color-adjust: exact;
   print-color-adjust: exact;
@@ -58,392 +65,265 @@ body { margin: 0; }
 .cover {
   page: cover;
   height: 297mm;
-  width: 210mm;
-  position: relative;
-  overflow: hidden;
-  background: linear-gradient(160deg, #0b1220 0%, #12305e 55%, #1a6ef5 140%);
-  color: #fff;
-  padding: 30mm 22mm;
-  break-after: page;
-}
-.cover .brand {
+  padding: 30mm 24mm 22mm;
   display: flex;
-  align-items: center;
-  gap: 4mm;
-  font-weight: 700;
-  font-size: 13pt;
-  letter-spacing: 0.02em;
-  color: #cfe0ff;
+  flex-direction: column;
+  break-after: page;
+  border-top: 6mm solid var(--navy);
 }
-.cover .brand .logo {
-  width: 11mm;
-  height: 11mm;
-  border-radius: 50%;
-  background: #1a6ef5;
-  display: grid;
-  place-items: center;
-  font-size: 14pt;
+.cover .logo { width: 30mm; }
+.cover .company {
+  margin-top: 6mm;
+  font-size: 10pt;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--navy);
 }
 .cover h1 {
-  margin: 52mm 0 6mm;
+  margin: 42mm 0 0;
   font-size: 34pt;
-  line-height: 1.08;
-  font-weight: 800;
+  line-height: 1.12;
+  font-weight: 700;
   letter-spacing: -0.02em;
-  color: #fff;
+  color: var(--ink);
 }
 .cover .sub {
-  font-size: 13pt;
-  color: #cfe0ff;
-  max-width: 140mm;
-  line-height: 1.5;
+  margin: 7mm 0 0;
+  max-width: 135mm;
+  font-size: 12pt;
+  line-height: 1.55;
+  color: var(--body);
 }
-.cover .chips { margin-top: 12mm; display: flex; gap: 3mm; flex-wrap: wrap; }
-.cover .chips span {
-  border: 1px solid rgba(255, 255, 255, 0.35);
-  border-radius: 99px;
-  padding: 1.6mm 4mm;
-  font-size: 9.5pt;
-  color: #e6eeff;
-}
-.cover .eyes {
-  position: absolute;
-  right: 22mm;
-  bottom: 62mm;
-  display: flex;
-  gap: 12mm;
-}
-.cover .eyes i {
-  display: block;
-  width: 16mm;
-  height: 22mm;
-  border-radius: 8mm;
-  background: radial-gradient(circle at 50% 40%, #b8f3ff 0%, #5ce1ff 55%, #24a9d6 100%);
-  box-shadow: 0 0 10mm rgba(92, 225, 255, 0.5);
-}
+.cover .rule { width: 22mm; height: 1.2mm; margin-top: 10mm; background: var(--navy); }
 .cover .meta {
-  position: absolute;
-  left: 22mm;
-  bottom: 24mm;
-  font-size: 9.5pt;
-  color: #b9cdf7;
-  line-height: 1.7;
+  margin-top: auto;
+  padding-top: 6mm;
+  border-top: 1px solid var(--line);
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6mm;
+  font-size: 8.5pt;
+  color: var(--muted);
 }
+.cover .meta b { display: block; color: var(--ink); font-weight: 600; font-size: 9.5pt; }
 
-/* ── Table of contents ─────────────────────────────────────────────────── */
+/* ── Table of contents ──────────────────────────────────────────────────── */
 
 .toc { break-after: page; }
-.toc h2 { border: none; margin-top: 0; }
-.toc ol { list-style: none; padding: 0; margin: 0; counter-reset: toc; }
+.toc h2 { margin: 0 0 8mm; font-size: 20pt; font-weight: 700; color: var(--ink); }
+.toc ol { list-style: none; margin: 0; padding: 0; counter-reset: toc; }
 .toc > ol > li {
   counter-increment: toc;
-  padding: 2.4mm 0;
+  padding: 3.2mm 0;
   border-bottom: 1px solid var(--line);
-  font-weight: 600;
-  color: var(--ink);
-  font-size: 11pt;
 }
-.toc > ol > li::before {
+.toc > ol > li > a::before {
   content: counter(toc);
   display: inline-block;
   width: 9mm;
-  color: var(--accent);
-  font-weight: 800;
+  color: var(--navy);
+  font-weight: 700;
 }
-.toc ol ol { padding-left: 9mm; margin-top: 1mm; }
-.toc ol ol li {
-  font-weight: 400;
-  font-size: 9.6pt;
-  color: var(--body);
-  padding: 0.4mm 0;
+.toc a { color: var(--ink); text-decoration: none; font-weight: 600; font-size: 11pt; }
+.toc .sub { margin: 1mm 0 0 9mm; font-size: 8.8pt; color: var(--muted); }
+
+/* ── Chapters ───────────────────────────────────────────────────────────── */
+
+.chapter { break-before: page; }
+h2 {
+  margin: 0 0 3mm;
+  font-size: 19pt;
+  line-height: 1.2;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--ink);
 }
-.toc a { color: inherit; text-decoration: none; }
-
-/* ── Headings ──────────────────────────────────────────────────────────── */
-
-h1, h2, h3, h4 { color: var(--ink); line-height: 1.25; }
-
-section.chapter { break-before: page; }
-
-.chapter > h2 {
-  font-size: 21pt;
-  font-weight: 800;
-  letter-spacing: -0.015em;
-  margin: 0 0 2mm;
-  padding-bottom: 3mm;
-  border-bottom: 3px solid var(--accent);
+h2 .num {
+  display: block;
+  margin-bottom: 2mm;
+  font-size: 9pt;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--navy);
 }
-.chapter > h2 .num {
-  color: var(--accent);
-  margin-right: 3mm;
+h3 {
+  margin: 8mm 0 2.5mm;
+  font-size: 12.5pt;
+  font-weight: 700;
+  color: var(--ink);
+  break-after: avoid;
 }
-.chapter > .lead {
+h3 .num { color: var(--navy); margin-right: 2.5mm; }
+h4 { margin: 5mm 0 1.5mm; font-size: 10.5pt; font-weight: 600; color: var(--ink); break-after: avoid; }
+p { margin: 0 0 2.6mm; }
+.lead {
+  margin-bottom: 6mm;
+  padding-bottom: 5mm;
+  border-bottom: 1px solid var(--line);
   font-size: 11pt;
   color: var(--muted);
-  margin: 3mm 0 6mm;
 }
-
-h3 {
-  font-size: 13.5pt;
-  font-weight: 700;
-  margin: 8mm 0 2.5mm;
-  break-after: avoid;
-}
-h3 .num { color: var(--accent); margin-right: 2mm; }
-h4 {
-  font-size: 10.8pt;
-  font-weight: 700;
-  margin: 5mm 0 1.5mm;
-  break-after: avoid;
-}
-
-p { margin: 0 0 2.6mm; }
-strong { color: var(--ink); font-weight: 600; }
-ul, ol { margin: 0 0 3mm; padding-left: 6mm; }
-li { margin-bottom: 1mm; }
-li > ul { margin-top: 1mm; }
-
-/* UI labels exactly as they read on screen. */
-.ui {
-  font-weight: 600;
-  color: var(--ink);
-  background: var(--soft);
-  border: 1px solid var(--line);
-  border-radius: 1.2mm;
-  padding: 0 1.3mm;
-  white-space: nowrap;
-  font-size: 0.95em;
-}
-
-code, .mono {
-  font-family: "JetBrains Mono", "Noto Sans Mono", monospace;
-  font-size: 0.86em;
-  background: var(--soft);
-  border-radius: 1mm;
-  padding: 0.2mm 1.1mm;
-  color: #1f2937;
-}
-pre {
-  font-family: "JetBrains Mono", "Noto Sans Mono", monospace;
+ul, ol { margin: 0 0 3mm; padding-left: 5.5mm; }
+li { margin: 0 0 1.2mm; }
+b, strong { color: var(--ink); font-weight: 600; }
+code, pre {
+  font-family: "JetBrains Mono", "DejaVu Sans Mono", monospace;
   font-size: 8.4pt;
-  line-height: 1.5;
-  background: #0f172a;
-  color: #e2e8f0;
-  border-radius: 2.5mm;
+}
+code { padding: 0.2mm 1.2mm; border-radius: 1mm; background: var(--soft); color: var(--ink); }
+pre {
+  margin: 0 0 3.5mm;
   padding: 3.5mm 4mm;
-  margin: 2mm 0 4mm;
+  border: 1px solid var(--line);
+  border-left: 1mm solid var(--navy);
+  border-radius: 1.5mm;
+  background: var(--soft);
+  line-height: 1.55;
   white-space: pre-wrap;
   break-inside: avoid;
 }
-pre code { background: none; color: inherit; padding: 0; font-size: inherit; }
+pre code { padding: 0; background: none; }
+.small { font-size: 8.6pt; }
+.muted { color: var(--muted); }
 
-/* ── Figures ───────────────────────────────────────────────────────────── */
-
-figure {
-  margin: 3mm 0 5mm;
-  break-inside: avoid;
-}
-figure img {
-  display: block;
-  width: 100%;
+/* A label exactly as the screen shows it. */
+.ui {
+  padding: 0 1.2mm;
   border: 1px solid var(--line);
-  border-radius: 2.2mm;
-  box-shadow: 0 1mm 3mm rgba(17, 24, 39, 0.08);
+  border-radius: 1mm;
+  background: #fff;
+  color: var(--ink);
+  font-weight: 600;
+  font-size: 9pt;
+  white-space: nowrap;
 }
-figure.half img { width: 62%; margin: 0 auto; }
-figure.small img { width: 46%; margin: 0 auto; }
-figure.tall img { max-height: 205mm; width: auto; max-width: 100%; margin: 0 auto; }
-figcaption {
-  margin-top: 2mm;
-  font-size: 8.8pt;
-  color: var(--muted);
-  text-align: center;
-}
-figcaption b { color: var(--ink); }
 
-.grid2 {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 4mm;
-  margin: 2mm 0 4mm;
-}
-.grid2 figure { margin: 0; }
-.grid3 {
-  display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  gap: 3mm;
-  margin: 2mm 0 4mm;
-}
-.grid3 figure { margin: 0; }
-
-/* ── Tables ────────────────────────────────────────────────────────────── */
+/* ── Tables ─────────────────────────────────────────────────────────────── */
 
 table {
   width: 100%;
+  margin: 0 0 4mm;
   border-collapse: collapse;
-  margin: 2mm 0 4.5mm;
-  font-size: 9.1pt;
+  font-size: 9pt;
   break-inside: auto;
 }
 thead { display: table-header-group; }
 tr { break-inside: avoid; }
 th {
-  text-align: left;
-  font-weight: 700;
-  color: var(--ink);
-  background: var(--soft);
-  border-bottom: 2px solid #d1d5db;
   padding: 2mm 2.5mm;
-  font-size: 8.6pt;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
+  border-bottom: 1.2px solid var(--navy);
+  text-align: left;
+  font-weight: 600;
+  color: var(--ink);
 }
-td {
-  border-bottom: 1px solid var(--line);
-  padding: 1.9mm 2.5mm;
-  vertical-align: top;
+td { padding: 2mm 2.5mm; border-bottom: 1px solid var(--line); vertical-align: top; }
+td:first-child { color: var(--ink); font-weight: 500; }
+
+.pill {
+  display: inline-block;
+  padding: 0 2mm;
+  border-radius: 10mm;
+  font-size: 8pt;
+  font-weight: 600;
+  white-space: nowrap;
 }
-tbody tr:nth-child(even) td { background: #fafafa; }
-td:first-child { font-weight: 600; color: var(--ink); }
-table.plain td:first-child { font-weight: 400; color: var(--body); }
+.pill.ok { background: #e7f4ec; color: var(--ok); }
+.pill.warn { background: #fbf1dc; color: var(--warn); }
+.pill.fault { background: #fbe9e7; color: var(--fault); }
+.pill.info { background: var(--navy-soft); color: var(--navy); }
+.pill.grey { background: var(--soft); color: var(--muted); }
+.dot { display: inline-block; width: 2.6mm; height: 2.6mm; margin-right: 1.5mm; border-radius: 50%; vertical-align: -0.2mm; }
 
-/* ── Callouts ──────────────────────────────────────────────────────────── */
+/* ── Figures ────────────────────────────────────────────────────────────── */
 
-.note, .tip, div.warn, .danger {
-  border-radius: 2.2mm;
-  padding: 3mm 4mm 3mm 13mm;
-  margin: 3mm 0 4.5mm;
-  position: relative;
+figure { margin: 2mm 0 5mm; break-inside: avoid; }
+figure img {
+  display: block;
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 1.5mm;
+}
+figure.half img { width: 62%; margin: 0 auto; }
+figure.phone img { width: 46mm; margin: 0 auto; }
+figcaption { margin-top: 1.8mm; font-size: 8.4pt; color: var(--muted); text-align: center; }
+figcaption b { color: var(--navy); }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 5mm; }
+.grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4mm; }
+.grid4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4mm; }
+.grid2 figure, .grid3 figure, .grid4 figure { margin-bottom: 2mm; }
+.grid-wide { display: grid; grid-template-columns: 2.3fr 1fr; gap: 5mm; align-items: start; }
+
+/* ── Notes ──────────────────────────────────────────────────────────────── */
+
+.note, .tip, .warn, .danger {
+  margin: 0 0 4mm;
+  padding: 3mm 4mm;
+  border-left: 1mm solid var(--navy);
+  border-radius: 0 1.5mm 1.5mm 0;
+  background: var(--navy-soft);
+  font-size: 9.2pt;
   break-inside: avoid;
-  font-size: 9.5pt;
 }
-.note::before, .tip::before, div.warn::before, .danger::before {
-  position: absolute;
-  left: 4mm;
-  top: 2.8mm;
-  font-size: 12pt;
-}
-.note { background: var(--accent-soft); border-left: 3px solid var(--accent); }
-.note::before { content: "ℹ"; color: var(--accent); font-weight: 700; }
-.tip { background: var(--ok-soft); border-left: 3px solid var(--ok); }
-.tip::before { content: "✓"; color: var(--ok); font-weight: 800; }
-div.warn { background: var(--warn-soft); border-left: 3px solid #f0a020; }
-div.warn::before { content: "!"; color: var(--warn); font-weight: 800; left: 5mm; }
-.danger { background: var(--fault-soft); border-left: 3px solid var(--fault); }
-.danger::before { content: "⛔"; font-size: 10.5pt; }
-.note > b:first-child, .tip > b:first-child, div.warn > b:first-child, .danger > b:first-child {
+.note > b:first-child, .tip > b:first-child, .warn > b:first-child, .danger > b:first-child {
   display: block;
   margin-bottom: 0.8mm;
 }
-.note p:last-child, .tip p:last-child, div.warn p:last-child, .danger p:last-child { margin-bottom: 0; }
+.tip { border-color: var(--ok); background: #f0f8f3; }
+.warn { border-color: #c98a16; background: #fdf6e8; }
+.danger { border-color: var(--fault); background: #fdf0ee; }
+.note p, .tip p, .warn p, .danger p { margin: 0; }
 
-/* ── Numbered steps ────────────────────────────────────────────────────── */
+/* ── Cards & steps ──────────────────────────────────────────────────────── */
 
-ol.steps {
-  list-style: none;
-  counter-reset: step;
-  padding: 0;
-  margin: 2mm 0 4mm;
+.cards { display: grid; grid-template-columns: 1fr 1fr; gap: 4mm; margin: 0 0 4mm; }
+.card {
+  padding: 3.5mm 4mm;
+  border: 1px solid var(--line);
+  border-top: 0.8mm solid var(--navy);
+  border-radius: 1.5mm;
+  break-inside: avoid;
 }
+.card .tag { font-size: 7.8pt; font-weight: 600; letter-spacing: 0.05em; color: var(--navy); }
+.card h4 { margin: 0.5mm 0 1mm; }
+.card p { margin: 0; font-size: 9pt; }
+
+ol.steps { list-style: none; padding: 0; counter-reset: step; }
 ol.steps > li {
-  counter-increment: step;
   position: relative;
-  padding: 0 0 2.6mm 11mm;
-  margin: 0;
+  counter-increment: step;
+  margin: 0 0 2.6mm;
+  padding-left: 9mm;
   break-inside: avoid;
 }
 ol.steps > li::before {
   content: counter(step);
   position: absolute;
   left: 0;
-  top: -0.3mm;
-  width: 7mm;
-  height: 7mm;
+  top: 0.1mm;
+  width: 5.6mm;
+  height: 5.6mm;
   border-radius: 50%;
-  background: var(--accent);
+  background: var(--navy);
   color: #fff;
+  font-size: 8pt;
   font-weight: 700;
-  font-size: 9pt;
-  display: grid;
-  place-items: center;
+  line-height: 5.6mm;
+  text-align: center;
 }
-ol.steps > li > b:first-child { color: var(--ink); }
 
-/* ── Small helpers ─────────────────────────────────────────────────────── */
+.diagram { margin: 2mm 0 5mm; padding: 4mm; border: 1px solid var(--line); border-radius: 1.5mm; break-inside: avoid; }
+.diagram svg { display: block; width: 100%; height: auto; }
 
-.pill {
-  display: inline-block;
-  border-radius: 99px;
-  padding: 0 2.2mm;
-  font-size: 8.4pt;
-  font-weight: 600;
-  white-space: nowrap;
-}
-.pill.ok { background: var(--ok-soft); color: var(--ok); }
-.pill.warn { background: var(--warn-soft); color: var(--warn); }
-.pill.fault { background: var(--fault-soft); color: var(--fault); }
-.pill.info { background: var(--accent-soft); color: var(--accent); }
-.pill.grey { background: var(--soft); color: var(--muted); }
-.pill.purple { background: #f1eafe; color: var(--purple); }
-
-.dot { display: inline-block; width: 2.6mm; height: 2.6mm; border-radius: 50%; vertical-align: middle; margin-right: 1mm; }
-
-.cards {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 3.5mm;
-  margin: 2mm 0 4.5mm;
-}
-.cards .card {
-  border: 1px solid var(--line);
-  border-radius: 2.5mm;
-  padding: 3.5mm 4mm;
+/* Closing block with the company logo, at the end of the document. */
+.colophon {
+  margin-top: 14mm;
+  padding-top: 6mm;
+  border-top: 1px solid var(--line);
+  display: flex;
+  gap: 5mm;
+  align-items: center;
   break-inside: avoid;
 }
-.cards .card h4 { margin: 0 0 1.2mm; font-size: 10.5pt; }
-.cards .card p { margin: 0; font-size: 9.2pt; }
-.cards .card .tag { font-size: 8pt; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; font-weight: 700; }
-
-.diagram { margin: 3mm 0 5mm; break-inside: avoid; text-align: center; }
-.diagram svg { width: 100%; height: auto; }
-
-.keep { break-inside: avoid; }
-.pagebreak { break-before: page; }
-.muted { color: var(--muted); }
-.small { font-size: 8.8pt; }
-
-/* ── Revisions after the first proof ───────────────────────────────────── */
-
-/* A screenshot never takes a page to itself: tall ones shrink, not the text. */
-figure img {
-  width: auto;
-  max-width: 100%;
-  max-height: 118mm;
-  margin: 0 auto;
-}
-figure.half img { max-width: 62%; }
-.grid2 figure img, .grid-wide figure img { max-height: 70mm; }
-
-.grid-wide {
-  display: grid;
-  grid-template-columns: 2.35fr 1fr;
-  gap: 4mm;
-  align-items: start;
-  margin: 2mm 0 4mm;
-}
-.grid-wide figure { margin: 0; }
-
-/* Status chips: a small CSS dot instead of a glyph, which fell back to the
-   emoji font and stretched the chip. */
-.pill { line-height: 1.6; }
-.pill.ok::before, .pill.warn::before, .pill.fault::before,
-.pill.info::before, .pill.grey::before, .pill.purple::before {
-  content: "";
-  display: inline-block;
-  width: 1.6mm;
-  height: 1.6mm;
-  border-radius: 50%;
-  background: currentColor;
-  margin-right: 1.2mm;
-  vertical-align: 0.15mm;
-}
+.colophon img { width: 11mm; }
+.colophon p { margin: 0; font-size: 8.6pt; color: var(--muted); }
+.colophon b { color: var(--navy); }
