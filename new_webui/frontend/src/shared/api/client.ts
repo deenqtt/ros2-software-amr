@@ -9,6 +9,9 @@
 import { config } from '@/app/config'
 
 export class ApiError extends Error {
+  /** Seconds the server asked to wait (429 Retry-After), when it said. */
+  retryAfter: number | null = null
+
   constructor(
     message: string,
     readonly status: number,
@@ -27,22 +30,82 @@ export class ApiError extends Error {
   get isOffline(): boolean {
     return this.status === 0
   }
+
+  /** Nobody is signed in, or the session ended. */
+  get isUnauthorized(): boolean {
+    return this.status === 401
+  }
+
+  /** Signed in, but the role does not allow it. */
+  get isForbidden(): boolean {
+    return this.status === 403
+  }
+}
+
+/**
+ * Called when a request comes back 401: the session ended while the page was
+ * open (idle limit, signed out elsewhere, account disabled). Registered by the
+ * auth store, so this module does not depend on the router or on Pinia.
+ *
+ * Not called for the sign-in calls themselves, whose 401 is an answer rather
+ * than an interruption.
+ */
+let onUnauthorized: (() => void) | null = null
+const SIGN_IN_PATHS = ['/auth/login', '/auth/me', '/auth/logout']
+
+export function setUnauthorizedHandler(handler: (() => void) | null): void {
+  onUnauthorized = handler
+}
+
+/**
+ * The words to show for a refusal. FastAPI wraps them as {"detail": ...}, and
+ * this API puts either a sentence or {message} there; the raw body is still
+ * kept as the error message for callers that parse a structured conflict.
+ */
+function refusalMessage(status: number, body: string): string {
+  try {
+    const detail = (JSON.parse(body) as { detail?: unknown }).detail
+    if (typeof detail === 'string') return detail
+    if (detail && typeof detail === 'object' && 'message' in detail) {
+      return String((detail as { message: unknown }).message)
+    }
+  } catch {
+    // Not JSON: fall through to the generic wording.
+  }
+  if (status === 401) return 'Sign in to continue'
+  if (status === 429) return 'Too many attempts. Wait a moment and try again.'
+  return 'Your role does not allow this'
+}
+
+async function failure(response: Response, path: string): Promise<ApiError> {
+  const body = await response.text().catch(() => response.statusText)
+  if (response.status === 401 || response.status === 403) {
+    if (response.status === 401 && !SIGN_IN_PATHS.includes(path)) onUnauthorized?.()
+    return new ApiError(refusalMessage(response.status, body), response.status, path)
+  }
+  if (response.status === 429) {
+    const error = new ApiError(refusalMessage(429, body), 429, path)
+    const wait = Number(response.headers.get('retry-after'))
+    error.retryAfter = Number.isFinite(wait) && wait > 0 ? wait : null
+    return error
+  }
+  return new ApiError(body || response.statusText, response.status, path)
 }
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   let response: Response
   try {
-    response = await fetch(config.apiBaseUrl + path, init)
+    // `include`, so the session cookie goes along in development too, where
+    // the page (:3100) and the API (:3002) are different origins. In
+    // production they share one and this changes nothing.
+    response = await fetch(config.apiBaseUrl + path, { credentials: 'include', ...init })
   } catch (cause) {
     // status 0 is the signal for "never reached the server"; keep the original
     // network error attached so it is still visible in the console.
     throw new ApiError(`Backend unreachable at ${config.apiBaseUrl}`, 0, path, { cause })
   }
 
-  if (!response.ok) {
-    const detail = await response.text().catch(() => response.statusText)
-    throw new ApiError(detail || response.statusText, response.status, path)
-  }
+  if (!response.ok) throw await failure(response, path)
 
   if (response.status === 204) return undefined as T
   const contentType = response.headers.get('content-type') ?? ''
@@ -95,14 +158,11 @@ export const api = {
       // URL. Reusing a cached response would make the editor show the old
       // cells after a successful overwrite; the backend also marks these
       // responses as non-cacheable for other clients.
-      response = await fetch(config.apiBaseUrl + path, { cache: 'no-store' })
+      response = await fetch(config.apiBaseUrl + path, { cache: 'no-store', credentials: 'include' })
     } catch (cause) {
       throw new ApiError(`Backend unreachable at ${config.apiBaseUrl}`, 0, path, { cause })
     }
-    if (!response.ok) {
-      const detail = await response.text().catch(() => response.statusText)
-      throw new ApiError(detail || response.statusText, response.status, path)
-    }
+    if (!response.ok) throw await failure(response, path)
     return new Uint8Array(await response.arrayBuffer())
   },
 

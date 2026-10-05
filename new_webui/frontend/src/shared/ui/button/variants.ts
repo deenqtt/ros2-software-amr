@@ -22,7 +22,9 @@ import { cva, type VariantProps } from 'class-variance-authority'
 export const buttonVariants = cva(
   'inline-flex items-center justify-center gap-xs whitespace-nowrap rounded-control font-sans font-semibold ' +
     'transition-colors duration-150 ease-out ' +
-    'disabled:pointer-events-none [&_svg]:pointer-events-none [&_svg]:shrink-0',
+    'disabled:pointer-events-none [&_svg]:pointer-events-none [&_svg]:shrink-0 ' +
+    // A fingertip needs 44px; a mouse does not. See the touch variant.
+    'touch:min-h-[44px]',
   {
     variants: {
       variant: {
@@ -38,8 +40,8 @@ export const buttonVariants = cva(
       size: {
         default: 'h-control px-base text-body-md',
         sm: 'h-control-sm px-sm text-body-sm',
-        icon: 'h-control w-control p-0',
-        'icon-sm': 'h-control-sm w-control-sm p-0',
+        icon: 'h-control w-control p-0 touch:min-w-[44px]',
+        'icon-sm': 'h-control-sm w-control-sm p-0 touch:min-w-[44px]',
       },
     },
     defaultVariants: { variant: 'primary', size: 'default' },

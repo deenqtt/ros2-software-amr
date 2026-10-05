@@ -17,21 +17,14 @@
  * navigation and leaving it does not stop it.
  */
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import {
-  Crosshair,
-  MapPin,
-  PanelRightClose,
-  PanelRightOpen,
-  Pencil,
-  Plus,
-  Trash2,
-} from 'lucide-vue-next'
+import { Crosshair, MapPin, PanelRightClose, PanelRightOpen, Plus, X } from 'lucide-vue-next'
 import { toast } from 'vue-sonner'
 import { useMapStore } from '@/stores/maps'
 import { useFleetStore } from '@/stores/fleet'
 import { useStationStore } from '@/stores/stations'
 import { useLinkStore } from '@/stores/links'
 import { useMissionStore } from '@/stores/missions'
+import { useUiStore } from '@/stores/ui'
 import { RouterLink } from 'vue-router'
 import { useRobotTelemetry } from '@/features/mapping/useRobotTelemetry'
 import { mapsApi } from '@/shared/api/maps'
@@ -39,17 +32,21 @@ import { StationInUseError } from '@/shared/api/stations'
 import { decodePgm, type Grid } from '@/domain/map/pgm'
 import { radToDeg } from '@/domain/ros/quaternion'
 import { type Station, type StationType } from '@/domain/types'
-import { STATION_TYPE_LIST, STATION_TYPE_STYLE } from '../stationType'
+import { STATION_TYPE_LIST } from '../stationType'
 import StationMapCanvas from '../components/StationMapCanvas.vue'
+import StationListItem from '../components/StationListItem.vue'
 import { missionsByStation } from '../stationUsage'
 import { Button } from '@/shared/ui/button'
 import { Select } from '@/shared/ui/select'
-import { RowActions, RowActionItem, RowActionSeparator } from '@/shared/ui/menu'
 import { Input } from '@/shared/ui/input'
 import { FormField } from '@/shared/ui/label'
 import { Dialog } from '@/shared/ui/dialog'
 import EmptyState from '@/shared/components/EmptyState.vue'
 import ConfirmDialog from '@/shared/components/ConfirmDialog.vue'
+import BlockedTip from '@/shared/components/BlockedTip.vue'
+import MapListToggle, { type MapListView } from '@/shared/components/MapListToggle.vue'
+import { usePermission } from '@/shared/composables/usePermission'
+import { useScreenBlocker } from '@/shared/composables/useScreenBlocker'
 import { cn } from '@/shared/lib/utils'
 
 const maps = useMapStore()
@@ -57,6 +54,18 @@ const fleet = useFleetStore()
 const links = useLinkStore()
 const stations = useStationStore()
 const missions = useMissionStore()
+const { canEdit, editBlocker } = usePermission()
+const ui = useUiStore()
+
+/**
+ * A phone gets the map full width and the list as the other half of a
+ * Map/List switch. Placing and dragging stations stay on bigger screens: a
+ * fingertip covers several cells, so a station dropped by thumb lands
+ * roughly, and nothing on the screen says how roughly.
+ */
+const phone = computed(() => ui.screen === 'phone')
+const view = ref<MapListView>('map')
+const { reason: placeReason } = useScreenBlocker('Placing a station on the map')
 
 const selectedMapId = ref<string | null>(null)
 const grid = ref<Grid | null>(null)
@@ -197,6 +206,8 @@ onMounted(async () => {
 // ── Placing and editing ──────────────────────────────────────────────────────
 
 function openCreate(pose: { x: number; y: number; yaw?: number }, taughtBy: string | null = null) {
+  // Also reached from a click on the map, which no disabled button covers.
+  if (!canEdit.value) return
   form.value = {
     open: true,
     editing: null,
@@ -213,6 +224,7 @@ function openCreate(pose: { x: number; y: number; yaw?: number }, taughtBy: stri
 }
 
 function openEdit(station: Station) {
+  if (!canEdit.value) return
   form.value = {
     open: true,
     editing: station,
@@ -243,7 +255,7 @@ const nameProblem = computed(() => {
 })
 
 async function onSubmit() {
-  if (nameProblem.value || !selectedMapId.value) return
+  if (nameProblem.value || !selectedMapId.value || !canEdit.value) return
   saving.value = true
   formError.value = null
   try {
@@ -286,6 +298,7 @@ let dragWrite: ReturnType<typeof setTimeout> | null = null
 const dragPreview = ref<Map<string, { x: number; y: number }>>(new Map())
 
 function onMove(payload: { id: string; x: number; y: number }) {
+  if (!canEdit.value) return
   // Shown at once, written after the drag settles: a pointer at 60 Hz would
   // otherwise issue sixty PATCHes per second.
   dragPreview.value = new Map(dragPreview.value).set(payload.id, { x: payload.x, y: payload.y })
@@ -321,7 +334,7 @@ const removalBlockedBy = computed(() =>
 
 async function confirmRemoval() {
   const station = pendingRemoval.value
-  if (!station) return
+  if (!station || !canEdit.value) return
   removing.value = true
   try {
     await stations.remove(station.id)
@@ -346,6 +359,24 @@ function robotName(id: string | null): string {
   if (!id) return '—'
   return fleet.robots.find((robot) => robot.id === id)?.name ?? 'retired robot'
 }
+
+function taughtBy(station: Station): string | null {
+  return station.taughtByRobotId ? robotName(station.taughtByRobotId) : null
+}
+
+const selectedStation = computed(
+  () => shownStations.value.find((station) => station.id === selectedId.value) ?? null,
+)
+
+/** From the phone list: show the station where it is. */
+function showOnMap(id: string) {
+  selectedId.value = id
+  view.value = 'map'
+}
+
+watch(phone, (small) => {
+  if (small) placing.value = false
+})
 
 watch(
   () => form.value.open,
@@ -385,59 +416,72 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
     <div
       class="flex shrink-0 flex-wrap items-center gap-xs border-b border-hairline bg-surface px-base py-xs"
     >
-      <MapPin :size="14" class="shrink-0 text-muted" />
+      <MapPin v-if="!phone" :size="14" class="shrink-0 text-muted" />
       <Select
         v-if="mapOptions.length"
         label="Map"
         :model-value="selectedMapId"
         :options="mapOptions"
-        class="min-w-[12rem]"
+        :class="phone ? 'min-w-0 flex-1' : 'min-w-[10rem] lg:min-w-[12rem]'"
         @update:model-value="selectMap"
       />
 
-      <Button
-        :variant="placing ? 'primary' : 'outline'"
-        size="sm"
-        :disabled="!grid"
-        @click="placing = !placing"
-      >
-        <Plus :size="13" />
-        {{ placing ? 'Click the map…' : 'Add station' }}
-      </Button>
+      <MapListToggle v-if="phone" v-model="view" :count="stations.count" class="shrink-0" />
 
-      <!--
-        Only robots on this exact map can teach a pose. One running a different
-        map reports its position in that map's frame, and the number would be
-        accepted while naming the wrong place.
-      -->
-      <div v-if="teachOptions.length" class="flex items-center gap-xxs">
-        <Select
-          label="Robot to capture a pose from"
-          :model-value="teachRobotId"
-          :options="teachOptions"
-          placeholder="Teach from…"
-          class="min-w-[9rem]"
-          @update:model-value="teachRobotId = $event"
-        />
-        <Button size="sm" variant="outline" :disabled="!robotPose" @click="teachFromRobot">
+      <template v-else>
+        <BlockedTip :reason="editBlocker">
+          <Button
+            :variant="placing ? 'primary' : 'outline'"
+            size="sm"
+            :disabled="!canEdit || !grid"
+            @click="placing = !placing"
+          >
+            <Plus :size="13" />
+            {{ placing ? 'Click the map…' : 'Add station' }}
+          </Button>
+        </BlockedTip>
+
+        <!--
+          Only robots on this exact map can teach a pose. One running a different
+          map reports its position in that map's frame, and the number would be
+          accepted while naming the wrong place.
+        -->
+        <div v-if="teachOptions.length" class="flex items-center gap-xxs">
+          <Select
+            label="Robot to capture a pose from"
+            :model-value="teachRobotId"
+            :options="teachOptions"
+            placeholder="Teach from…"
+            class="min-w-[9rem]"
+            @update:model-value="teachRobotId = $event"
+          />
+          <BlockedTip :reason="editBlocker">
+            <Button
+              size="sm"
+              variant="outline"
+              :disabled="!canEdit || !robotPose"
+              @click="teachFromRobot"
+            >
+              <Crosshair :size="13" />
+              Capture
+            </Button>
+          </BlockedTip>
+        </div>
+        <!-- Shown even when nobody can use it, or nobody learns it exists. -->
+        <Button
+          v-else-if="grid"
+          size="sm"
+          variant="outline"
+          disabled
+          title="No robot is online on this map. Load this map on a robot to capture its pose."
+        >
           <Crosshair :size="13" />
-          Capture
+          Capture from robot
         </Button>
-      </div>
-      <!-- Shown even when nobody can use it, or nobody learns it exists. -->
-      <Button
-        v-else-if="grid"
-        size="sm"
-        variant="outline"
-        disabled
-        title="No robot is online on this map. Load this map on a robot to capture its pose."
-      >
-        <Crosshair :size="13" />
-        Capture from robot
-      </Button>
-      <span v-if="grid && !teachOptions.length" class="hidden text-caption text-muted-soft xl:inline">
-        No robot online on this map
-      </span>
+        <span v-if="grid && !teachOptions.length" class="hidden text-caption text-muted-soft xl:inline">
+          No robot online on this map
+        </span>
+      </template>
     </div>
 
     <div class="flex min-h-0 flex-1">
@@ -462,8 +506,10 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
           :placement="placement"
           :stations="shownStations"
           :selected-id="selectedId"
-          :placing="placing"
+          :placing="canEdit && placing && !phone"
+          :movable="canEdit && !phone"
           :robot-pose="robotPose"
+          :hide-legend="phone && selectedStation !== null"
           @place="openCreate"
           @select="selectedId = $event"
           @move="onMove"
@@ -484,6 +530,93 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
             </span>
           </template>
         </StationMapCanvas>
+
+        <!--
+          Phone, map view: the tapped station as a card over the bottom of the
+          map, so its numbers and actions are one tap away without the list.
+        -->
+        <div
+          v-if="phone && view === 'map' && selectedStation"
+          class="absolute inset-x-sm bottom-sm z-10 flex items-start gap-xxs rounded-surface border border-hairline bg-surface p-xxs shadow-soft"
+        >
+          <StationListItem
+            class="min-w-0 flex-1"
+            :station="selectedStation"
+            detail
+            :missions="usedBy(selectedStation.id)"
+            :taught-by="taughtBy(selectedStation)"
+            @edit="openEdit(selectedStation)"
+            @remove="pendingRemoval = selectedStation"
+          />
+          <Button variant="ghost" size="icon-sm" aria-label="Close" @click="selectedId = null">
+            <X :size="15" />
+          </Button>
+        </div>
+
+        <!--
+          Phone, list view: over the map rather than instead of it, so the map
+          keeps its zoom and pan for the trip back.
+        -->
+        <div
+          v-if="phone && view === 'list'"
+          class="absolute inset-0 z-10 overflow-y-auto bg-surface"
+        >
+          <div class="space-y-xs border-b border-hairline p-sm">
+            <div class="flex flex-wrap items-center gap-x-sm gap-y-xxs">
+              <Button size="sm" variant="outline" disabled>
+                <Plus :size="13" />
+                Add on map
+              </Button>
+              <!-- Said in words: a phone has no hover to show a tooltip. -->
+              <p class="text-caption text-muted">{{ editBlocker || placeReason }}</p>
+            </div>
+            <!--
+              Capturing stays: the robot is where the station goes, so the phone
+              in the operator's hand needs no map precision for it.
+            -->
+            <div v-if="teachOptions.length" class="flex items-center gap-xs">
+              <Select
+                label="Robot to capture a pose from"
+                :model-value="teachRobotId"
+                :options="teachOptions"
+                placeholder="Teach from…"
+                class="min-w-0 flex-1"
+                @update:model-value="teachRobotId = $event"
+              />
+              <BlockedTip :reason="editBlocker">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  :disabled="!canEdit || !robotPose"
+                  @click="teachFromRobot"
+                >
+                  <Crosshair :size="13" />
+                  Capture
+                </Button>
+              </BlockedTip>
+            </div>
+            <p v-else-if="grid" class="text-caption text-muted-soft">No robot online on this map</p>
+          </div>
+
+          <EmptyState
+            v-if="!stations.count"
+            title="Nothing here yet"
+            description="Drive a robot to the spot and capture its pose, or add one on a tablet or laptop."
+          />
+          <ul v-else class="space-y-xxs p-xs">
+            <li v-for="station in shownStations" :key="station.id">
+              <StationListItem
+                :station="station"
+                :selected="selectedId === station.id"
+                :missions="usedBy(station.id)"
+                :taught-by="taughtBy(station)"
+                @select="showOnMap(station.id)"
+                @edit="openEdit(station)"
+                @remove="pendingRemoval = station"
+              />
+            </li>
+          </ul>
+        </div>
       </div>
 
       <!--
@@ -492,6 +625,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
         worth a fifth of the map on a narrow screen when nobody is reading it.
       -->
       <aside
+        v-if="!phone"
         class="flex shrink-0 flex-col border-l border-hairline bg-surface transition-[width] duration-150"
         :class="panelOpen ? 'w-[18rem]' : 'w-[3rem]'"
       >
@@ -517,74 +651,18 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
           />
 
           <div v-else class="space-y-xxs">
-            <div
+            <StationListItem
               v-for="station in stations.stations"
               :key="station.id"
-              :class="
-                cn(
-                  'flex items-start gap-xs rounded-control border p-xs transition-colors',
-                  selectedId === station.id
-                    ? 'border-primary bg-primary/[0.06]'
-                    : 'border-transparent hover:border-hairline',
-                )
-              "
-            >
-              <button
-                type="button"
-                class="flex min-w-0 flex-1 items-start gap-xs text-left"
-                @click="selectedId = station.id"
-              >
-                <span
-                  class="mt-px flex h-6 w-6 shrink-0 items-center justify-center rounded-control text-white"
-                  :style="{ backgroundColor: STATION_TYPE_STYLE[station.type].colour }"
-                >
-                  <component :is="STATION_TYPE_STYLE[station.type].icon" :size="13" />
-                </span>
-                <span class="min-w-0 flex-1">
-                  <span class="block truncate text-body-sm text-ink">{{ station.name }}</span>
-                  <!-- The type in words: four colours are not a vocabulary. -->
-                  <span class="block truncate text-caption text-muted">
-                    {{ STATION_TYPE_STYLE[station.type].label }} ·
-                    <span class="font-data">
-                      {{ station.x.toFixed(2) }}, {{ station.y.toFixed(2) }} m ·
-                      {{ Math.round(radToDeg(station.yaw)) }}°
-                    </span>
-                  </span>
-                  <span
-                    v-if="usedBy(station.id).length"
-                    class="mt-xxs inline-block rounded-chip bg-surface-strong px-xxs text-caption text-muted"
-                    :title="usedBy(station.id).map((m) => m.name).join(', ')"
-                  >
-                    {{ usedBy(station.id).length }} mission{{ usedBy(station.id).length === 1 ? '' : 's' }}
-                  </span>
-                  <!-- Only on the selected one: detail every row carries is not
-                       detail, it is noise that makes the list twice as long. -->
-                  <span
-                    v-if="selectedId === station.id && (station.taughtByRobotId || station.note)"
-                    class="mt-xxs block text-caption text-muted-soft"
-                  >
-                    {{
-                      [
-                        station.taughtByRobotId
-                          ? `Taught by ${robotName(station.taughtByRobotId)}`
-                          : null,
-                        station.note,
-                      ]
-                        .filter(Boolean)
-                        .join(' · ')
-                    }}
-                  </span>
-                </span>
-              </button>
-
-              <RowActions :label="`More actions for ${station.name}`">
-                <RowActionItem :icon="Pencil" @select="openEdit(station)">Edit</RowActionItem>
-                <RowActionSeparator class="my-xxs h-px bg-hairline" />
-                <RowActionItem :icon="Trash2" destructive @select="pendingRemoval = station">
-                  Remove
-                </RowActionItem>
-              </RowActions>
-            </div>
+              :station="station"
+              :selected="selectedId === station.id"
+              :detail="selectedId === station.id"
+              :missions="usedBy(station.id)"
+              :taught-by="taughtBy(station)"
+              @select="selectedId = station.id"
+              @edit="openEdit(station)"
+              @remove="pendingRemoval = station"
+            />
           </div>
         </div>
       </aside>
@@ -628,7 +706,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
           </div>
         </div>
 
-        <div class="grid grid-cols-3 gap-xs">
+        <div class="grid grid-cols-2 gap-xs sm:grid-cols-3">
           <FormField label="X (m)" required>
             <template #default="{ id }">
               <Input
@@ -651,7 +729,12 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
               />
             </template>
           </FormField>
-          <FormField label="Heading (°)" required hint="Which way the robot faces on arrival.">
+          <FormField
+            label="Heading (°)"
+            required
+            hint="Which way the robot faces on arrival."
+            class="col-span-2 sm:col-span-1"
+          >
             <template #default="{ id }">
               <Input
                 :id="id"

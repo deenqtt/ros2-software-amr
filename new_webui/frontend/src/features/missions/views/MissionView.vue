@@ -13,7 +13,7 @@
  */
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
-import { ChevronRight, Eye, ListOrdered, Pencil, Play, Plus, Square, Trash2, X } from 'lucide-vue-next'
+import { ChevronRight, Eye, ListOrdered, Pencil, Play, Plus, Square, X } from 'lucide-vue-next'
 import { toast } from 'vue-sonner'
 import { useMapStore } from '@/stores/maps'
 import { useFleetStore } from '@/stores/fleet'
@@ -33,15 +33,25 @@ import { FormField } from '@/shared/ui/label'
 import { Select } from '@/shared/ui/select'
 import { Dialog } from '@/shared/ui/dialog'
 import { Badge } from '@/shared/ui/badge'
-import { RowActions, RowActionItem } from '@/shared/ui/menu'
+import { Skeleton } from '@/shared/ui/skeleton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/shared/ui/table'
 import PanelToolbar from '@/shared/components/PanelToolbar.vue'
 import EmptyState from '@/shared/components/EmptyState.vue'
 import ConfirmDialog from '@/shared/components/ConfirmDialog.vue'
+import BlockedTip from '@/shared/components/BlockedTip.vue'
+import { usePermission } from '@/shared/composables/usePermission'
 import { cn } from '@/shared/lib/utils'
 import { STATION_TYPE_STYLE } from '@/features/stations/stationType'
 import MissionTableSkeleton from '../components/MissionTableSkeleton.vue'
-import { lastFinishedRun, routePreview, runProgress, RUN_RESULT, timeAgo } from '../missionList'
+import MissionRowActions from '../components/MissionRowActions.vue'
+import {
+  lastFinishedRun,
+  missionStatus,
+  routePreview,
+  runProgress,
+  RUN_RESULT,
+  timeAgo,
+} from '../missionList'
 
 const maps = useMapStore()
 const fleet = useFleetStore()
@@ -49,6 +59,7 @@ const missions = useMissionStore()
 const stations = useStationStore()
 const route = useRoute()
 const router = useRouter()
+const { canOperate, operateBlocker, canEdit, editBlocker } = usePermission()
 
 const selectedMapId = ref<string | null>(null)
 
@@ -170,6 +181,23 @@ function robotName(id: string | null): string {
   return fleet.robots.find((robot) => robot.id === id)?.name ?? 'retired robot'
 }
 
+/** The phone row's one-line status, standing in for the table's Status column. */
+function statusOf(mission: MissionSummary) {
+  return missionStatus(
+    mission,
+    liveRunOf(mission),
+    missions.runs,
+    now.value,
+    robotName,
+    canEdit.value,
+  )
+}
+
+/** Phone rows, each status worked out once per render rather than per binding. */
+const phoneRows = computed(() =>
+  missions.missions.map((mission) => ({ mission, status: statusOf(mission) })),
+)
+
 // ── Dispatch ─────────────────────────────────────────────────────────────────
 
 const dispatching = ref<MissionSummary | null>(null)
@@ -200,6 +228,7 @@ const dispatchOptions = computed(() =>
 
 /** Why Run is unavailable for a mission, or null when it can be run. */
 function runBlocker(mission: MissionSummary): string | null {
+  if (!canOperate.value) return operateBlocker.value
   if (!mission.stepCount) return 'Add steps before running this'
   if (!robotsOnMap.value.length) return 'No robot is on this map'
   if (!dispatchOptions.value.some((option) => !option.disabled)) {
@@ -232,7 +261,7 @@ const loopNeedsSomeone = computed(
 async function confirmDispatch() {
   const mission = dispatching.value
   const robotId = dispatchRobotId.value
-  if (!mission || !robotId) return
+  if (!mission || !robotId || !canOperate.value) return
   dispatchPending.value = true
   dispatchError.value = null
   try {
@@ -316,7 +345,7 @@ const newNameProblem = computed(() => {
 })
 
 async function createMission() {
-  if (newNameProblem.value || !selectedMapId.value) return
+  if (newNameProblem.value || !selectedMapId.value || !canEdit.value) return
   creating.value = true
   createError.value = null
   try {
@@ -365,7 +394,7 @@ watch(createOpen, (open) => {
 </script>
 
 <template>
-  <div class="space-y-base p-lg">
+  <div class="space-y-base p-sm sm:p-base md:p-lg">
     <!--
       What is happening on the floor, above the routes that describe it. An
       operator opening this page while a robot is moving wants that first.
@@ -391,37 +420,55 @@ watch(createOpen, (open) => {
               {{ robotName(run.robotId) }} · {{ progressOf(run) }} · {{ lapLabel(run) }}
             </p>
           </div>
-          <!-- The run is a robot moving somewhere; watching it is one click. -->
-          <Button v-if="run.robotId" variant="ghost" size="sm" as-child>
-            <RouterLink :to="`/robot/${run.robotId}/nav`" :title="`Watch ${robotName(run.robotId)}`">
-              <Eye :size="13" /> Watch
-            </RouterLink>
-          </Button>
+          <!-- On a phone the controls get a row of their own, three even
+               thumb-sized slots; from md they sit at the end of the line. -->
+          <div class="grid w-full grid-cols-3 gap-xs md:flex md:w-auto md:items-center md:gap-sm">
+            <!-- The run is a robot moving somewhere; watching it is one click. -->
+            <Button v-if="run.robotId" variant="ghost" size="sm" class="w-full md:w-auto" as-child>
+              <RouterLink
+                :to="`/robot/${run.robotId}/nav`"
+                :title="`Watch ${robotName(run.robotId)}`"
+              >
+                <Eye :size="13" /> Watch
+              </RouterLink>
+            </Button>
 
-          <!-- `stopping` is not a failure and not finished: it is a lap in
-               progress that will be the last one. -->
-          <Badge v-if="run.state === 'stopping'" class="bg-status-warn/12 text-status-warn">
-            stopping after this lap
-          </Badge>
+            <!-- `stopping` is not a failure and not finished: it is a lap in
+                 progress that will be the last one. -->
+            <Badge
+              v-if="run.state === 'stopping'"
+              class="justify-center bg-status-warn/12 text-center text-status-warn md:justify-start md:text-left"
+            >
+              stopping after this lap
+            </Badge>
 
-          <Button
-            v-if="run.state === 'running'"
-            variant="outline"
-            size="sm"
-            :disabled="runPending"
-            @click="stoppingRun = run"
-          >
-            <Square :size="13" /> Stop after lap
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            class="hover:text-status-fault"
-            :disabled="runPending"
-            @click="cancellingRun = run"
-          >
-            <X :size="13" /> Cancel
-          </Button>
+            <BlockedTip
+              v-if="run.state === 'running'"
+              :reason="operateBlocker"
+              class="w-full md:w-auto"
+            >
+              <Button
+                variant="outline"
+                size="sm"
+                class="w-full md:w-auto"
+                :disabled="!canOperate || runPending"
+                @click="stoppingRun = run"
+              >
+                <Square :size="13" /> Stop after lap
+              </Button>
+            </BlockedTip>
+            <BlockedTip :reason="operateBlocker" class="w-full md:w-auto">
+              <Button
+                variant="ghost"
+                size="sm"
+                class="w-full hover:text-status-fault md:w-auto"
+                :disabled="!canOperate || runPending"
+                @click="cancellingRun = run"
+              >
+                <X :size="13" /> Cancel
+              </Button>
+            </BlockedTip>
+          </div>
         </div>
       </CardContent>
     </Card>
@@ -430,24 +477,52 @@ watch(createOpen, (open) => {
       <PanelToolbar title="Missions" :subtitle="mapSubtitle">
         <template #icon><ListOrdered :size="14" class="shrink-0 text-muted" /></template>
         <template #actions>
-          <Select
-            v-if="mapOptions.length"
-            label="Map"
-            :model-value="selectedMapId"
-            :options="mapOptions"
-            class="min-w-[12rem]"
-            @update:model-value="selectMap"
-          />
-          <Button size="sm" :disabled="!selectedMapId" @click="createOpen = true">
-            <Plus :size="13" /> New mission
-          </Button>
+          <div v-if="mapOptions.length" class="hidden md:block">
+            <Select
+              label="Map"
+              :model-value="selectedMapId"
+              :options="mapOptions"
+              class="min-w-[12rem]"
+              @update:model-value="selectMap"
+            />
+          </div>
+          <BlockedTip :reason="editBlocker">
+            <Button size="sm" :disabled="!canEdit || !selectedMapId" @click="createOpen = true">
+              <Plus :size="13" /> New mission
+            </Button>
+          </BlockedTip>
         </template>
       </PanelToolbar>
 
+      <!-- Beside "New mission" the picker would squeeze both on a phone; a row
+           of its own keeps the map name readable. -->
+      <div v-if="mapOptions.length" class="border-b border-hairline px-base py-sm md:hidden">
+        <Select
+          label="Map"
+          :model-value="selectedMapId"
+          :options="mapOptions"
+          class="w-full"
+          @update:model-value="selectMap"
+        />
+      </div>
+
       <CardContent>
-        <Table v-if="showSkeleton">
-          <MissionTableSkeleton />
-        </Table>
+        <template v-if="showSkeleton">
+          <ul class="divide-y divide-hairline md:hidden">
+            <li v-for="row in 3" :key="row" class="flex items-center gap-sm py-sm">
+              <div class="flex-1 space-y-xs">
+                <Skeleton class="h-4 w-32" />
+                <Skeleton class="h-3 w-44" />
+              </div>
+              <Skeleton class="h-8 w-16" />
+            </li>
+          </ul>
+          <div class="hidden md:block">
+            <Table>
+              <MissionTableSkeleton />
+            </Table>
+          </div>
+        </template>
 
         <EmptyState
           v-else-if="!mapOptions.length"
@@ -461,7 +536,11 @@ watch(createOpen, (open) => {
           description="A mission is an ordered route: pick at one station, drop at another. Create one and add its steps."
         >
           <template #action>
-            <Button size="sm" @click="createOpen = true"><Plus :size="13" /> New mission</Button>
+            <BlockedTip :reason="editBlocker">
+              <Button size="sm" :disabled="!canEdit" @click="createOpen = true">
+                <Plus :size="13" /> New mission
+              </Button>
+            </BlockedTip>
           </template>
         </EmptyState>
 
@@ -474,149 +553,204 @@ watch(createOpen, (open) => {
             No robot is on this map, so nothing here can run. Load this map on a robot, or pick the
             map a robot is on.
           </p>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead class="w-full max-w-0">Mission</TableHead>
-                <TableHead class="whitespace-nowrap">Status</TableHead>
-                <TableHead align="right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
 
-            <TableBody>
-              <TableRow v-for="mission in missions.missions" :key="mission.id" interactive>
-                <TableCell class="w-full max-w-0">
-                  <div class="min-w-0 space-y-xxs py-xxs">
-                    <div class="flex min-w-0 items-baseline gap-xs">
-                      <RouterLink
-                        :to="`/mission/edit/${mission.id}`"
-                        class="truncate text-body-md text-ink hover:text-primary hover:underline"
-                        :title="`Edit ${mission.name}`"
-                      >
-                        {{ mission.name }}
-                      </RouterLink>
-                      <span
-                        v-if="mission.note"
-                        class="truncate text-caption text-muted"
-                        :title="mission.note"
-                      >
-                        {{ mission.note }}
-                      </span>
-                    </div>
+          <!--
+            Phone: the name and one line of status. The route, its note and the
+            step count are one tap away in the editor.
+          -->
+          <ul class="divide-y divide-hairline md:hidden">
+            <li
+              v-for="{ mission, status } in phoneRows"
+              :key="mission.id"
+              class="flex items-center gap-xs"
+            >
+              <RouterLink
+                :to="`/mission/edit/${mission.id}`"
+                class="flex min-h-[56px] min-w-0 flex-1 flex-col justify-center py-sm pr-xs transition-colors active:bg-surface-strong"
+              >
+                <span class="block truncate text-body-md font-medium text-ink">
+                  {{ mission.name }}
+                </span>
+                <span
+                  :class="cn('mt-[2px] block truncate text-body-sm', status.tone)"
+                  :title="status.detail ?? undefined"
+                >
+                  {{ status.label }}
+                </span>
+              </RouterLink>
+              <BlockedTip :reason="operateBlocker">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  :disabled="runBlocker(mission) !== null"
+                  :title="runBlocker(mission) ?? `Run ${mission.name}`"
+                  @click="openDispatch(mission)"
+                >
+                  <Play :size="13" /> Run
+                </Button>
+              </BlockedTip>
+              <MissionRowActions :mission="mission" @remove="pendingRemoval = mission" />
+            </li>
+          </ul>
 
-                    <!-- The route itself, so "Shuttle" and "Shuttle 2" can be told
-                         apart without opening either. -->
-                    <div
-                      v-if="mission.stationIds.length"
-                      class="flex min-w-0 flex-wrap items-center gap-x-xxs gap-y-0 text-caption text-body"
-                      :title="mission.stationIds.map(stationLabel).join(' → ')"
-                    >
-                      <!-- Each arrow travels with the stop after it, so a wrap never
-                           leaves a "›" stranded at the start of a line. -->
-                      <span
-                        v-for="(id, index) in preview(mission).ids"
-                        :key="index"
-                        class="inline-flex min-w-0 items-center gap-xxs whitespace-nowrap"
-                      >
-                        <template v-if="index > 0">
-                          <ChevronRight :size="11" class="shrink-0 text-muted-soft" />
-                          <template
-                            v-if="
-                              index === preview(mission).ids.length - 1 && preview(mission).hidden
-                            "
-                          >
-                            <span class="font-data text-muted">+{{ preview(mission).hidden }}</span>
-                            <ChevronRight :size="11" class="shrink-0 text-muted-soft" />
-                          </template>
-                        </template>
+          <div class="hidden md:block">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead class="w-full max-w-0">Mission</TableHead>
+                  <TableHead class="whitespace-nowrap">Status</TableHead>
+                  <TableHead align="right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+
+              <TableBody>
+                <TableRow v-for="mission in missions.missions" :key="mission.id" interactive>
+                  <TableCell class="w-full max-w-0">
+                    <div class="min-w-0 space-y-xxs py-xxs">
+                      <div class="flex min-w-0 items-baseline gap-xs">
+                        <RouterLink
+                          :to="`/mission/edit/${mission.id}`"
+                          class="truncate text-body-md text-ink hover:text-primary hover:underline"
+                          :title="`Edit ${mission.name}`"
+                        >
+                          {{ mission.name }}
+                        </RouterLink>
                         <span
-                          class="h-2 w-2 shrink-0 rounded-full"
-                          :style="{ backgroundColor: stationDot(id) }"
-                        />
-                        <span class="max-w-[9rem] truncate">{{ stationLabel(id) }}</span>
-                      </span>
-                      <span class="ml-xxs whitespace-nowrap font-data text-muted-soft">
-                        · {{ mission.stepCount }} step{{ mission.stepCount === 1 ? '' : 's' }}
-                      </span>
-                    </div>
-                    <RouterLink
-                      v-else
-                      :to="`/mission/edit/${mission.id}`"
-                      class="inline-flex items-center gap-xxs text-caption text-status-warn hover:underline"
-                    >
-                      <Plus :size="12" /> No steps yet — add the first stop
-                    </RouterLink>
-                  </div>
-                </TableCell>
+                          v-if="mission.note"
+                          class="hidden truncate text-caption text-muted lg:inline"
+                          :title="mission.note"
+                        >
+                          {{ mission.note }}
+                        </span>
+                      </div>
 
-                <!--
+                      <!-- The route itself, so "Shuttle" and "Shuttle 2" can be told
+                         apart without opening either. -->
+                      <div
+                        v-if="mission.stationIds.length"
+                        class="flex min-w-0 flex-wrap items-center gap-x-xxs gap-y-0 text-caption text-body"
+                        :title="mission.stationIds.map(stationLabel).join(' → ')"
+                      >
+                        <!-- Each arrow travels with the stop after it, so a wrap never
+                           leaves a "›" stranded at the start of a line. -->
+                        <span
+                          v-for="(id, index) in preview(mission).ids"
+                          :key="index"
+                          class="inline-flex min-w-0 items-center gap-xxs whitespace-nowrap"
+                        >
+                          <template v-if="index > 0">
+                            <ChevronRight :size="11" class="shrink-0 text-muted-soft" />
+                            <template
+                              v-if="
+                                index === preview(mission).ids.length - 1 && preview(mission).hidden
+                              "
+                            >
+                              <span class="font-data text-muted"
+                                >+{{ preview(mission).hidden }}</span
+                              >
+                              <ChevronRight :size="11" class="shrink-0 text-muted-soft" />
+                            </template>
+                          </template>
+                          <span
+                            class="h-2 w-2 shrink-0 rounded-full"
+                            :style="{ backgroundColor: stationDot(id) }"
+                          />
+                          <span class="max-w-[9rem] truncate">{{ stationLabel(id) }}</span>
+                        </span>
+                        <span class="ml-xxs whitespace-nowrap font-data text-muted-soft">
+                          · {{ mission.stepCount }} step{{ mission.stepCount === 1 ? '' : 's' }}
+                        </span>
+                      </div>
+                      <RouterLink
+                        v-else
+                        :to="`/mission/edit/${mission.id}`"
+                        class="inline-flex items-center gap-xxs text-caption text-status-warn hover:underline"
+                      >
+                        <Plus :size="12" /> No steps yet{{ canEdit ? ' — add the first stop' : '' }}
+                      </RouterLink>
+                    </div>
+                  </TableCell>
+
+                  <!--
                   One column for what the route is doing: running now, or how it
                   last ended. A separate Status column said "Idle" on nearly
                   every row. The robot is written out, not left to a tooltip.
                 -->
-                <TableCell>
-                  <div
-                    v-if="liveRunOf(mission)"
-                    class="flex flex-col items-start gap-xxs whitespace-nowrap"
-                  >
-                    <span
-                      class="inline-flex items-center gap-xxs rounded-chip bg-status-run/12 px-xs py-[2px] text-caption text-status-run"
+                  <TableCell>
+                    <div
+                      v-if="liveRunOf(mission)"
+                      class="flex flex-col items-start gap-xxs whitespace-nowrap"
                     >
-                      <span class="h-1.5 w-1.5 animate-pulse rounded-full bg-status-run" />
-                      {{ liveRunOf(mission)!.state === 'stopping' ? 'Stopping' : 'Running' }}
-                    </span>
-                    <span class="text-caption text-muted">
-                      {{ robotName(liveRunOf(mission)!.robotId) }} ·
-                      {{ progressOf(liveRunOf(mission)!) }}
-                    </span>
-                  </div>
-                  <div
-                    v-else-if="lastResult(mission)"
-                    class="flex flex-col whitespace-nowrap"
-                    :title="lastResult(mission)!.run.detail ?? undefined"
-                  >
-                    <span class="text-body-sm">
-                      <span :class="lastResult(mission)!.tone">{{ lastResult(mission)!.label }}</span>
-                      <span class="text-muted"> · {{ lastResult(mission)!.ago }}</span>
-                    </span>
-                    <span class="text-caption text-muted">
-                      {{ robotName(lastResult(mission)!.run.robotId) }}
-                    </span>
-                  </div>
-                  <span v-else class="whitespace-nowrap text-body-sm text-muted-soft">Never run</span>
-                </TableCell>
+                      <span
+                        class="inline-flex items-center gap-xxs rounded-chip bg-status-run/12 px-xs py-[2px] text-caption text-status-run"
+                      >
+                        <span class="h-1.5 w-1.5 animate-pulse rounded-full bg-status-run" />
+                        {{ liveRunOf(mission)!.state === 'stopping' ? 'Stopping' : 'Running' }}
+                      </span>
+                      <span class="text-caption text-muted">
+                        {{ robotName(liveRunOf(mission)!.robotId) }} ·
+                        {{ progressOf(liveRunOf(mission)!) }}
+                      </span>
+                    </div>
+                    <div
+                      v-else-if="lastResult(mission)"
+                      class="flex flex-col whitespace-nowrap"
+                      :title="lastResult(mission)!.run.detail ?? undefined"
+                    >
+                      <span class="text-body-sm">
+                        <span :class="lastResult(mission)!.tone">{{
+                          lastResult(mission)!.label
+                        }}</span>
+                        <span class="text-muted"> · {{ lastResult(mission)!.ago }}</span>
+                      </span>
+                      <span class="text-caption text-muted">
+                        {{ robotName(lastResult(mission)!.run.robotId) }}
+                      </span>
+                    </div>
+                    <span v-else class="whitespace-nowrap text-body-sm text-muted-soft"
+                      >Never run</span
+                    >
+                  </TableCell>
 
-                <TableCell align="right">
-                  <div class="flex justify-end gap-xxs">
-                    <!-- A route with no steps has nothing to send, so the button
+                  <TableCell align="right">
+                    <div class="flex justify-end gap-xxs">
+                      <!-- A route with no steps has nothing to send, so the button
                        says so rather than producing a server error. -->
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      :disabled="runBlocker(mission) !== null"
-                      :title="runBlocker(mission) ?? `Run ${mission.name}`"
-                      @click="openDispatch(mission)"
-                    >
-                      <Play :size="13" /> Run
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      :title="`Edit ${mission.name}`"
-                      @click="router.push(`/mission/edit/${mission.id}`)"
-                    >
-                      <Pencil :size="13" /> Edit
-                    </Button>
-                    <RowActions :label="`More actions for ${mission.name}`">
-                      <RowActionItem :icon="Trash2" destructive @select="pendingRemoval = mission">
-                        Remove
-                      </RowActionItem>
-                    </RowActions>
-                  </div>
-                </TableCell>
-              </TableRow>
-            </TableBody>
-          </Table>
+                      <BlockedTip :reason="operateBlocker">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          :disabled="runBlocker(mission) !== null"
+                          :title="runBlocker(mission) ?? `Run ${mission.name}`"
+                          @click="openDispatch(mission)"
+                        >
+                          <Play :size="13" /> Run
+                        </Button>
+                      </BlockedTip>
+                      <!-- The editor opens read-only without the admin role, so it is
+                         still offered, as what it then is. -->
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        class="hidden lg:inline-flex"
+                        :title="`${canEdit ? 'Edit' : 'View'} ${mission.name}`"
+                        @click="router.push(`/mission/edit/${mission.id}`)"
+                      >
+                        <template v-if="canEdit"><Pencil :size="13" /> Edit</template>
+                        <template v-else><Eye :size="13" /> View</template>
+                      </Button>
+                      <!-- Below lg the Edit button gives way and the menu carries it. -->
+                      <MissionRowActions
+                        :mission="mission"
+                        open-class="lg:hidden"
+                        @remove="pendingRemoval = mission"
+                      />
+                    </div>
+                  </TableCell>
+                </TableRow>
+              </TableBody>
+            </Table>
+          </div>
         </template>
       </CardContent>
     </Card>
@@ -673,7 +807,7 @@ watch(createOpen, (open) => {
               type="button"
               :class="
                 cn(
-                  'rounded-control border px-sm py-xxs text-body-sm transition-colors',
+                  'rounded-control border px-sm py-xxs text-body-sm transition-colors touch:min-h-[44px]',
                   dispatchMode === option.value
                     ? 'border-primary bg-primary/10 text-ink'
                     : 'border-hairline text-body hover:border-primary',

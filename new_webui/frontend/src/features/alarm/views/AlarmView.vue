@@ -12,6 +12,7 @@ import { computed, onBeforeUnmount, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import { BellOff, Check, Trash2 } from 'lucide-vue-next'
 import { useAlarmStore, type Alarm, type AlarmSeverity } from '@/stores/alarms'
+import { useUiStore } from '@/stores/ui'
 import { Button } from '@/shared/ui/button'
 import { Card, CardContent, CardHeader } from '@/shared/ui/card'
 import SectionLabel from '@/shared/components/SectionLabel.vue'
@@ -22,11 +23,19 @@ import type { StatusTone } from '@/domain/types'
 import { alarmAge, alarmTime } from '../alarmTime'
 
 const alarms = useAlarmStore()
+const ui = useUiStore()
 
 const SEVERITY_TONE: Record<AlarmSeverity, StatusTone> = {
   fault: 'fault',
   warning: 'warning',
   info: 'active',
+}
+
+/** The log on a phone has no badge column; the severity word carries the hue. */
+const SEVERITY_TEXT: Record<AlarmSeverity, string> = {
+  fault: 'text-status-fault',
+  warning: 'text-status-warn',
+  info: 'text-muted',
 }
 
 const SEVERITY_LABEL: Record<AlarmSeverity, string> = {
@@ -54,6 +63,17 @@ function whenTitle(alarm: Alarm): string {
 const confirmClear = ref(false)
 const historyCount = computed(() => alarms.history.length)
 
+/**
+ * A phone gets the latest few; the log keeps up to 200 and scrolling past all
+ * of them to reach anything below is not what someone checking in wants.
+ */
+const PHONE_LOG = 20
+const showAll = ref(false)
+const isPhone = computed(() => ui.screen === 'phone')
+const visibleHistory = computed(() =>
+  isPhone.value && !showAll.value ? alarms.history.slice(0, PHONE_LOG) : alarms.history,
+)
+
 function clearHistory() {
   alarms.clearHistory()
   confirmClear.value = false
@@ -61,7 +81,7 @@ function clearHistory() {
 </script>
 
 <template>
-  <div class="space-y-base p-lg">
+  <div class="space-y-base p-sm sm:p-base md:p-lg">
     <Card>
       <CardHeader>
         <SectionLabel>Active ({{ alarms.activeCount }})</SectionLabel>
@@ -87,44 +107,58 @@ function clearHistory() {
         </EmptyState>
 
         <ul v-else class="divide-y divide-hairline">
+          <!--
+            A grid so one DOM serves both layouts. On a phone: badge and time,
+            then the message at full width, then links and Acknowledge on the
+            row's own last line. From sm up: the single line it always was.
+          -->
           <li
             v-for="alarm in alarms.active"
             :key="alarm.id"
-            class="flex flex-wrap items-start gap-x-sm gap-y-xs px-base py-sm sm:flex-nowrap"
+            class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-sm gap-y-xs px-base py-sm md:grid-cols-[5.5rem_minmax(0,1fr)_auto_auto] md:grid-rows-[auto_1fr] md:items-start md:gap-y-0"
           >
-            <!-- Fixed width, so every message starts at the same edge. -->
-            <span class="w-[5.5rem] shrink-0 pt-[2px]">
+            <!-- Fixed width from sm, so every message starts at the same edge. -->
+            <span class="col-start-1 row-start-1 justify-self-start md:row-span-2 md:pt-[2px]">
               <StatusBadge :tone="SEVERITY_TONE[alarm.severity]" :label="SEVERITY_LABEL[alarm.severity]" />
             </span>
             <!-- Wraps rather than truncates: on a fault the end of the sentence
                  is usually the reason. -->
-            <div class="min-w-0 flex-1 basis-[12rem]">
-              <p class="break-words text-body-md text-ink">{{ alarm.message }}</p>
-              <p class="mt-[2px] flex flex-wrap gap-x-xs text-caption text-muted">
-                <RouterLink
-                  v-if="alarm.robotId"
-                  :to="`/robot/${alarm.robotId}/nav`"
-                  class="hover:text-primary hover:underline"
-                >
-                  {{ alarm.source }}
-                </RouterLink>
-                <span v-else>{{ alarm.source }}</span>
-                <RouterLink
-                  v-if="alarm.missionId"
-                  :to="`/mission/edit/${alarm.missionId}`"
-                  class="hover:text-primary hover:underline"
-                >
-                  Open mission
-                </RouterLink>
-              </p>
-            </div>
+            <p
+              class="col-span-2 col-start-1 row-start-2 break-words text-body-md text-ink md:col-span-1 md:col-start-2 md:row-start-1"
+            >
+              {{ alarm.message }}
+            </p>
+            <p
+              class="col-start-1 row-start-3 flex flex-wrap gap-x-xs text-caption text-muted md:col-start-2 md:row-start-2 md:mt-[2px]"
+            >
+              <RouterLink
+                v-if="alarm.robotId"
+                :to="`/robot/${alarm.robotId}/nav`"
+                class="inline-flex items-center hover:text-primary hover:underline touch:min-h-[44px]"
+              >
+                {{ alarm.source }}
+              </RouterLink>
+              <span v-else>{{ alarm.source }}</span>
+              <RouterLink
+                v-if="alarm.missionId"
+                :to="`/mission/edit/${alarm.missionId}`"
+                class="inline-flex items-center hover:text-primary hover:underline touch:min-h-[44px]"
+              >
+                Open mission
+              </RouterLink>
+            </p>
             <span
-              class="shrink-0 pt-[3px] font-data text-number-sm text-muted"
+              class="col-start-2 row-start-1 justify-self-end font-data text-number-sm text-muted md:col-start-3 md:row-span-2 md:pt-[3px]"
               :title="whenTitle(alarm)"
             >
               {{ when(alarm) }}
             </span>
-            <Button variant="ghost" size="sm" class="shrink-0" @click="alarms.acknowledge(alarm.id)">
+            <Button
+              variant="ghost"
+              size="sm"
+              class="col-start-2 row-start-3 justify-self-end md:col-start-4 md:row-span-2 md:row-start-1"
+              @click="alarms.acknowledge(alarm.id)"
+            >
               Acknowledge
             </Button>
           </li>
@@ -141,9 +175,33 @@ function clearHistory() {
         </Button>
       </CardHeader>
       <CardContent class="p-0">
-        <ul class="divide-y divide-hairline">
+        <!-- Phone: no badge column, which would take a fifth of the width;
+             the severity word in its colour leads the caption instead. -->
+        <ul v-if="isPhone" class="divide-y divide-hairline">
+          <li v-for="alarm in visibleHistory" :key="alarm.id" class="px-base py-xs">
+            <p class="break-words text-body-sm text-body">{{ alarm.message }}</p>
+            <p class="text-caption text-muted">
+              <span :class="SEVERITY_TEXT[alarm.severity]">{{ SEVERITY_LABEL[alarm.severity] }}</span>
+              ·
+              <RouterLink
+                v-if="alarm.robotId"
+                :to="`/robot/${alarm.robotId}/nav`"
+                class="hover:text-primary hover:underline"
+              >
+                {{ alarm.source }}
+              </RouterLink>
+              <span v-else>{{ alarm.source }}</span>
+              ·
+              <span class="font-data" :title="whenTitle(alarm)">{{ when(alarm) }}</span>
+              <template v-if="alarm.acknowledgedAt && alarm.severity !== 'info'">
+                · acknowledged {{ alarmTime(alarm.acknowledgedAt, now) }}
+              </template>
+            </p>
+          </li>
+        </ul>
+        <ul v-else class="divide-y divide-hairline">
           <li
-            v-for="alarm in alarms.history"
+            v-for="alarm in visibleHistory"
             :key="alarm.id"
             class="flex items-start gap-sm px-base py-xs"
           >
@@ -177,6 +235,9 @@ function clearHistory() {
             </span>
           </li>
         </ul>
+        <div v-if="visibleHistory.length < historyCount" class="border-t border-hairline px-base py-xs">
+          <Button variant="text" size="sm" @click="showAll = true">Show all {{ historyCount }}</Button>
+        </div>
       </CardContent>
     </Card>
 

@@ -46,6 +46,8 @@ import LinkIndicator from '@/shared/components/LinkIndicator.vue'
 import EmergencyStop from '@/shared/components/EmergencyStop.vue'
 import EmptyState from '@/shared/components/EmptyState.vue'
 import ConfirmDialog from '@/shared/components/ConfirmDialog.vue'
+import BlockedTip from '@/shared/components/BlockedTip.vue'
+import { usePermission } from '@/shared/composables/usePermission'
 import SlamIndicator from '../components/SlamIndicator.vue'
 import LiveMapCanvas from '../components/LiveMapCanvas.vue'
 import DriveJoystick from '../components/DriveJoystick.vue'
@@ -57,6 +59,7 @@ const fleet = useFleetStore()
 const links = useLinkStore()
 const maps = useMapStore()
 const pool = useRosPool()
+const { canOperate, operateBlocker } = usePermission()
 
 const robotId = computed(() => String(route.params.robotId))
 const robot = computed(() => fleet.byId(robotId.value))
@@ -102,7 +105,7 @@ const usingGamepad = ref(false)
 
 const gamepad = useGamepad({
   onSample: (state) => {
-    if (!state.connected) return
+    if (!state.connected || !canOperate.value) return
     usingGamepad.value = true
     const next = state.deadmanHeld
       ? stickToTwist(state.leftX, state.leftY, preset.value)
@@ -140,7 +143,9 @@ function startPublishing() {
   publishTimer = setInterval(() => {
     const client = pool.clientFor(robotId.value)
     if (!client) return
-    const twist = blockedBy.value === null ? command.value : ZERO_TWIST
+    // A viewer's stick never reaches the robot: the controls are disabled, and
+    // this keeps a plugged-in gamepad from driving it anyway.
+    const twist = blockedBy.value === null && canOperate.value ? command.value : ZERO_TWIST
     client.publish('teleopCmdVel', {
       linear: { x: twist.linear, y: 0, z: 0 },
       angular: { x: 0, y: 0, z: twist.angular },
@@ -175,6 +180,7 @@ watch(mappingActive, (active, wasActive) => {
 })
 
 function onJoystick(twist: Twist) {
+  if (!canOperate.value) return
   usingGamepad.value = false
   command.value = twist
 }
@@ -197,6 +203,7 @@ async function requestMode(mode: 'map' | 'stop'): Promise<void> {
 
 async function startMapping() {
   confirmStart.value = false
+  if (!canOperate.value) return
   startingMode.value = true
   try {
     await requestMode('map')
@@ -250,6 +257,7 @@ const registryUnreachable = computed(() => {
 })
 
 async function onSave() {
+  if (!canOperate.value) return
   const name = saveName.value.trim()
   if (!name) {
     saveError.value = 'A map name is required.'
@@ -350,7 +358,7 @@ const gridSummary = computed(() => {
 </script>
 
 <template>
-  <div class="p-lg">
+  <div class="p-sm sm:p-base md:p-lg">
     <EmptyState
       v-if="!robot"
       title="Robot not found"
@@ -383,32 +391,54 @@ const gridSummary = computed(() => {
         </p>
       </div>
 
+      <p v-if="!canOperate" class="text-caption text-muted">
+        View only — surveying and driving need the operator role. Emergency stop stays available.
+      </p>
+
       <Card>
         <PanelToolbar :title="`Survey with ${robot.name}`" :subtitle="gridSummary">
           <template #icon><ScanLine :size="14" class="shrink-0 text-muted" /></template>
           <template #actions>
-            <SlamIndicator :agent="telemetry.agent.value" />
-            <LinkIndicator :state="link.state" :attempt="link.attempt" />
-            <Button
+            <!-- On a phone these move to their own row below: the actions do
+                 not wrap, and with them inline the toolbar overflowed. -->
+            <span class="hidden items-center gap-xs sm:inline-flex">
+              <SlamIndicator :agent="telemetry.agent.value" />
+              <LinkIndicator :state="link.state" :attempt="link.attempt" />
+            </span>
+            <BlockedTip
               v-if="mappingActive || telemetry.agent.value?.state === 'starting'"
-              variant="outline"
-              size="sm"
-              :disabled="stoppingMode"
-              @click="confirmStop = true"
+              :reason="operateBlocker"
             >
-              <Square :size="13" />
-              {{ stoppingMode ? 'Stopping…' : 'Stop mapping' }}
-            </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                :disabled="!canOperate || stoppingMode"
+                @click="confirmStop = true"
+              >
+                <Square :size="13" />
+                {{ stoppingMode ? 'Stopping…' : 'Stop mapping' }}
+              </Button>
+            </BlockedTip>
+            <!-- Not role-gated: stopping a moving machine is never blocked. -->
             <EmergencyStop
               :connected="link.state === 'online'"
               :moving="command.linear !== 0 || command.angular !== 0"
               @stop="onEmergencyStop"
             />
             <Button variant="ghost" size="sm" as-child>
-              <RouterLink to="/maps"><ArrowLeft :size="14" /> Maps</RouterLink>
+              <RouterLink to="/maps" aria-label="Back to maps">
+                <ArrowLeft :size="14" /> <span class="hidden sm:inline">Maps</span>
+              </RouterLink>
             </Button>
           </template>
         </PanelToolbar>
+        <div
+          class="flex flex-wrap items-center gap-sm border-b border-hairline px-base py-xs sm:hidden"
+          data-testid="survey-status"
+        >
+          <SlamIndicator :agent="telemetry.agent.value" />
+          <LinkIndicator :state="link.state" :attempt="link.attempt" />
+        </div>
 
         <!-- The agent is what makes mapping possible at all. Saying so beats
              offering a button that cannot work. -->
@@ -436,21 +466,32 @@ const gridSummary = computed(() => {
             "
           >
             <template #action>
-              <Button
-                size="sm"
-                :disabled="startingMode || link.state !== 'online' || telemetry.agent.value?.state === 'starting'"
-                @click="confirmStart = true"
-              >
-                {{ telemetry.agent.value?.state === 'starting' ? 'Starting…' : 'Start mapping' }}
-              </Button>
+              <BlockedTip :reason="operateBlocker">
+                <Button
+                  size="sm"
+                  :disabled="
+                    !canOperate ||
+                    startingMode ||
+                    link.state !== 'online' ||
+                    telemetry.agent.value?.state === 'starting'
+                  "
+                  @click="confirmStart = true"
+                >
+                  {{ telemetry.agent.value?.state === 'starting' ? 'Starting…' : 'Start mapping' }}
+                </Button>
+              </BlockedTip>
             </template>
           </EmptyState>
         </CardContent>
       </Card>
 
-      <div v-if="mappingActive" class="grid gap-base lg:grid-cols-[1fr_320px]">
+      <div
+        v-if="mappingActive"
+        class="grid gap-base md:grid-cols-[minmax(0,1fr)_17rem] lg:grid-cols-[1fr_320px]"
+      >
         <Card class="overflow-hidden">
-          <div class="h-[min(62vh,620px)]">
+          <!-- Shorter on a phone so the stick is on screen with the map. -->
+          <div class="h-[min(45vh,420px)] md:h-[min(62vh,620px)]">
             <LiveMapCanvas
               :grid="telemetry.grid.value"
               :pose="telemetry.pose.value"
@@ -461,7 +502,7 @@ const gridSummary = computed(() => {
           </div>
         </Card>
 
-        <div class="space-y-base">
+        <div class="flex flex-col gap-base">
           <Card>
             <CardContent class="space-y-sm">
               <SectionLabel>
@@ -472,7 +513,7 @@ const gridSummary = computed(() => {
               <div class="flex justify-center">
                 <DriveJoystick
                   :preset="preset"
-                  :disabled="blockedBy !== null && blockedBy !== 'deadman'"
+                  :disabled="!canOperate || (blockedBy !== null && blockedBy !== 'deadman')"
                   @command="onJoystick"
                   @release="command = { ...ZERO_TWIST }"
                 />
@@ -485,7 +526,7 @@ const gridSummary = computed(() => {
                   type="button"
                   :class="
                     cn(
-                      'h-7 flex-1 rounded-[6px] text-caption transition-colors',
+                      'h-7 flex-1 rounded-[6px] text-caption transition-colors touch:h-11',
                       preset.label === option.label
                         ? 'bg-surface text-ink'
                         : 'text-muted hover:text-ink',
@@ -512,7 +553,9 @@ const gridSummary = computed(() => {
             </CardContent>
           </Card>
 
-          <Card>
+          <!-- Readouts, not controls: below the desktop layout they go after
+               Save map, so the stick and the save stay within reach. -->
+          <Card class="order-last lg:order-none">
             <CardContent class="space-y-sm">
               <SectionLabel>Motion</SectionLabel>
               <div class="grid grid-cols-3 gap-xs">
@@ -542,9 +585,15 @@ const gridSummary = computed(() => {
             </CardContent>
           </Card>
 
-          <Button class="w-full" :disabled="!telemetry.grid.value" @click="saveOpen = true">
-            <Save :size="15" /> Save map
-          </Button>
+          <BlockedTip :reason="operateBlocker" class="w-full">
+            <Button
+              class="w-full"
+              :disabled="!canOperate || !telemetry.grid.value"
+              @click="saveOpen = true"
+            >
+              <Save :size="15" /> Save map
+            </Button>
+          </BlockedTip>
           <p v-if="!telemetry.grid.value" class="text-center text-caption text-muted">
             Nothing to save until SLAM publishes a grid.
           </p>

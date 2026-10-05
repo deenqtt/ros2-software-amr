@@ -6,6 +6,11 @@
  * ask a yes/no question about something irreversible and traps focus on the
  * two answers. This one hosts a form, so it is dismissible and its content
  * scrolls.
+ *
+ * On a phone it is a full-screen sheet rising from the bottom (Material's
+ * guidance for a form that needs full attention): a centred box leaves the
+ * fields cramped and puts the buttons where the keyboard lands. The actions
+ * span the width at the foot, where a thumb is.
  */
 import {
   DialogClose,
@@ -58,8 +63,14 @@ function onOpenChange(value: boolean) {
       <DialogContent
         :class="
           cn(
-            'fixed left-1/2 top-1/2 z-50 flex max-h-[calc(100vh-4rem)] w-[min(30rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 flex-col',
-            'rounded-surface border border-hairline bg-surface shadow-soft',
+            // Phone: the whole screen, sliding up.
+            'fixed inset-0 z-50 flex h-[100dvh] w-full flex-col bg-surface',
+            'data-[state=open]:animate-in data-[state=open]:slide-in-from-bottom data-[state=open]:duration-300',
+            'motion-reduce:data-[state=open]:animate-none',
+            // Tablet and up: the centred box.
+            'md:inset-auto md:left-1/2 md:top-1/2 md:h-auto md:max-h-[calc(100vh-4rem)] md:w-[min(30rem,calc(100vw-2rem))] md:-translate-x-1/2 md:-translate-y-1/2',
+            'md:rounded-surface md:border md:border-hairline md:shadow-soft',
+            'md:data-[state=open]:slide-in-from-bottom-0 md:data-[state=open]:fade-in-0',
             props.class,
           )
         "
@@ -74,7 +85,7 @@ function onOpenChange(value: boolean) {
           <DialogClose
             :disabled="props.pending"
             aria-label="Close"
-            class="-mr-xs -mt-xxs flex h-8 w-8 shrink-0 items-center justify-center rounded-control text-muted transition-colors duration-150 ease-out hover:bg-surface-strong hover:text-ink disabled:opacity-40"
+            class="-mr-xs -mt-xxs flex h-8 w-8 shrink-0 items-center justify-center rounded-control text-muted transition-colors duration-150 ease-out hover:bg-surface-strong hover:text-ink disabled:opacity-40 touch:h-[44px] touch:w-[44px]"
           >
             <X :size="16" />
           </DialogClose>
@@ -86,7 +97,7 @@ function onOpenChange(value: boolean) {
 
         <div
           v-if="$slots.footer"
-          class="flex justify-end gap-xs border-t border-hairline px-lg py-base"
+          class="flex justify-end gap-xs border-t border-hairline px-lg py-base pb-[max(1rem,env(safe-area-inset-bottom))] max-md:[&>*]:flex-1 md:pb-base"
         >
           <slot name="footer" />
         </div>

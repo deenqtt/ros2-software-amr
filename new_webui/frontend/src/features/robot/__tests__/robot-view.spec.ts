@@ -12,6 +12,8 @@ import { createPinia, setActivePinia } from 'pinia'
 import RobotView from '../views/RobotView.vue'
 import { useFleetStore } from '@/stores/fleet'
 import { useLinkStore } from '@/stores/links'
+import { useAuthStore } from '@/stores/auth'
+import type { Role } from '@/domain/auth'
 import { ApiError } from '@/shared/api/client'
 import { RobotConflictError } from '@/shared/api/robots'
 import type { RobotConfig } from '@/domain/types'
@@ -124,12 +126,20 @@ async function chooseRowAction(wrapper: VueWrapper, label: string, index = 0): P
   await flushPromises()
 }
 
+function signInAs(role: Role) {
+  const auth = useAuthStore()
+  auth.user = { id: 'u', username: 't', displayName: null, role, sessionIdleMinutes: 720, mustChangePassword: false }
+  auth.status = 'signed-in'
+}
+
 // Dialogs render through a portal into document.body, which survives the
 // component. Without this, one test reads the previous test's open dialog.
 enableAutoUnmount(afterEach)
 
 beforeEach(() => {
   setActivePinia(createPinia())
+  // Most of these tests are about the registry itself, which only an admin edits.
+  signInAs('admin')
   localStorage.clear()
   document.body.innerHTML = ''
   apiMock.list.mockReset().mockResolvedValue([])
@@ -377,10 +387,27 @@ describe('RobotView — row actions menu', () => {
       robot({ id: 'a', name: 'AMR-01' }),
       robot({ id: 'b', name: 'AMR-02' }),
     ])
+    // Scoped to the table: the phone list renders the same menus, and jsdom
+    // applies no CSS to hide one of the two.
     const labels = wrapper
+      .get('table')
       .findAll('button[aria-label^="More actions"]')
       .map((button) => button.attributes('aria-label'))
     expect(labels).toEqual(['More actions for AMR-01', 'More actions for AMR-02'])
+  })
+
+  it('lists each robot on a phone as one row that opens its details', async () => {
+    const { wrapper } = await mountView([
+      robot({ id: 'a', name: 'AMR-01' }),
+      robot({ id: 'b', name: 'AMR-02' }),
+    ])
+    const list = wrapper.get('ul.md\\:hidden')
+    const links = list
+      .findAllComponents(RouterLinkStub)
+      .map((link: { props: (key: string) => unknown }) => link.props('to'))
+    expect(links).toEqual(['/robot/a/detail', '/robot/b/detail'])
+    expect(list.text()).not.toContain('ws://')
+    expect(list.findAll('button[aria-label^="More actions"]')).toHaveLength(2)
   })
 })
 
@@ -424,5 +451,23 @@ describe('RobotView — talking to the server', () => {
 
     await expect(fleet.remove('a')).rejects.toBeInstanceOf(ApiError)
     expect(fleet.count).toBe(1)
+  })
+})
+
+describe('RobotView — roles', () => {
+  it('keeps add, edit and remove disabled below admin, and says why', async () => {
+    signInAs('operator')
+    const { wrapper } = await mountView([robot()])
+
+    const add = wrapper.findAll('button').find((b) => b.text().includes('Add robot'))!
+    expect(add.attributes('disabled')).toBeDefined()
+    expect(add.element.parentElement?.getAttribute('title')).toBe('Needs the admin role')
+
+    const menu = await openRowMenu(wrapper)
+    expect(menuItem(menu, 'Edit').hasAttribute('data-disabled')).toBe(true)
+    expect(menuItem(menu, 'Remove').hasAttribute('data-disabled')).toBe(true)
+    expect(menuItem(menu, 'Remove').getAttribute('title')).toBe('Needs the admin role')
+    // Monitoring is a local preference, not a change to the registry.
+    expect(menuItem(menu, 'Stop monitoring').hasAttribute('data-disabled')).toBe(false)
   })
 })

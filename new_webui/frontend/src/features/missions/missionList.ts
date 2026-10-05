@@ -4,7 +4,7 @@
  * Kept out of the view so the rules — which run counts as "last", how a long
  * route is shortened — can be tested without mounting a table.
  */
-import { isRunLive, type MissionRun, type RunState } from '@/domain/types'
+import { isRunLive, type MissionRun, type MissionSummary, type RunState } from '@/domain/types'
 
 /**
  * The most recent run of a mission that has finished.
@@ -100,4 +100,57 @@ export const RUN_RESULT: Record<
   done: { label: 'completed', tone: 'text-status-ok' },
   failed: { label: 'failed', tone: 'text-status-fault' },
   canceled: { label: 'canceled', tone: 'text-muted' },
+}
+
+export interface MissionStatus {
+  /** A text colour class, the same ones the table's status column uses. */
+  tone: string
+  label: string
+  /** Why the last run ended, when the server said; for a tooltip. */
+  detail: string | null
+}
+
+/**
+ * A mission's state as one line, for the phone list where there is no room
+ * for a status column: "Running · R1 · step 2 of 4", "Failed · 2h ago · R2".
+ *
+ * An empty route outranks how it last went: it cannot run again until it has
+ * steps, so that is the thing to say.
+ */
+export function missionStatus(
+  mission: Pick<MissionSummary, 'id' | 'stepCount'>,
+  liveRun: MissionRun | null,
+  runs: MissionRun[],
+  now: number,
+  robotName: (id: string | null) => string,
+  canEdit = true,
+): MissionStatus {
+  if (liveRun) {
+    const robot = robotName(liveRun.robotId)
+    if (liveRun.state === 'stopping') {
+      return { tone: 'text-status-warn', label: `Stopping · ${robot}`, detail: null }
+    }
+    const step = liveRun.stepIndex + 1
+    const where =
+      step <= mission.stepCount ? `step ${step} of ${mission.stepCount}` : `step ${step}`
+    return { tone: 'text-status-run', label: `Running · ${robot} · ${where}`, detail: null }
+  }
+  if (!mission.stepCount) {
+    return {
+      tone: 'text-status-warn',
+      label: `No steps yet${canEdit ? ' — add the first stop' : ''}`,
+      detail: null,
+    }
+  }
+  const last = lastFinishedRun(runs, mission.id)
+  if (!last || isRunLive(last.state)) {
+    return { tone: 'text-muted-soft', label: 'Never run', detail: null }
+  }
+  const result = RUN_RESULT[last.state as keyof typeof RUN_RESULT]
+  const label = result.label.charAt(0).toUpperCase() + result.label.slice(1)
+  return {
+    tone: result.tone,
+    label: `${label} · ${timeAgo(last.endedAt ?? last.startedAt, now)} · ${robotName(last.robotId)}`,
+    detail: last.detail,
+  }
 }

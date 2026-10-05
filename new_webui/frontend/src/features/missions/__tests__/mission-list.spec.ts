@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { lastFinishedRun, routePreview, runProgress, serverTime, timeAgo } from '../missionList'
+import {
+  lastFinishedRun,
+  missionStatus,
+  routePreview,
+  runProgress,
+  serverTime,
+  timeAgo,
+} from '../missionList'
 import type { MissionRun } from '@/domain/types'
 
 function run(overrides: Partial<MissionRun> = {}): MissionRun {
@@ -90,5 +97,67 @@ describe('runProgress', () => {
 
   it('drops the count when the route was shortened under a live run', () => {
     expect(runProgress(5, ['a', 'b'], nameOf)).toBe('step 6')
+  })
+})
+
+describe('missionStatus', () => {
+  const now = Date.UTC(2026, 9, 1, 12, 0, 0)
+  const names: Record<string, string> = { 'robot-1': 'R1', 'robot-2': 'R2' }
+  const robotName = (id: string | null) => (id ? (names[id] ?? 'retired robot') : '—')
+  const mission = { id: 'mission-1', stepCount: 4 }
+
+  it('says which robot is running it and how far along', () => {
+    const live = run({ state: 'running', stepIndex: 1, endedAt: null })
+    expect(missionStatus(mission, live, [live], now, robotName)).toEqual({
+      tone: 'text-status-run',
+      label: 'Running · R1 · step 2 of 4',
+      detail: null,
+    })
+  })
+
+  it('says a run is stopping after its lap', () => {
+    const live = run({ state: 'stopping', endedAt: null })
+    const status = missionStatus(mission, live, [live], now, robotName)
+    expect(status.label).toBe('Stopping · R1')
+    expect(status.tone).toBe('text-status-warn')
+  })
+
+  it('gives the last result, how long ago, and the robot', () => {
+    const runs = [
+      run({ state: 'done', endedAt: '2026-10-01 11:55:00' }),
+      run({
+        id: 'later',
+        robotId: 'robot-2',
+        state: 'failed',
+        detail: 'Goal aborted',
+        startedAt: '2026-10-01 09:30:00',
+        endedAt: '2026-10-01 10:00:00',
+      }),
+    ]
+    expect(missionStatus(mission, null, [runs[0]!], now, robotName)).toMatchObject({
+      label: 'Completed · 5m ago · R1',
+      tone: 'text-status-ok',
+    })
+    expect(missionStatus(mission, null, runs, now, robotName)).toEqual({
+      tone: 'text-status-fault',
+      label: 'Failed · 2h ago · R2',
+      detail: 'Goal aborted',
+    })
+  })
+
+  it('says a mission has never run', () => {
+    expect(missionStatus(mission, null, [], now, robotName)).toMatchObject({
+      label: 'Never run',
+      tone: 'text-muted-soft',
+    })
+  })
+
+  it('warns about an empty route before anything else it could say', () => {
+    const empty = { id: 'mission-1', stepCount: 0 }
+    expect(missionStatus(empty, null, [run()], now, robotName)).toMatchObject({
+      label: 'No steps yet — add the first stop',
+      tone: 'text-status-warn',
+    })
+    expect(missionStatus(empty, null, [], now, robotName, false).label).toBe('No steps yet')
   })
 })

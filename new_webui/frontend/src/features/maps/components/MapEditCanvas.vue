@@ -497,9 +497,10 @@ defineExpose({ refreshCells, resetView })
 
 <template>
   <div class="space-y-xs">
+    <!-- touch-none: without it a finger stroke scrolls the page instead of painting. -->
     <div
       ref="wrapper"
-      class="relative h-[min(68vh,40rem)] w-full overflow-hidden rounded-surface border border-hairline bg-[#e9ebee] select-none"
+      class="relative h-[min(68vh,40rem)] w-full touch-none overflow-hidden rounded-surface border border-hairline bg-[#e9ebee] select-none"
       :class="activeTool === 'pan' || panning ? 'cursor-grab' : 'cursor-crosshair'"
       @pointerdown="onPointerDown"
       @pointermove="onPointerMove"
@@ -533,7 +534,7 @@ defineExpose({ refreshCells, resetView })
       </span>
       <span v-if="props.preview" class="font-medium text-status-act">Showing original</span>
       <span v-else-if="spaceHeld" class="font-medium text-primary">Pan (space)</span>
-      <span class="ml-auto">Hold space or middle-drag to pan · wheel to zoom</span>
+      <span class="ml-auto touch:hidden">Hold space or middle-drag to pan · wheel to zoom</span>
     </div>
   </div>
 </template>

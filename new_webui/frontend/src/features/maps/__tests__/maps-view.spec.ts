@@ -13,6 +13,8 @@ import MapsView from '../views/MapsView.vue'
 import { MapNameTakenError } from '@/shared/api/maps'
 import { useMapStore } from '@/stores/maps'
 import { useFleetStore } from '@/stores/fleet'
+import { useAuthStore } from '@/stores/auth'
+import type { Role } from '@/domain/auth'
 import type { MapRecord, RobotConfig } from '@/domain/types'
 
 vi.mock('vue-sonner', () => ({
@@ -108,7 +110,8 @@ async function mountView(maps: MapRecord[], robots: RobotConfig[] = []) {
  * that reaches for them has to open the menu the way an operator does.
  */
 async function openRowMenu(wrapper: VueWrapper, index = 0): Promise<Element> {
-  const triggers = wrapper.findAll('button[aria-label^="More actions"]')
+  // The table's menus; the phone list has its own, tested below.
+  const triggers = wrapper.get('table').findAll('button[aria-label^="More actions"]')
   await triggers[index]!.trigger('click')
   await flushPromises()
   const menu = document.querySelector('[role="menu"]')
@@ -128,7 +131,7 @@ function menuItem(menu: Element, label: string): HTMLElement {
 /** Reveal a map's older versions, which are collapsed by default. */
 async function expandGroup(wrapper: VueWrapper, index = 0): Promise<void> {
   // Not [aria-expanded]: reka-ui puts that on the row's "…" trigger too.
-  const expanders = wrapper.findAll('button[aria-label^="Show older versions"]')
+  const expanders = wrapper.get('table').findAll('button[aria-label^="Show older versions"]')
   await expanders[index]!.trigger('click')
   await flushPromises()
 }
@@ -139,10 +142,18 @@ async function chooseRowAction(wrapper: VueWrapper, label: string, index = 0): P
   await flushPromises()
 }
 
+/** Most of this file is about what an admin can do; the role tests narrow it. */
+function signInAs(role: Role) {
+  const auth = useAuthStore()
+  auth.user = { id: 'u', username: 't', displayName: null, role, sessionIdleMinutes: 720, mustChangePassword: false }
+  auth.status = 'signed-in'
+}
+
 enableAutoUnmount(afterEach)
 
 beforeEach(() => {
   setActivePinia(createPinia())
+  signInAs('admin')
   document.body.innerHTML = ''
   mapsMock.list.mockReset().mockResolvedValue([])
   mapsMock.upload.mockReset()
@@ -185,7 +196,7 @@ describe('MapsView — table', () => {
     ])
     expect(wrapper.findAll('tbody tr')).toHaveLength(2)
     // A single-version map has no history to offer, so no expander.
-    expect(wrapper.findAll('button[aria-label^="Show older versions"]')).toHaveLength(0)
+    expect(wrapper.get('table').findAll('button[aria-label^="Show older versions"]')).toHaveLength(0)
   })
 
   it('pages over maps rather than versions', async () => {
@@ -358,7 +369,7 @@ describe('MapsView — assigning', () => {
       [mapRecord({ id: 'm1' })],
       [robot({ id: 'r1', name: 'AMR-01', activeMapId: 'm1' }), robot({ id: 'r2', name: 'AMR-02' })],
     )
-    await wrapper.find('button[title^="Assign"]').trigger('click')
+    await wrapper.get('table').find('button[title^="Assign"]').trigger('click')
     await flushPromises()
 
     const dialog = document.querySelector('[role="dialog"]')
@@ -374,7 +385,7 @@ describe('MapsView — assigning', () => {
       [mapRecord({ id: 'm1' })],
       [robot({ id: 'r1', name: 'AMR-01', activeMapId: 'm1' }), robot({ id: 'r2', name: 'AMR-02' })],
     )
-    await wrapper.find('button[title^="Assign"]').trigger('click')
+    await wrapper.get('table').find('button[title^="Assign"]').trigger('click')
     await flushPromises()
 
     const dialog = document.querySelector('[role="dialog"]')!
@@ -399,7 +410,7 @@ describe('MapsView — assigning', () => {
       [mapRecord({ id: 'm1' })],
       [robot({ id: 'r1', name: 'AMR-01', activeMapId: 'm1' })],
     )
-    await wrapper.find('button[title^="Assign"]').trigger('click')
+    await wrapper.get('table').find('button[title^="Assign"]').trigger('click')
     await flushPromises()
 
     const dialog = document.querySelector('[role="dialog"]')!
@@ -420,7 +431,7 @@ describe('MapsView — assigning', () => {
       [mapRecord({ id: 'm1' })],
       [robot({ id: 'r1', activeMapId: 'm1' })],
     )
-    await wrapper.find('button[title^="Assign"]').trigger('click')
+    await wrapper.get('table').find('button[title^="Assign"]').trigger('click')
     await flushPromises()
 
     const dialog = document.querySelector('[role="dialog"]')!
@@ -661,7 +672,7 @@ describe('MapsView — row actions menu', () => {
   it('keeps Assign outside the menu, reachable in one click', async () => {
     // It is the only action that changes what a robot does.
     const { wrapper } = await mountView([mapRecord()])
-    expect(wrapper.find('button[title^="Assign"]').exists()).toBe(true)
+    expect(wrapper.get('table').find('button[title^="Assign"]').exists()).toBe(true)
   })
 
   it('labels every item in words rather than an icon alone', async () => {
@@ -681,11 +692,146 @@ describe('MapsView — row actions menu', () => {
     await expandGroup(wrapper)
 
     const labels = wrapper
+      .get('table')
       .findAll('button[aria-label^="More actions"]')
       .map((button) => button.attributes('aria-label'))
     expect(labels).toEqual([
       'More actions for Warehouse A v2',
       'More actions for Warehouse A v1',
     ])
+  })
+})
+
+describe('MapsView — roles', () => {
+  it('leaves an operator looking, not changing', async () => {
+    signInAs('operator')
+    const { wrapper } = await mountView([mapRecord({ id: 'm1' })])
+
+    const button = (label: string) =>
+      wrapper.findAll('button').find((b) => b.text().includes(label))!
+    expect(button('Create map').attributes('disabled')).toBeDefined()
+    expect(button('Upload map').attributes('disabled')).toBeDefined()
+    expect(button('Assign').attributes('disabled')).toBeDefined()
+    // The reason is on a wrapper: a disabled button never shows its own title.
+    expect(button('Assign').element.parentElement?.getAttribute('title')).toBe(
+      'Needs the admin role',
+    )
+
+    const menu = await openRowMenu(wrapper)
+    for (const label of ['Rename', 'Edit cells', 'Remove']) {
+      expect(menuItem(menu, label).hasAttribute('data-disabled')).toBe(true)
+    }
+    // Taking a copy away changes nothing, so it stays.
+    expect(menuItem(menu, 'Download').hasAttribute('data-disabled')).toBe(false)
+  })
+})
+
+/**
+ * The phone list. jsdom applies no CSS, so it renders beside the table; every
+ * query here goes through the md:hidden list so the two cannot be confused.
+ */
+describe('MapsView — phone list', () => {
+  function phoneList(wrapper: VueWrapper) {
+    return wrapper.get('ul.md\\:hidden')
+  }
+
+  async function openPhoneMenu(wrapper: VueWrapper, index = 0): Promise<Element> {
+    const triggers = phoneList(wrapper).findAll('button[aria-label^="Map actions"]')
+    await triggers[index]!.trigger('click')
+    await flushPromises()
+    const menu = document.querySelector('[role="menu"]')
+    if (!menu) throw new Error('phone row menu did not open')
+    return menu
+  }
+
+  it('shows one row per map, not one per version', async () => {
+    const { wrapper } = await mountView([
+      mapRecord({ id: 'a', name: 'Warehouse A', version: 2 }),
+      mapRecord({ id: 'b', name: 'Warehouse A', version: 1 }),
+      mapRecord({ id: 'c', name: 'Loading Bay' }),
+    ])
+    expect(phoneList(wrapper).findAll(':scope > li')).toHaveLength(2)
+  })
+
+  it('names the robots running a map in one line, with its extent in metres', async () => {
+    const { wrapper } = await mountView(
+      [mapRecord({ id: 'm1', width: 200, height: 100, resolution: 0.05 })],
+      ['R1', 'R2', 'R3'].map((name, i) => robot({ id: `r${i}`, name, activeMapId: 'm1' })),
+    )
+    expect(phoneList(wrapper).get('[data-testid="map-caption"]').text()).toBe(
+      'R1, R2 +1 · 10.0 × 5.0 m',
+    )
+  })
+
+  it('says when no robot runs a map, and leaves the pixel grid one tap deeper', async () => {
+    const { wrapper } = await mountView([mapRecord()])
+    const caption = phoneList(wrapper).get('[data-testid="map-caption"]').text()
+    expect(caption).toContain('Not on any robot')
+    expect(phoneList(wrapper).text()).not.toContain('px')
+  })
+
+  it('puts Assign first in the row menu', async () => {
+    const { wrapper } = await mountView([mapRecord()])
+    const menu = await openPhoneMenu(wrapper)
+    const labels = [...menu.querySelectorAll('[role="menuitem"]')].map((element) =>
+      element.textContent?.trim(),
+    )
+    expect(labels).toEqual(['Assign to robots', 'Rename', 'Edit cells', 'Download', 'Remove'])
+  })
+
+  it('opens the assignment dialog from the row menu', async () => {
+    const { wrapper } = await mountView([mapRecord({ name: 'Warehouse A' })])
+    const menu = await openPhoneMenu(wrapper)
+    menuItem(menu, 'Assign to robots').click()
+    await flushPromises()
+    expect(document.querySelector('[role="dialog"]')?.textContent).toContain('Warehouse A')
+  })
+
+  it('assigns when the row itself is tapped', async () => {
+    const { wrapper } = await mountView([mapRecord({ name: 'Warehouse A' })])
+    await phoneList(wrapper).get('li button').trigger('click')
+    await flushPromises()
+    expect(document.querySelector('[role="dialog"]')?.textContent).toContain('Warehouse A')
+  })
+
+  it('leaves a viewer looking, not changing', async () => {
+    signInAs('operator')
+    const { wrapper } = await mountView([mapRecord()])
+
+    // The row body is not a control for someone who cannot assign.
+    const body = phoneList(wrapper).get('li > div > *')
+    expect(body.element.tagName).toBe('DIV')
+    await body.trigger('click')
+    await flushPromises()
+    expect(document.querySelector('[role="dialog"]')).toBeNull()
+
+    const menu = await openPhoneMenu(wrapper)
+    for (const label of ['Assign to robots', 'Rename', 'Edit cells', 'Remove']) {
+      expect(menuItem(menu, label).hasAttribute('data-disabled')).toBe(true)
+    }
+    expect(menuItem(menu, 'Download').hasAttribute('data-disabled')).toBe(false)
+  })
+
+  it('reveals older versions as indented rows', async () => {
+    const { wrapper } = await mountView([
+      mapRecord({ id: 'a', name: 'Warehouse A', version: 2 }),
+      mapRecord({ id: 'b', name: 'Warehouse A', version: 1, note: 'before the racking moved' }),
+    ])
+    const toggle = phoneList(wrapper).get('button[aria-label^="Show 1 older version"]')
+    expect(toggle.text()).toContain('+1 older version')
+
+    await toggle.trigger('click')
+    await flushPromises()
+
+    const rows = phoneList(wrapper).findAll(':scope > li')
+    expect(rows).toHaveLength(2)
+    expect(rows[1]!.classes()).toContain('pl-lg')
+    // A version is told apart by why it exists, not by who runs it.
+    expect(rows[1]!.text()).toContain('before the racking moved')
+  })
+
+  it('shows the empty state in the phone area too', async () => {
+    const { wrapper } = await mountView([])
+    expect(wrapper.get('div.md\\:hidden').text()).toContain('No maps yet')
   })
 })

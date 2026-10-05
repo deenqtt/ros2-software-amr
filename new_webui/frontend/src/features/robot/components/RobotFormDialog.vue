@@ -10,11 +10,12 @@
  * finished writing it.
  */
 import { computed, ref, watch } from 'vue'
-import { Bot } from 'lucide-vue-next'
+import { Bot, ChevronRight } from 'lucide-vue-next'
 import { Dialog } from '@/shared/ui/dialog'
 import { Input } from '@/shared/ui/input'
 import { FormField } from '@/shared/ui/label'
 import { Button } from '@/shared/ui/button'
+import { cn } from '@/shared/lib/utils'
 import {
   fromRobot,
   hasErrors,
@@ -63,6 +64,12 @@ const touched = ref<Record<keyof RobotFormValues, boolean>>({
   rosDomainId: false,
 })
 const submitAttempted = ref(false)
+/**
+ * The ROS domain sits behind "Advanced": the browser reaches a robot through
+ * rosbridge, which ignores it, so most robots never need one. Open by itself
+ * when there is a value to see or an error to fix.
+ */
+const advancedOpen = ref(false)
 
 // Reset whenever the dialog opens, so a cancelled edit never leaks into the
 // next one.
@@ -73,6 +80,7 @@ watch(
     values.value = robot ? fromRobot(robot) : blank()
     touched.value = { name: false, bridgeUrl: false, rosDomainId: false }
     submitAttempted.value = false
+    advancedOpen.value = values.value.rosDomainId !== ''
   },
   { immediate: true },
 )
@@ -102,6 +110,7 @@ function markTouched(field: keyof RobotFormValues) {
 
 function onSubmit() {
   submitAttempted.value = true
+  if ((errors.value as RobotFormErrors).rosDomainId) advancedOpen.value = true
   if (hasErrors(errors.value)) return
   emit('submit', toRobotPatch(values.value))
 }
@@ -158,28 +167,51 @@ function onSubmit() {
         </template>
       </FormField>
 
-      <FormField
-        label="ROS domain ID"
-        :hint="
-          warnings.rosDomainId ??
-          'Only needed if something on this machine speaks DDS directly. The browser reaches the robot through rosbridge, which ignores the domain.'
-        "
-        :error="errorFor('rosDomainId')"
-      >
-        <template #default="{ id, invalid }">
-          <Input
-            :id="id"
-            v-model="values.rosDomainId"
-            mono
-            :invalid="invalid"
-            inputmode="numeric"
-            placeholder="42"
-            autocomplete="off"
-            class="w-32"
-            @blur="markTouched('rosDomainId')"
+      <div class="rounded-control border border-hairline">
+        <button
+          type="button"
+          :aria-expanded="advancedOpen"
+          aria-controls="robot-advanced"
+          class="flex w-full items-center gap-xs px-sm py-xs text-left text-body-sm text-body transition-colors hover:text-ink touch:min-h-[44px]"
+          @click="advancedOpen = !advancedOpen"
+        >
+          <ChevronRight
+            :size="14"
+            :class="cn('shrink-0 text-muted transition-transform', advancedOpen && 'rotate-90')"
           />
-        </template>
-      </FormField>
+          Advanced
+          <span
+            v-if="!advancedOpen && values.rosDomainId"
+            class="ml-auto font-data text-caption text-muted"
+          >
+            domain {{ values.rosDomainId }}
+          </span>
+        </button>
+        <div v-show="advancedOpen" id="robot-advanced" class="border-t border-hairline p-sm">
+          <FormField
+            label="ROS domain ID"
+            :hint="
+              warnings.rosDomainId ??
+              'Only needed if something on this machine speaks DDS directly. The browser reaches the robot through rosbridge, which ignores the domain.'
+            "
+            :error="errorFor('rosDomainId')"
+          >
+            <template #default="{ id, invalid }">
+              <Input
+                :id="id"
+                v-model="values.rosDomainId"
+                mono
+                :invalid="invalid"
+                inputmode="numeric"
+                placeholder="42"
+                autocomplete="off"
+                class="w-32"
+                @blur="markTouched('rosDomainId')"
+              />
+            </template>
+          </FormField>
+        </div>
+      </div>
 
       <!-- Identity preview. The accent colour is assigned on save, so the add
            form shows the generic mark rather than promising a colour. -->
@@ -214,7 +246,12 @@ function onSubmit() {
     </form>
 
     <template #footer>
-      <Button variant="secondary" size="sm" :disabled="props.pending" @click="emit('update:open', false)">
+      <Button
+        variant="secondary"
+        size="sm"
+        :disabled="props.pending"
+        @click="emit('update:open', false)"
+      >
         Cancel
       </Button>
       <Button type="submit" form="robot-form" size="sm" :disabled="props.pending">

@@ -1,5 +1,6 @@
 import type { Config } from 'tailwindcss'
 import animate from 'tailwindcss-animate'
+import plugin from 'tailwindcss/plugin'
 
 /** `rgb(var(--x) / <alpha-value>)` keeps Tailwind opacity modifiers working. */
 const c = (name: string) => `rgb(var(--${name}) / <alpha-value>)`
@@ -102,5 +103,12 @@ export default {
       },
     },
   },
-  plugins: [animate],
+  plugins: [
+    animate,
+    // `touch:` — fingers, not a mouse. Controls grow to the 44px a fingertip
+    // needs (Apple HIG, Material 48dp); a laptop with a mouse keeps the dense
+    // console sizes. Keyed on the pointer, not the width: a tablet in landscape
+    // is as wide as a laptop and still driven by touch.
+    plugin(({ addVariant }) => addVariant('touch', '@media (pointer: coarse)')),
+  ],
 } satisfies Config

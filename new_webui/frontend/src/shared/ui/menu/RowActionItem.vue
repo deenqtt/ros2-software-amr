@@ -27,7 +27,7 @@ const props = defineProps<{
 const emit = defineEmits<{ select: [] }>()
 
 const itemClass = cn(
-  'flex w-full cursor-pointer items-center gap-xs rounded-control px-sm py-xs text-left text-body-sm outline-none transition-colors',
+  'flex w-full cursor-pointer items-center gap-xs rounded-control px-sm py-xs text-left text-body-sm outline-none transition-colors touch:min-h-[44px]',
   'data-[highlighted]:bg-surface-strong data-[disabled]:cursor-not-allowed data-[disabled]:opacity-40',
 )
 </script>

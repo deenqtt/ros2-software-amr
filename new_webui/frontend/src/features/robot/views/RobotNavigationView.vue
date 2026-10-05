@@ -9,6 +9,8 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import {
+  ChevronDown,
+  ChevronUp,
   Crosshair,
   Eye,
   EyeOff,
@@ -44,6 +46,13 @@ import RobotMapCanvas, { type MapTool } from '../components/RobotMapCanvas.vue'
 import RobotBar from '../components/RobotBar.vue'
 import { useRobotStop } from '../useRobotStop'
 import { missionOverlay } from '../missionMarkers'
+import {
+  navVerdict,
+  panelPlacement,
+  peekAction,
+  VERDICT_TONE_CLASS,
+  type PanelPlacement,
+} from '../navPanel'
 import { RUN_MODE_LABEL, RUN_MODES, type Mission, type RunMode } from '@/domain/types'
 import { activityStatus, dockingStatus } from '@/domain/ros/status'
 import { Button } from '@/shared/ui/button'
@@ -51,12 +60,15 @@ import { Input } from '@/shared/ui/input'
 import { Select } from '@/shared/ui/select'
 import StatusBadge from '@/shared/components/StatusBadge.vue'
 import EmptyState from '@/shared/components/EmptyState.vue'
+import BlockedTip from '@/shared/components/BlockedTip.vue'
+import { usePermission } from '@/shared/composables/usePermission'
 import { cn, formatNumber, formatPercent } from '@/shared/lib/utils'
 
 const route = useRoute()
 const fleet = useFleetStore()
 const links = useLinkStore()
 const missions = useMissionStore()
+const { canOperate, operateBlocker } = usePermission()
 
 const robotId = computed(() => String(route.params.robotId))
 const robot = computed(() => fleet.byId(robotId.value))
@@ -117,7 +129,11 @@ const LAYER_LIST = [
   { key: 'scan', label: 'Laser', hint: 'What the robot can see right now' },
   { key: 'particles', label: 'Particles', hint: 'Whether it knows where it is' },
   { key: 'plan', label: 'Plan', hint: 'Where it intends to go' },
-  { key: 'mission', label: 'Mission', hint: 'The stops of the running mission, and which are done' },
+  {
+    key: 'mission',
+    label: 'Mission',
+    hint: 'The stops of the running mission, and which are done',
+  },
   { key: 'zones', label: 'Zones', hint: 'Rules that apply on this map' },
 ] as const
 
@@ -135,7 +151,9 @@ watch(
   { immediate: true },
 )
 
-const availableMissions = computed(() => missions.missions.filter((mission) => mission.stepCount > 0))
+const availableMissions = computed(() =>
+  missions.missions.filter((mission) => mission.stepCount > 0),
+)
 const missionOptions = computed(() =>
   availableMissions.value.map((mission) => ({
     value: mission.id,
@@ -250,6 +268,7 @@ const mapLabel = computed(() => {
  */
 function toolBlocker(value: MapTool): string | null {
   if (value === 'view') return null
+  if (!canOperate.value) return operateBlocker.value
   if (!online.value) return 'Robot is not connected.'
   if (agentMode.value !== 'nav' || agentState.value !== 'running') return 'Nav2 is not running.'
   if (value === 'goal' && !telemetry.pose.value) return 'Set the pose first.'
@@ -263,6 +282,28 @@ watch(
     if (blocked) tool.value = 'view'
   },
 )
+
+/**
+ * Subscribe to the heavy layers only while they are shown.
+ *
+ * Costmap and particles are each ~180 KB per message; carried with their
+ * layers off they were most of this page's traffic. Asked for per robot and
+ * dropped again on the way out.
+ */
+const OPTIONAL_BY_LAYER: Record<string, string> = { costmap: 'costmap', particles: 'particleCloud' }
+watch(
+  [robotId, () => ({ ...layers.value })],
+  ([id, shown]) => {
+    pool.setOptionalTopics(
+      id,
+      Object.entries(OPTIONAL_BY_LAYER)
+        .filter(([layer]) => shown[layer])
+        .map(([, key]) => key),
+    )
+  },
+  { immediate: true },
+)
+onBeforeUnmount(() => pool.setOptionalTopics(robotId.value, []))
 
 /** How many optional layers are on, for the Layers button. */
 const layersOn = computed(() => LAYER_LIST.filter((layer) => layers.value[layer.key]).length)
@@ -299,18 +340,92 @@ const batteryLine = computed(() => {
     .join(' · ')
 })
 
+const screen = computed(() => ui.screen)
+const phone = computed(() => screen.value === 'phone')
+
 /**
  * The side panel, collapsible like the Station and Zone lists. Starts closed
- * below 1024px, where open it would leave the map a strip.
+ * below 1024px and resets whenever the screen crosses that line: read once at
+ * mount, a window narrowed afterwards kept a 19rem panel squeezing the map.
  */
-function wideScreen(): boolean {
-  try {
-    return window.matchMedia?.('(min-width: 1024px)')?.matches ?? true
-  } catch {
-    return true
+const panelOpen = ref(ui.screen === 'desktop')
+watch(screen, (s) => {
+  panelOpen.value = s === 'desktop'
+})
+const placement = computed(() => panelPlacement(screen.value, panelOpen.value))
+
+/** Phone: the bottom sheet's expanded state. Always starts as the peek bar. */
+const sheetOpen = ref(false)
+
+// Arming a tool means the next touch is on the map; get the panel off it.
+watch(tool, (t) => {
+  if (t !== 'view') {
+    sheetOpen.value = false
+    if (placement.value === 'overlay') panelOpen.value = false
   }
+})
+
+const verdict = computed(() => {
+  const run = activeRun.value
+  return navVerdict({
+    online: online.value,
+    muted: muted.value,
+    attempt: link.value.attempt,
+    hasMap: Boolean(robot.value?.activeMapId),
+    run: run
+      ? {
+          missionName: run.missionName,
+          stepIndex: run.stepIndex,
+          stepCount: runMission.value?.id === run.missionId ? runMission.value.steps.length : null,
+          stopName: currentStopName.value,
+        }
+      : null,
+    agentMode: agentMode.value,
+    agentState: agentState.value,
+    poseSet: Boolean(telemetry.pose.value),
+    goalOutcome: telemetry.goalOutcome.value,
+    goalBoxedIn: Boolean(telemetry.goalFailure.value?.boxedIn),
+    stalled: telemetry.stall.value.stalled,
+    stillFor: telemetry.stall.value.stillFor,
+  })
+})
+/**
+ * The panel's frame per placement. Docked and strip are the desktop panel as it
+ * always was. A tablet's open panel floats over the map from a strip that keeps
+ * its place, so the map never changes width; a phone's is a sheet below it.
+ */
+const ASIDE_CLASS: Record<PanelPlacement, string> = {
+  docked:
+    'flex w-[19rem] shrink-0 flex-col border-l border-hairline bg-surface transition-[width] duration-150',
+  strip:
+    'flex w-[3rem] shrink-0 flex-col border-l border-hairline bg-surface transition-[width] duration-150',
+  overlay: 'relative flex w-[3rem] shrink-0 flex-col border-l border-hairline bg-surface',
+  sheet: 'relative w-full shrink-0 border-t border-hairline bg-surface',
 }
-const panelOpen = ref(wideScreen())
+/** How far the tablet overlay (19rem, anchored on the 3rem strip) reaches over the map. */
+const OVERLAY_REACH = '16rem'
+const PANEL_CLASS: Record<PanelPlacement, string> = {
+  docked: 'flex min-h-0 flex-1 flex-col',
+  strip: 'flex min-h-0 flex-1 flex-col',
+  overlay:
+    'absolute inset-y-0 right-0 z-[3] flex w-[19rem] flex-col border-l border-hairline bg-surface shadow-soft',
+  sheet: '',
+}
+/**
+ * The sheet opens upward over the map rather than pushing it: the canvas refits
+ * on every resize, and an in-flow sheet would refit it on each toggle. Its height
+ * is capped by the room above it (header, robot bar and peek take ~15rem), so on
+ * a short phone it never reaches over the robot bar.
+ */
+const bodyClass = computed(() =>
+  phone.value
+    ? 'absolute inset-x-0 bottom-full z-[3] max-h-[min(60dvh,30rem,calc(100dvh-15rem))] space-y-base overflow-y-auto rounded-t-surface border-t border-hairline bg-surface p-base shadow-soft scrollbar-thin'
+    : 'min-h-0 flex-1 space-y-base overflow-y-auto p-base scrollbar-thin',
+)
+
+const peek = computed(() =>
+  peekAction({ online: online.value, runState: activeRun.value?.state ?? null }),
+)
 
 /** Kinds worth a legend entry: drawable ones, and any present on this map. */
 const legendKinds = computed(() =>
@@ -320,6 +435,8 @@ const legendKinds = computed(() =>
 )
 
 function onPick(pose: PlanarPose) {
+  // The tools are disabled for a viewer; this is the backstop if one is armed anyway.
+  if (!canOperate.value) return
   const client = pool.clientFor(robotId.value)
   if (!client) {
     toast.error('No connection to this robot')
@@ -340,10 +457,33 @@ function onPick(pose: PlanarPose) {
   toast.success(active === 'initialPose' ? 'Pose sent. Watch the particles settle.' : 'Goal sent', {
     description: `${pose.x.toFixed(2)}, ${pose.y.toFixed(2)} m`,
   })
+  if (active === 'goal') sentGoal.value = { ...pose }
   tool.value = 'view'
 }
 
+/**
+ * The one-off goal sent from here, drawn until it is reached.
+ *
+ * Kept after a failure, crossed out: the question after "could not reach it"
+ * is "reach what?", and the answer used to vanish with the plan.
+ */
+const sentGoal = ref<PlanarPose | null>(null)
+watch(
+  () => telemetry.goalOutcome.value,
+  (outcome) => {
+    if (outcome === 'arrived' || outcome === 'canceled') sentGoal.value = null
+  },
+)
+const goalMarker = computed(() =>
+  sentGoal.value ? { ...sentGoal.value, failed: telemetry.goalOutcome.value === 'failed' } : null,
+)
+
+function showCostmap() {
+  layers.value = { ...layers.value, costmap: true }
+}
+
 async function startMission() {
+  if (!canOperate.value) return
   if (!robot.value?.activeMapId || !selectedMissionId.value || !navReady.value) return
 
   missionPending.value = true
@@ -357,6 +497,8 @@ async function startMission() {
     toast.success(`${run.missionName} started`, {
       description: `${robot.value.name} is executing the mission`,
     })
+    // The peek bar now shows the run; give the map back.
+    sheetOpen.value = false
   } catch (error) {
     toast.error('Could not start mission', { description: missions.describeError(error) })
   } finally {
@@ -366,7 +508,7 @@ async function startMission() {
 
 async function stopMissionAfterLap() {
   const run = activeRun.value
-  if (!run) return
+  if (!run || !canOperate.value) return
 
   missionPending.value = true
   try {
@@ -392,7 +534,7 @@ const { stopAndPark, stopPending: parkPending } = useRobotStop(robotId)
  */
 async function cancelGoal() {
   const target = robot.value
-  if (!target) return
+  if (!target || !canOperate.value) return
   const client = pool.clientFor(target.id)
   if (!client) {
     toast.error('No connection to this robot')
@@ -413,7 +555,7 @@ async function cancelGoal() {
 
 async function cancelMission() {
   const run = activeRun.value
-  if (!run) return
+  if (!run || !canOperate.value) return
 
   missionPending.value = true
   try {
@@ -462,10 +604,11 @@ async function cancelMission() {
       @stop="stopAndPark"
     />
 
-    <div class="flex min-h-0 flex-1">
+    <div class="flex min-h-0 flex-1" :class="phone ? 'flex-col' : ''">
       <!-- The map, with its controls on it rather than in rows above it. -->
-      <section class="relative min-w-0 flex-1">
+      <section class="relative min-h-0 min-w-0 flex-1">
         <RobotMapCanvas
+          :right-inset="placement === 'overlay' ? OVERLAY_REACH : undefined"
           :grid="telemetry.grid.value"
           :costmap="telemetry.costmap.value"
           :plan="telemetry.plan.value"
@@ -476,25 +619,32 @@ async function cancelMission() {
           :zones="zones.zones"
           :footprint="telemetry.footprint.value"
           :mission="missionMap"
+          :goal="goalMarker"
           :layers="layers"
           :tool="tool"
           @pick="onPick"
         >
           <template #legend>
-            <span v-for="kind in legendKinds" :key="kind.value" class="flex items-center gap-xxs">
-              <span class="h-2.5 w-2.5 rounded-[2px]" :style="{ backgroundColor: kind.colour }" />
-              {{ kind.label }}
-            </span>
+            <!-- On a phone the zone chips live in the Layers popover instead. -->
+            <template v-if="!phone">
+              <span v-for="kind in legendKinds" :key="kind.value" class="flex items-center gap-xxs">
+                <span class="h-2.5 w-2.5 rounded-[2px]" :style="{ backgroundColor: kind.colour }" />
+                {{ kind.label }}
+              </span>
+            </template>
           </template>
         </RobotMapCanvas>
 
         <!-- Above the offline veil: they stay readable, and Layers stays usable. -->
-        <div class="absolute left-sm top-sm z-[2] flex items-center gap-xs">
+        <!-- Capped short of the zoom column on the right so they never overlap. -->
+        <div
+          class="absolute left-sm top-sm z-[2] flex max-w-[calc(100%-4.5rem)] flex-nowrap items-center gap-xs"
+        >
           <!-- One at a time: a segmented control, not a row of toggles. -->
           <div
             role="radiogroup"
             aria-label="Map tool"
-            class="inline-flex rounded-control border border-hairline bg-surface p-[2px] shadow-soft"
+            class="inline-flex shrink-0 flex-nowrap rounded-control border border-hairline bg-surface p-[2px] shadow-soft"
           >
             <button
               v-for="item in TOOLS"
@@ -503,28 +653,29 @@ async function cancelMission() {
               role="radio"
               :aria-checked="tool === item.value"
               :disabled="toolBlocker(item.value) !== null"
+              :aria-label="item.label"
               :title="toolBlocker(item.value) ?? item.hint"
               :class="
                 cn(
-                  'flex h-[26px] items-center gap-xs rounded-[6px] px-sm text-body-sm transition-colors disabled:cursor-not-allowed disabled:opacity-40',
+                  'flex h-[26px] items-center justify-center gap-xs whitespace-nowrap rounded-[6px] px-sm text-body-sm transition-colors disabled:cursor-not-allowed disabled:opacity-40 touch:h-[44px] touch:min-w-[44px]',
                   tool === item.value ? 'bg-primary text-on-primary' : 'text-body hover:text-ink',
                 )
               "
               @click="tool = item.value"
             >
               <component :is="item.icon" :size="13" />
-              <span class="hidden sm:inline">{{ item.label }}</span>
+              <span class="hidden whitespace-nowrap md:inline">{{ item.label }}</span>
             </button>
           </div>
 
           <!-- Six layer chips were a second toolbar; one button holds them. -->
           <PopoverRoot>
             <PopoverTrigger
-              class="flex h-[32px] items-center gap-xs rounded-control border border-hairline bg-surface px-sm text-body-sm text-body shadow-soft transition-colors hover:text-ink"
+              class="flex h-[32px] shrink-0 items-center justify-center gap-xs whitespace-nowrap rounded-control border border-hairline bg-surface px-sm text-body-sm text-body shadow-soft transition-colors hover:text-ink touch:h-[44px] touch:min-w-[44px]"
               aria-label="Map layers"
             >
               <Layers :size="14" />
-              <span class="hidden sm:inline">Layers</span>
+              <span class="hidden md:inline">Layers</span>
               <span class="font-data text-caption text-muted">{{ layersOn }}</span>
             </PopoverTrigger>
             <PopoverPortal>
@@ -532,7 +683,8 @@ async function cancelMission() {
                 side="bottom"
                 align="start"
                 :side-offset="6"
-                class="z-50 w-[15rem] rounded-surface border border-hairline bg-surface p-xxs shadow-soft"
+                :collision-padding="8"
+                class="z-50 max-h-[70dvh] w-[15rem] overflow-y-auto rounded-surface border border-hairline bg-surface p-xxs shadow-soft"
               >
                 <button
                   v-for="layer in LAYER_LIST"
@@ -540,13 +692,18 @@ async function cancelMission() {
                   type="button"
                   role="menuitemcheckbox"
                   :aria-checked="layers[layer.key]"
-                  class="flex w-full items-start gap-xs rounded-control px-xs py-xs text-left transition-colors hover:bg-surface-soft"
+                  class="flex w-full items-start gap-xs rounded-control px-xs py-xs text-left transition-colors hover:bg-surface-soft touch:min-h-[44px]"
                   @click="layers[layer.key] = !layers[layer.key]"
                 >
                   <component
                     :is="layers[layer.key] ? Eye : EyeOff"
                     :size="14"
-                    :class="cn('mt-[2px] shrink-0', layers[layer.key] ? 'text-primary' : 'text-muted-soft')"
+                    :class="
+                      cn(
+                        'mt-[2px] shrink-0',
+                        layers[layer.key] ? 'text-primary' : 'text-muted-soft',
+                      )
+                    "
                   />
                   <span class="min-w-0">
                     <span
@@ -558,6 +715,23 @@ async function cancelMission() {
                     <span class="block text-caption text-muted-soft">{{ layer.hint }}</span>
                   </span>
                 </button>
+                <!-- The map's legend strip has no room on a phone. -->
+                <div v-if="phone" class="mt-xxs border-t border-hairline px-xs pb-xxs pt-xs">
+                  <p class="text-caption text-muted">Zone colours</p>
+                  <div class="mt-xxs flex flex-wrap gap-x-sm gap-y-xxs text-caption text-body">
+                    <span
+                      v-for="kind in legendKinds"
+                      :key="kind.value"
+                      class="flex items-center gap-xxs"
+                    >
+                      <span
+                        class="h-2.5 w-2.5 rounded-[2px]"
+                        :style="{ backgroundColor: kind.colour }"
+                      />
+                      {{ kind.label }}
+                    </span>
+                  </div>
+                </div>
               </PopoverContent>
             </PopoverPortal>
           </PopoverRoot>
@@ -565,9 +739,14 @@ async function cancelMission() {
 
         <!-- Offline: said once, where the map would be, instead of a banner
              above it and "unknown" in every field. -->
+        <!-- Centred in the part of the map left visible: a tablet's open panel
+             lays over the right edge, so the card keeps clear of it. -->
         <div
           v-if="!online"
           class="absolute inset-0 z-[1] flex items-center justify-center bg-canvas/70 p-base backdrop-blur-[1px]"
+          :style="
+            placement === 'overlay' ? { paddingRight: `calc(${OVERLAY_REACH} + 1rem)` } : undefined
+          "
         >
           <div
             class="max-w-[22rem] rounded-surface border border-hairline bg-surface px-base py-sm text-center shadow-soft"
@@ -594,201 +773,312 @@ async function cancelMission() {
       </section>
 
       <!-- Status and mission. Collapsible to a strip, like Station and Zone. -->
-      <aside
-        class="flex shrink-0 flex-col border-l border-hairline bg-surface transition-[width] duration-150"
-        :class="panelOpen ? 'w-[19rem]' : 'w-[3rem]'"
-      >
-        <button
-          type="button"
-          class="flex h-10 shrink-0 items-center gap-xs border-b border-hairline px-sm text-body-sm text-body transition-colors hover:text-ink"
-          :aria-expanded="panelOpen"
-          :title="panelOpen ? 'Hide the panel' : 'Show status and mission'"
-          @click="panelOpen = !panelOpen"
-        >
-          <component :is="panelOpen ? PanelRightClose : PanelRightOpen" :size="15" class="shrink-0" />
-          <span v-if="panelOpen">Status &amp; mission</span>
-        </button>
-
-        <div v-if="panelOpen" class="min-h-0 flex-1 space-y-base overflow-y-auto p-base scrollbar-thin">
-          <!-- A short list, not ten tiles: these are read at a glance. -->
-          <dl class="space-y-xs text-body-sm">
-            <div class="flex items-baseline justify-between gap-sm">
-              <dt class="text-muted">Stack</dt>
-              <dd class="font-medium" :class="stackLine.tone">{{ stackLine.text }}</dd>
-            </div>
-            <div class="flex items-baseline justify-between gap-sm">
-              <dt class="text-muted">Pose</dt>
-              <dd
-                class="font-medium"
-                :class="!online ? 'text-muted' : telemetry.pose.value ? 'text-ink' : 'text-status-warn'"
+      <!-- On a phone: a bottom sheet whose peek bar is always on screen. -->
+      <aside :class="ASIDE_CLASS[placement]">
+        <div :class="PANEL_CLASS[placement]">
+          <div v-if="phone" class="flex min-h-[52px] items-center gap-xs px-sm touch:min-h-[56px]">
+            <button
+              type="button"
+              class="flex min-w-0 flex-1 items-center gap-xs text-left"
+              :aria-expanded="sheetOpen"
+              aria-controls="nav-sheet-body"
+              :aria-label="sheetOpen ? 'Hide status and mission' : 'Show status and mission'"
+              data-testid="nav-peek-toggle"
+              @click="sheetOpen = !sheetOpen"
+            >
+              <span
+                aria-hidden="true"
+                class="h-2.5 w-2.5 shrink-0 rounded-full bg-current"
+                :class="VERDICT_TONE_CLASS[verdict.tone]"
+              />
+              <span
+                class="truncate text-body-sm font-medium"
+                :class="VERDICT_TONE_CLASS[verdict.tone]"
+                data-testid="nav-verdict"
               >
-                {{ !online ? '—' : telemetry.pose.value ? 'Localized' : 'Not set' }}
-              </dd>
-            </div>
-            <!-- A stalled goal is still "executing" as far as Nav2 is
-                 concerned, so saying so would be true and useless. -->
-            <div class="flex items-baseline justify-between gap-sm">
-              <dt class="text-muted">Goal</dt>
-              <dd
-                class="text-right font-medium"
-                :class="
-                  !online
-                    ? 'text-muted'
-                    : telemetry.stall.value.stalled
-                      ? 'text-status-warn'
-                      : telemetry.goalOutcome.value === 'arrived'
-                        ? 'text-status-ok'
-                        : telemetry.goalOutcome.value === 'failed'
-                          ? 'text-status-fault'
-                          : 'text-muted'
-                "
-              >
-                {{
-                  !online
-                    ? '—'
-                    : telemetry.stall.value.stalled
-                      ? stallLabel(telemetry.stall.value.stillFor)
-                      : GOAL_OUTCOME_LABEL[telemetry.goalOutcome.value]
-                }}
-              </dd>
-            </div>
-            <div class="flex items-baseline justify-between gap-sm">
-              <dt class="text-muted">Map</dt>
-              <dd class="min-w-0 truncate font-medium">
-                <RouterLink
-                  v-if="mapLabel"
-                  to="/maps"
-                  class="text-ink hover:text-primary hover:underline"
-                  :title="robot.activeMapId ?? undefined"
-                >
-                  {{ mapLabel }}
-                </RouterLink>
-                <span v-else class="text-status-warn">Not assigned</span>
-              </dd>
-            </div>
-            <div class="flex items-baseline justify-between gap-sm">
-              <dt class="text-muted">Battery</dt>
-              <dd class="font-data font-medium text-ink">{{ batteryLine }}</dd>
-            </div>
-            <!-- Only when the robot reports them; "not reported" twice was noise. -->
-            <div v-if="activity" class="flex items-center justify-between gap-sm">
-              <dt class="text-muted">Activity</dt>
-              <dd><StatusBadge :tone="activity.tone" :label="activity.label" /></dd>
-            </div>
-            <div v-if="docking" class="flex items-center justify-between gap-sm">
-              <dt class="text-muted">Docking</dt>
-              <dd><StatusBadge :tone="docking.tone" :label="docking.label" /></dd>
-            </div>
-          </dl>
-
-          <section class="space-y-sm border-t border-hairline pt-base">
-            <p class="text-label uppercase text-muted">Mission</p>
-
-
-          <div v-if="activeRun" class="rounded-control border border-primary/30 bg-primary/5 p-sm">
-            <div class="flex flex-wrap items-start justify-between gap-sm">
-              <div>
-                <div class="text-body-md font-medium text-ink">{{ activeRun.missionName }}</div>
-                <div class="mt-xxs text-body-sm text-muted">
-                  Step {{ activeRun.stepIndex + 1
-                  }}<span v-if="runMission"> of {{ runMission.steps.length }}</span>
-                  <span v-if="currentStopName" class="text-ink"> → {{ currentStopName }}</span> ·
-                  {{ activeRun.mode === 'once' ? 'single pass' : `lap ${activeRun.lap}` }}
-                  <span v-if="activeRun.mode === 'laps'"> of {{ activeRun.lapsTarget }}</span>
-                </div>
-                <div v-if="activeRun.detail" class="mt-xxs text-caption text-muted">
-                  {{ activeRun.detail }}
-                </div>
-              </div>
-              <span class="rounded-chip bg-primary/10 px-sm py-xxs text-caption uppercase text-primary">
-                {{ activeRun.state }}
+                {{ verdict.text }}
               </span>
-            </div>
-            <div class="mt-sm flex flex-wrap gap-xxs">
+              <component
+                :is="sheetOpen ? ChevronDown : ChevronUp"
+                :size="16"
+                class="ml-auto shrink-0 text-muted"
+              />
+            </button>
+            <BlockedTip v-if="peek === 'stopAfterLap'" :reason="operateBlocker">
               <Button
                 variant="outline"
                 size="sm"
-                :disabled="missionPending || activeRun.state === 'stopping'"
+                class="shrink-0"
+                :disabled="!canOperate || missionPending || activeRun?.state === 'stopping'"
                 @click="stopMissionAfterLap"
               >
                 <Square :size="13" /> Stop after lap
               </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                class="hover:text-status-fault"
-                :disabled="missionPending"
-                @click="cancelMission"
-              >
-                <X :size="13" /> Cancel mission
-              </Button>
-              <!-- Stops the driving without ending the route: for a robot
-                   heading somewhere wrong, not for abandoning the job. -->
-              <Button
-                variant="ghost"
-                size="sm"
-                :disabled="stopPending"
-                title="Stop driving now. The mission is left alone."
-                @click="cancelGoal"
-              >
-                <Hand :size="13" /> Cancel goal
-              </Button>
-            </div>
+            </BlockedTip>
+            <!-- Only opens the sheet; the gated Start mission is inside it. -->
+            <Button
+              v-else-if="peek === 'openMission'"
+              size="sm"
+              class="shrink-0"
+              @click="sheetOpen = true"
+            >
+              <Play :size="13" /> Mission
+            </Button>
           </div>
+          <button
+            v-else
+            type="button"
+            class="flex h-10 shrink-0 items-center gap-xs border-b border-hairline px-sm text-body-sm text-body transition-colors hover:text-ink"
+            :aria-expanded="panelOpen"
+            :title="panelOpen ? 'Hide the panel' : 'Show status and mission'"
+            @click="panelOpen = !panelOpen"
+          >
+            <component
+              :is="panelOpen ? PanelRightClose : PanelRightOpen"
+              :size="15"
+              class="shrink-0"
+            />
+            <span v-if="panelOpen">Status &amp; mission</span>
+          </button>
 
-          <template v-else>
-            <!-- Stacked: the panel is narrow at any screen width. -->
-            <div class="grid grid-cols-[minmax(0,1fr)_7.5rem] gap-xs">
-              <div class="space-y-xxs">
-                <p class="text-label uppercase text-muted">Route</p>
-                <Select
-                  label="Route"
-                  :model-value="selectedMissionId"
-                  :options="missionOptions"
-                  placeholder="Choose…"
-                  class="w-full"
-                  @update:model-value="selectedMissionId = $event"
-                />
+          <div
+            v-if="phone ? sheetOpen : panelOpen"
+            :id="phone ? 'nav-sheet-body' : undefined"
+            :class="bodyClass"
+            @keydown.esc="phone && (sheetOpen = false)"
+          >
+            <div
+              v-if="phone"
+              aria-hidden="true"
+              class="mx-auto h-1 w-10 rounded-full bg-hairline"
+            />
+            <!-- A short list, not ten tiles: these are read at a glance. -->
+            <dl class="space-y-xs text-body-sm">
+              <div class="flex items-baseline justify-between gap-sm">
+                <dt class="text-muted">Stack</dt>
+                <dd class="font-medium" :class="stackLine.tone">{{ stackLine.text }}</dd>
               </div>
+              <div class="flex items-baseline justify-between gap-sm">
+                <dt class="text-muted">Pose</dt>
+                <dd
+                  class="font-medium"
+                  :class="
+                    !online ? 'text-muted' : telemetry.pose.value ? 'text-ink' : 'text-status-warn'
+                  "
+                >
+                  {{ !online ? '—' : telemetry.pose.value ? 'Localized' : 'Not set' }}
+                </dd>
+              </div>
+              <!-- A stalled goal is still "executing" as far as Nav2 is
+                 concerned, so saying so would be true and useless. -->
+              <div class="flex items-baseline justify-between gap-sm">
+                <dt class="text-muted">Goal</dt>
+                <dd
+                  class="text-right font-medium"
+                  :class="
+                    !online
+                      ? 'text-muted'
+                      : telemetry.stall.value.stalled
+                        ? 'text-status-warn'
+                        : telemetry.goalOutcome.value === 'arrived'
+                          ? 'text-status-ok'
+                          : telemetry.goalOutcome.value === 'failed'
+                            ? 'text-status-fault'
+                            : 'text-muted'
+                  "
+                >
+                  {{
+                    !online
+                      ? '—'
+                      : telemetry.stall.value.stalled
+                        ? stallLabel(telemetry.stall.value.stillFor)
+                        : GOAL_OUTCOME_LABEL[telemetry.goalOutcome.value]
+                  }}
+                </dd>
+              </div>
+              <div class="flex items-baseline justify-between gap-sm">
+                <dt class="text-muted">Map</dt>
+                <dd class="min-w-0 truncate font-medium">
+                  <RouterLink
+                    v-if="mapLabel"
+                    to="/maps"
+                    class="text-ink hover:text-primary hover:underline"
+                    :title="robot.activeMapId ?? undefined"
+                  >
+                    {{ mapLabel }}
+                  </RouterLink>
+                  <span v-else class="text-status-warn">Not assigned</span>
+                </dd>
+              </div>
+              <div class="flex items-baseline justify-between gap-sm">
+                <dt class="text-muted">Battery</dt>
+                <dd class="font-data font-medium text-ink">{{ batteryLine }}</dd>
+              </div>
+              <!-- Only when the robot reports them; "not reported" twice was noise. -->
+              <div v-if="activity" class="flex items-center justify-between gap-sm">
+                <dt class="text-muted">Activity</dt>
+                <dd><StatusBadge :tone="activity.tone" :label="activity.label" /></dd>
+              </div>
+              <div v-if="docking" class="flex items-center justify-between gap-sm">
+                <dt class="text-muted">Docking</dt>
+                <dd><StatusBadge :tone="docking.tone" :label="docking.label" /></dd>
+              </div>
+            </dl>
 
-              <div class="space-y-xxs">
-                <p class="text-label uppercase text-muted">Run mode</p>
-                <Select
-                  label="Run mode"
-                  :model-value="missionMode"
-                  :options="modeOptions"
-                  class="w-full"
-                  @update:model-value="missionMode = $event"
-                />
-              </div>
+            <!-- Why it failed, in Nav2's own words turned into the operator's. -->
+            <div
+              v-if="online && telemetry.goalFailure.value?.reason"
+              class="rounded-control border p-sm text-body-sm"
+              :class="
+                telemetry.goalFailure.value.boxedIn
+                  ? 'border-status-warn/40 bg-status-warn/10'
+                  : 'border-status-fault/30 bg-status-fault/[0.06]'
+              "
+            >
+              <p class="text-ink">{{ telemetry.goalFailure.value.reason }}</p>
+              <template v-if="telemetry.goalFailure.value.boxedIn">
+                <p class="mt-xxs text-caption text-body">
+                  Every new goal will fail the same way until it is clear. If the robot is not
+                  actually touching anything, the map probably draws a wall too thick here: check
+                  the costmap, then move the robot clear and set its pose.
+                </p>
+                <Button
+                  v-if="!layers.costmap"
+                  variant="outline"
+                  size="sm"
+                  class="mt-xs"
+                  @click="showCostmap"
+                >
+                  Show costmap
+                </Button>
+              </template>
             </div>
 
-            <div v-if="missionMode === 'laps'" class="max-w-[12rem] space-y-xxs">
-              <p class="text-label uppercase text-muted">Laps</p>
-              <Input
-                :model-value="missionLaps"
-                type="number"
-                min="1"
-                aria-label="Number of laps"
-                @update:model-value="missionLaps = Math.max(1, Number($event))"
-              />
-            </div>
-
-            <div class="flex flex-wrap items-center justify-between gap-sm">
-              <p v-if="missionBlockReason" class="text-caption text-muted">
-                {{ missionBlockReason }}
+            <section class="space-y-sm border-t border-hairline pt-base">
+              <p class="text-label uppercase text-muted">Mission</p>
+              <p v-if="!canOperate" class="text-caption text-muted">
+                View only — sending goals and running missions needs the operator role.
               </p>
-              <span v-else class="text-caption text-status-ok">Ready to run</span>
-              <Button
-                size="sm"
-                :disabled="missionPending || !selectedMissionId || !navReady"
-                @click="startMission"
+
+              <div
+                v-if="activeRun"
+                class="rounded-control border border-primary/30 bg-primary/5 p-sm"
               >
-                <Play :size="13" /> Start mission
-              </Button>
-            </div>
-          </template>
-          </section>
+                <div class="flex flex-wrap items-start justify-between gap-sm">
+                  <div>
+                    <div class="text-body-md font-medium text-ink">{{ activeRun.missionName }}</div>
+                    <div class="mt-xxs text-body-sm text-muted">
+                      Step {{ activeRun.stepIndex + 1
+                      }}<span v-if="runMission"> of {{ runMission.steps.length }}</span>
+                      <span v-if="currentStopName" class="text-ink"> → {{ currentStopName }}</span>
+                      ·
+                      {{ activeRun.mode === 'once' ? 'single pass' : `lap ${activeRun.lap}` }}
+                      <span v-if="activeRun.mode === 'laps'"> of {{ activeRun.lapsTarget }}</span>
+                    </div>
+                    <div v-if="activeRun.detail" class="mt-xxs text-caption text-muted">
+                      {{ activeRun.detail }}
+                    </div>
+                  </div>
+                  <span
+                    class="rounded-chip bg-primary/10 px-sm py-xxs text-caption uppercase text-primary"
+                  >
+                    {{ activeRun.state }}
+                  </span>
+                </div>
+                <div class="mt-sm flex flex-wrap gap-xxs">
+                  <BlockedTip :reason="operateBlocker">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      :disabled="!canOperate || missionPending || activeRun.state === 'stopping'"
+                      @click="stopMissionAfterLap"
+                    >
+                      <Square :size="13" /> Stop after lap
+                    </Button>
+                  </BlockedTip>
+                  <BlockedTip :reason="operateBlocker">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      class="hover:text-status-fault"
+                      :disabled="!canOperate || missionPending"
+                      @click="cancelMission"
+                    >
+                      <X :size="13" /> Cancel mission
+                    </Button>
+                  </BlockedTip>
+                  <!-- Stops the driving without ending the route: for a robot
+                   heading somewhere wrong, not for abandoning the job. -->
+                  <BlockedTip :reason="operateBlocker">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      :disabled="!canOperate || stopPending"
+                      title="Stop driving now. The mission is left alone."
+                      @click="cancelGoal"
+                    >
+                      <Hand :size="13" /> Cancel goal
+                    </Button>
+                  </BlockedTip>
+                </div>
+              </div>
+
+              <template v-else>
+                <!-- Stacked: the panel is narrow at any screen width. -->
+                <div class="grid grid-cols-[minmax(0,1fr)_7.5rem] gap-xs">
+                  <div class="space-y-xxs">
+                    <p class="text-label uppercase text-muted">Route</p>
+                    <Select
+                      label="Route"
+                      :model-value="selectedMissionId"
+                      :options="missionOptions"
+                      placeholder="Choose…"
+                      class="w-full"
+                      @update:model-value="selectedMissionId = $event"
+                    />
+                  </div>
+
+                  <div class="space-y-xxs">
+                    <p class="text-label uppercase text-muted">Run mode</p>
+                    <Select
+                      label="Run mode"
+                      :model-value="missionMode"
+                      :options="modeOptions"
+                      class="w-full"
+                      @update:model-value="missionMode = $event"
+                    />
+                  </div>
+                </div>
+
+                <div v-if="missionMode === 'laps'" class="max-w-[12rem] space-y-xxs">
+                  <p class="text-label uppercase text-muted">Laps</p>
+                  <Input
+                    :model-value="missionLaps"
+                    type="number"
+                    min="1"
+                    aria-label="Number of laps"
+                    @update:model-value="missionLaps = Math.max(1, Number($event))"
+                  />
+                </div>
+
+                <div class="flex flex-wrap items-center justify-between gap-sm">
+                  <p v-if="missionBlockReason" class="text-caption text-muted">
+                    {{ missionBlockReason }}
+                  </p>
+                  <span v-else class="text-caption text-status-ok">Ready to run</span>
+                  <BlockedTip :reason="operateBlocker">
+                    <Button
+                      size="sm"
+                      :disabled="!canOperate || missionPending || !selectedMissionId || !navReady"
+                      @click="startMission"
+                    >
+                      <Play :size="13" /> Start mission
+                    </Button>
+                  </BlockedTip>
+                </div>
+              </template>
+            </section>
+          </div>
         </div>
       </aside>
     </div>

@@ -5,12 +5,12 @@
  * mounts the real shell against the real router and asserts the navigation and
  * header actually come up.
  */
-import { describe, expect, it, beforeEach } from 'vitest'
+import { afterEach, describe, expect, it, beforeEach } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { createRouter, createMemoryHistory } from 'vue-router'
 import AppShell from '../layouts/AppShell.vue'
-import { NAV_GROUPS } from '../navigation'
+import { NAV_GROUPS, navGroupsFor } from '../navigation'
 import { useAlarmStore } from '@/stores/alarms'
 import { useUiStore } from '@/stores/ui'
 
@@ -55,14 +55,20 @@ async function mountShell() {
 }
 
 describe('navigation model', () => {
-  it('exposes exactly the seven destinations, with Alarm in its own group', () => {
-    const labels = NAV_GROUPS.flatMap((g) => g.items.map((i) => i.label))
+  it('exposes exactly the seven destinations to everyone, with Alarm in its own group', () => {
+    const everyone = navGroupsFor((role) => role === 'viewer')
+    const labels = everyone.flatMap((g) => g.items.map((i) => i.label))
     expect(labels).toEqual(EXPECTED_MENU)
 
-    const lastGroup = NAV_GROUPS.at(-1)
-    expect(lastGroup?.items).toHaveLength(1)
-    expect(lastGroup?.items[0]?.label).toBe('Alarm')
-    expect(lastGroup?.items[0]?.badgeKey).toBe('alarms')
+    const alerts = everyone.at(-1)
+    expect(alerts?.items).toHaveLength(1)
+    expect(alerts?.items[0]?.label).toBe('Alarm')
+    expect(alerts?.items[0]?.badgeKey).toBe('alarms')
+  })
+
+  it('adds Users and Activity for admins only', () => {
+    const admin = navGroupsFor(() => true).flatMap((g) => g.items.map((i) => i.label))
+    expect(admin).toEqual([...EXPECTED_MENU, 'Users', 'Activity'])
   })
 
   it('gives every item a route and an icon', () => {
@@ -186,6 +192,59 @@ describe('folding the rail for a page', () => {
     const ui = useUiStore()
     ui.foldNav(true)
     ui.toggleNav()
+    expect(ui.navCollapsed).toBe(false)
+  })
+})
+
+describe('the rail on phones and tablets', () => {
+  function screenOf(width: number) {
+    window.matchMedia = ((query: string) => {
+      const max = Number(/max-width:\s*(\d+)px/.exec(query)?.[1] ?? Infinity)
+      return {
+        matches: width <= max,
+        media: query,
+        onchange: null,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        addListener: () => {},
+        removeListener: () => {},
+        dispatchEvent: () => false,
+      }
+    }) as typeof window.matchMedia
+    localStorage.clear()
+    setActivePinia(createPinia())
+    return useUiStore()
+  }
+
+  afterEach(() => {
+    // jsdom has no matchMedia of its own; leave none behind.
+    delete (window as { matchMedia?: unknown }).matchMedia
+  })
+
+  it('opens a drawer on a phone instead of a rail', () => {
+    const ui = screenOf(390)
+    expect(ui.screen).toBe('phone')
+    expect(ui.navCollapsed).toBe(false) // the drawer always shows labels
+    ui.toggleNav()
+    expect(ui.drawerOpen).toBe(true)
+    ui.closeNav()
+    expect(ui.drawerOpen).toBe(false)
+  })
+
+  it('starts a tablet on icons, and opening it does not change the saved desktop choice', () => {
+    const ui = screenOf(820)
+    expect(ui.screen).toBe('tablet')
+    expect(ui.navCollapsed).toBe(true)
+    ui.toggleNav()
+    expect(ui.navCollapsed).toBe(false)
+    expect(localStorage.getItem('amr.ui.navCollapsed')).not.toBe('true')
+    ui.closeNav()
+    expect(ui.navCollapsed).toBe(true)
+  })
+
+  it('keeps the desktop rail as the operator left it', () => {
+    const ui = screenOf(1440)
+    expect(ui.screen).toBe('desktop')
     expect(ui.navCollapsed).toBe(false)
   })
 })

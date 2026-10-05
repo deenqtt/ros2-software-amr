@@ -11,28 +11,41 @@ export function connectionHelp(
   state: LinkState,
   bridgeUrl: string,
   attempt: number,
-): { title: string; detail: string | null; tone: 'ok' | 'warn' | 'fault' | 'muted' } {
+): {
+  title: string
+  detail: string | null
+  /** What to check, in the order worth checking. Empty when nothing is wrong. */
+  checks: string[]
+  tone: 'ok' | 'warn' | 'fault' | 'muted'
+} {
   switch (state) {
     case 'online':
-      return { title: 'Connected', detail: null, tone: 'ok' }
+      return { title: 'Connected', detail: null, checks: [], tone: 'ok' }
     case 'stale':
       return {
         title: 'Connected, but some data has stopped',
         detail:
           'rosbridge is answering, so the process publishing the silent topics below is the likely cause.',
+        checks: [],
         tone: 'warn',
       }
     case 'muted':
       return {
         title: 'Not monitored',
         detail: 'Monitoring is off, so this browser does not connect to the robot.',
+        checks: [],
         tone: 'muted',
       }
     case 'connecting':
     case 'offline':
       return {
         title: attempt > 0 ? `Can't reach the robot — attempt ${attempt}` : "Can't reach the robot",
-        detail: `Nothing answered at ${bridgeUrl}. Check that the robot is powered on, that rosbridge is running on that port, and that this computer is on the robot's network.`,
+        detail: `Nothing answered at ${bridgeUrl}.`,
+        checks: [
+          'The robot is powered on',
+          `rosbridge is running on ${portOf(bridgeUrl)}`,
+          "This device is on the robot's network",
+        ],
         tone: 'fault',
       }
   }
@@ -49,4 +62,13 @@ export function backendLabel(backend: string): { text: string; tone: string } {
   }
   if (backend === 'error') return { text: 'Server returned an error', tone: 'text-status-fault' }
   return { text: 'Not reported', tone: 'text-muted' }
+}
+
+function portOf(bridgeUrl: string): string {
+  try {
+    const url = new URL(bridgeUrl)
+    return url.port ? `port ${url.port}` : 'its port'
+  } catch {
+    return 'its port'
+  }
 }

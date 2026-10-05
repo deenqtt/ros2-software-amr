@@ -14,16 +14,30 @@
  * Collapsed, the rail drops to 64px and shows icons only, so every item keeps a
  * title attribute.
  */
+import { computed } from 'vue'
 import { RouterLink } from 'vue-router'
-import { Bot, ChevronLeft, ChevronRight } from 'lucide-vue-next'
-import { NAV_GROUPS } from '@/app/navigation'
+import { Bot, ChevronLeft, ChevronRight, X } from 'lucide-vue-next'
+import { navGroupsFor } from '@/app/navigation'
 import { useAlarmStore } from '@/stores/alarms'
+import { useAuthStore } from '@/stores/auth'
 import { useUiStore } from '@/stores/ui'
 import { cn } from '@/shared/lib/utils'
 import ThemeToggle from './ThemeToggle.vue'
 
+/**
+ * inline   desktop: part of the layout, pushes the page
+ * overlay  tablet: fixed over the page, so opening it does not squeeze the map
+ * drawer   phone: inside the menu drawer, always with labels
+ */
+const props = withDefaults(defineProps<{ mode?: 'inline' | 'overlay' | 'drawer' }>(), {
+  mode: 'inline',
+})
+
 const ui = useUiStore()
 const alarms = useAlarmStore()
+const auth = useAuthStore()
+
+const groups = computed(() => navGroupsFor((role) => auth.can(role)))
 
 function badgeCount(key?: 'alarms'): number {
   return key === 'alarms' ? alarms.activeCount : 0
@@ -34,8 +48,12 @@ function badgeCount(key?: 'alarms'): number {
   <aside
     :class="
       cn(
-        'relative flex shrink-0 flex-col border-r border-hairline bg-surface-soft transition-[width] duration-200 ease-out',
-        ui.navCollapsed ? 'w-sidebar-collapsed' : 'w-sidebar',
+        'flex shrink-0 flex-col border-r border-hairline bg-surface-soft transition-[width] duration-200 ease-out',
+        props.mode === 'inline' && 'relative',
+        props.mode === 'overlay' && 'fixed inset-y-0 left-0 z-40',
+        props.mode === 'overlay' && !ui.navCollapsed && 'shadow-soft',
+        props.mode === 'drawer' && 'relative h-full w-[min(18rem,85vw)]',
+        props.mode !== 'drawer' && (ui.navCollapsed ? 'w-sidebar-collapsed' : 'w-sidebar'),
       )
     "
   >
@@ -53,12 +71,24 @@ function badgeCount(key?: 'alarms'): number {
       >
         <Bot :size="16" />
       </span>
-      <span v-if="!ui.navCollapsed" class="truncate text-title-sm text-ink">AMR Control</span>
+      <span v-if="!ui.navCollapsed" class="flex-1 truncate text-title-sm text-ink">
+        AMR Control
+      </span>
+      <button
+        v-if="props.mode === 'drawer'"
+        type="button"
+        aria-label="Close menu"
+        class="flex h-10 w-10 items-center justify-center rounded-control text-muted transition-colors hover:bg-surface-strong hover:text-ink"
+        @click="ui.closeNav()"
+      >
+        <X :size="18" />
+      </button>
     </div>
 
     <!-- Collapse control, straddling the rail's edge. Same place in both
          states, so the escape hatch never moves. -->
     <button
+      v-if="props.mode !== 'drawer'"
       type="button"
       :title="ui.navCollapsed ? 'Expand sidebar' : 'Collapse sidebar'"
       :aria-label="ui.navCollapsed ? 'Expand sidebar' : 'Collapse sidebar'"
@@ -71,7 +101,7 @@ function badgeCount(key?: 'alarms'): number {
     </button>
 
     <nav class="flex-1 overflow-y-auto scrollbar-thin px-xs py-sm">
-      <template v-for="(group, index) in NAV_GROUPS" :key="group.id">
+      <template v-for="(group, index) in groups" :key="group.id">
         <div v-if="index > 0" class="my-sm border-t border-hairline" role="separator" />
 
         <RouterLink

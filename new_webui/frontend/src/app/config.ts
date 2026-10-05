@@ -42,6 +42,12 @@ export const config = {
    * localStorage. Ships as 0 — see .env.example.
    */
   devLatencyMs: Number(import.meta.env.VITE_DEV_LATENCY_MS ?? 0),
+  /**
+   * Where this server is, shown on the sign-in page ("Plant 1 · Warehouse A")
+   * so someone at a terminal knows which site they are signing in to. Optional:
+   * unset shows nothing rather than a placeholder.
+   */
+  siteName: (import.meta.env.VITE_SITE_NAME ?? '').trim(),
 } as const
 
 const WEBSOCKET_PROTOCOLS = new Set(['ws:', 'wss:'])

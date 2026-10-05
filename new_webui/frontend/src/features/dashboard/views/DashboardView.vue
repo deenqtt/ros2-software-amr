@@ -10,6 +10,10 @@
  *   2. The counts, so "is anything happening" is answered without reading.
  *   3. One row per robot: link, what it should be doing, what it is doing.
  *
+ * On a phone the three bands become one list (see fleetRows.ts): a summary
+ * line, then one row per robot, the robot that needs a person on top, each row
+ * a way into that robot. The stack, map and link detail sit one tap deeper.
+ *
  * Nothing here changes a robot's state on load. Opening a page is not a command
  * — see the Mode column, which reports intent and reality as two things.
  */
@@ -20,9 +24,12 @@ import {
   AlertCircle,
   Ban,
   CheckCircle2,
+  ChevronRight,
+  CircleDot,
   Info,
   Play,
   TriangleAlert,
+  WifiOff,
 } from 'lucide-vue-next'
 import { toast } from 'vue-sonner'
 import { useFleetStore } from '@/stores/fleet'
@@ -33,6 +40,7 @@ import { useRosPool } from '@/app/ros/pool'
 import { DESIRED_MODE_LABEL, type DesiredMode, type MissionRun } from '@/domain/types'
 import { attentionItems, fleetCounts, type AgentSnapshot, type AttentionSeverity } from '../attention'
 import { stackSummary, type StackSummary } from '../stackStatus'
+import { fleetLine, fleetRows, type FleetRowTone } from '../fleetRows'
 import { Card, CardContent } from '@/shared/ui/card'
 import { Button } from '@/shared/ui/button'
 import { Badge } from '@/shared/ui/badge'
@@ -42,6 +50,8 @@ import LinkIndicator from '@/shared/components/LinkIndicator.vue'
 import MetricTile from '@/shared/components/MetricTile.vue'
 import EmptyState from '@/shared/components/EmptyState.vue'
 import StatusBadge from '@/shared/components/StatusBadge.vue'
+import BlockedTip from '@/shared/components/BlockedTip.vue'
+import { usePermission } from '@/shared/composables/usePermission'
 import { cn } from '@/shared/lib/utils'
 
 const fleet = useFleetStore()
@@ -49,6 +59,7 @@ const links = useLinkStore()
 const missions = useMissionStore()
 const maps = useMapStore()
 const pool = useRosPool()
+const { canOperate, operateBlocker } = usePermission()
 
 /**
  * The agent's own report, per robot.
@@ -103,6 +114,7 @@ const input = computed(() => ({
 const modePending = ref<string | null>(null)
 
 async function toggleParked(robotId: string, desired: DesiredMode) {
+  if (!canOperate.value) return
   const next: DesiredMode = desired === 'idle' ? 'nav' : 'idle'
   modePending.value = robotId
   try {
@@ -124,6 +136,25 @@ async function toggleParked(robotId: string, desired: DesiredMode) {
 
 const attention = computed(() => attentionItems(input.value))
 const counts = computed(() => fleetCounts(input.value, attention.value))
+
+// ── Phone ────────────────────────────────────────────────────────────────────
+
+const rows = computed(() =>
+  fleetRows({
+    robots: fleet.robots,
+    attention: attention.value,
+    linkFor: (id) => links.stateFor(id),
+    runFor: (id) => missions.runForRobot(id),
+  }),
+)
+
+const ROW_STYLE: Record<FleetRowTone, { icon: typeof Info; class: string }> = {
+  fault: { icon: AlertCircle, class: 'text-status-fault' },
+  warning: { icon: TriangleAlert, class: 'text-status-warn' },
+  active: { icon: Play, class: 'text-status-run' },
+  idle: { icon: CircleDot, class: 'text-muted' },
+  off: { icon: WifiOff, class: 'text-muted-soft' },
+}
 
 const SEVERITY_STYLE: Record<AttentionSeverity, { icon: typeof Info; class: string }> = {
   fault: { icon: AlertCircle, class: 'text-status-fault' },
@@ -214,12 +245,63 @@ watch(() => fleet.count, readAgents)
 </script>
 
 <template>
-  <div class="space-y-base p-lg">
+  <div class="space-y-base p-sm sm:p-base md:p-lg">
+    <!-- Phone: one list, exception first. Each row opens that robot. -->
+    <section class="space-y-sm md:hidden" aria-label="Fleet">
+      <p class="px-xxs text-body-sm text-body">{{ fleetLine(rows) }}</p>
+
+      <EmptyState
+        v-if="fleet.loaded && fleet.count === 0"
+        title="No robots registered"
+        description="Add one from Robot in the menu."
+      >
+        <template #icon><Activity :size="20" class="text-muted" /></template>
+      </EmptyState>
+
+      <ul
+        v-else-if="fleet.count > 0"
+        class="divide-y divide-hairline overflow-hidden rounded-surface border border-hairline bg-surface"
+      >
+        <li v-for="row in rows" :key="row.robotId">
+          <RouterLink
+            :to="`/robot/${row.robotId}/nav`"
+            class="flex min-h-[60px] items-center gap-sm px-base py-sm transition-colors active:bg-surface-strong"
+          >
+            <span
+              class="h-2.5 w-2.5 shrink-0 rounded-full"
+              :style="{
+                backgroundColor: `rgb(var(--robot-accent-${row.accent}))`,
+                opacity: row.tone === 'off' ? 0.35 : 1,
+              }"
+              aria-hidden="true"
+            />
+            <div class="min-w-0 flex-1">
+              <p
+                :class="
+                  cn(
+                    'truncate text-body-md font-medium',
+                    row.tone === 'off' ? 'text-muted' : 'text-ink',
+                  )
+                "
+              >
+                {{ row.name }}
+              </p>
+              <p :class="cn('flex items-center gap-xs text-body-sm', ROW_STYLE[row.tone].class)">
+                <component :is="ROW_STYLE[row.tone].icon" :size="13" class="shrink-0" />
+                <span class="truncate">{{ row.status }}</span>
+              </p>
+            </div>
+            <ChevronRight :size="16" class="shrink-0 text-muted-soft" />
+          </RouterLink>
+        </li>
+      </ul>
+    </section>
+
     <!--
       Attention first. Anything below it is context for a floor that is fine;
       this is the part that is read when it is not.
     -->
-    <Card v-if="attention.length">
+    <Card v-if="attention.length" class="hidden md:block">
       <PanelToolbar
         title="Needs attention"
         :subtitle="`${counts.needsAttention} robot${counts.needsAttention === 1 ? '' : 's'}`"
@@ -251,7 +333,7 @@ watch(() => fleet.count, readAgents)
       </CardContent>
     </Card>
 
-    <div class="grid gap-sm sm:grid-cols-3">
+    <div class="hidden gap-sm md:grid md:grid-cols-3">
       <MetricTile
         v-for="item in summary"
         :key="item.label"
@@ -262,7 +344,7 @@ watch(() => fleet.count, readAgents)
       />
     </div>
 
-    <Card>
+    <Card class="hidden md:block">
       <PanelToolbar title="Fleet" :subtitle="`${counts.total} registered`">
         <template #icon><Activity :size="14" class="shrink-0 text-muted" /></template>
         <template #actions>
@@ -401,25 +483,26 @@ watch(() => fleet.count, readAgents)
                     class="sticky right-0 z-[1] bg-surface transition-colors group-hover:bg-surface-soft"
                   >
                     <div class="flex justify-end gap-xxs whitespace-nowrap">
-                      <Button
-                        v-if="robot.desiredMode !== 'map'"
-                        variant="ghost"
-                        size="sm"
-                        :disabled="modePending === robot.id"
-                        :title="
-                          robot.desiredMode === 'idle'
-                            ? 'Parked — will not start navigation. Release it.'
-                            : 'Stop navigating and stay stopped.'
-                        "
-                        @click="toggleParked(robot.id, robot.desiredMode)"
-                      >
-                        <Ban
-                          v-if="robot.desiredMode === 'idle'"
-                          :size="13"
-                          class="mr-xxs text-muted-soft"
-                        />
-                        {{ robot.desiredMode === 'idle' ? 'Release' : 'Park' }}
-                      </Button>
+                      <BlockedTip v-if="robot.desiredMode !== 'map'" :reason="operateBlocker">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          :disabled="!canOperate || modePending === robot.id"
+                          :title="
+                            robot.desiredMode === 'idle'
+                              ? 'Parked — will not start navigation. Release it.'
+                              : 'Stop navigating and stay stopped.'
+                          "
+                          @click="toggleParked(robot.id, robot.desiredMode)"
+                        >
+                          <Ban
+                            v-if="robot.desiredMode === 'idle'"
+                            :size="13"
+                            class="mr-xxs text-muted-soft"
+                          />
+                          {{ robot.desiredMode === 'idle' ? 'Release' : 'Park' }}
+                        </Button>
+                      </BlockedTip>
                       <Button variant="ghost" size="sm" as-child>
                         <RouterLink :to="`/robot/${robot.id}/nav`">Navigation</RouterLink>
                       </Button>
@@ -488,16 +571,17 @@ watch(() => fleet.count, readAgents)
               </p>
 
               <div class="mt-sm flex gap-xs">
-                <Button
-                  v-if="robot.desiredMode !== 'map'"
-                  variant="outline"
-                  size="sm"
-                  class="flex-1"
-                  :disabled="modePending === robot.id"
-                  @click="toggleParked(robot.id, robot.desiredMode)"
-                >
-                  {{ robot.desiredMode === 'idle' ? 'Release' : 'Park' }}
-                </Button>
+                <BlockedTip v-if="robot.desiredMode !== 'map'" :reason="operateBlocker" class="flex-1">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    class="flex-1"
+                    :disabled="!canOperate || modePending === robot.id"
+                    @click="toggleParked(robot.id, robot.desiredMode)"
+                  >
+                    {{ robot.desiredMode === 'idle' ? 'Release' : 'Park' }}
+                  </Button>
+                </BlockedTip>
                 <Button size="sm" class="flex-1" as-child>
                   <RouterLink :to="`/robot/${robot.id}/nav`">Navigation</RouterLink>
                 </Button>

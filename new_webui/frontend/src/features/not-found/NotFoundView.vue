@@ -30,7 +30,7 @@ const canGoBack = computed(() => {
 
 /** Every destination except the dashboard, which already has its own button. */
 const shortcuts = NAV_GROUPS.flatMap((group) => group.items).filter(
-  (item) => item.to !== '/dashboard',
+  (item) => item.to !== '/dashboard' && !item.role,
 )
 </script>
 

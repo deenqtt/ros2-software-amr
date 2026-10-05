@@ -19,16 +19,26 @@ import { pointInPolygon, type Zone, type ZoneKind, type ZonePoint } from '@/doma
 import { ZONE_KIND_STYLE } from '../zoneKind'
 import { Button } from '@/shared/ui/button'
 
-const props = defineProps<{
-  grid: Grid | null
-  placement: { resolution: number; originX: number; originY: number }
-  zones: Zone[]
-  selectedId: string | null
-  /** The polygon being drawn, in metres. Empty when not drawing. */
-  drawing: ZonePoint[] | null
-  /** Colour for the in-progress outline, so it reads as the kind it will become. */
-  drawingKind: ZoneKind
-}>()
+const props = withDefaults(
+  defineProps<{
+    grid: Grid | null
+    placement: { resolution: number; originX: number; originY: number }
+    zones: Zone[]
+    selectedId: string | null
+    /** The polygon being drawn, in metres. Empty when not drawing. */
+    drawing: ZonePoint[] | null
+    /** Colour for the in-progress outline, so it reads as the kind it will become. */
+    drawingKind: ZoneKind
+    /**
+     * False where zones are only looked at — a viewer, or a phone: no corner
+     * handles, so a tap selects or pans and can never reshape a zone.
+     */
+    editable?: boolean
+    /** Hides the legend and readout, for while a card covers the bottom of the map. */
+    hideLegend?: boolean
+  }>(),
+  { editable: true, hideLegend: false },
+)
 
 const emit = defineEmits<{
   select: [id: string | null]
@@ -110,6 +120,7 @@ function pointerAt(event: PointerEvent): { sx: number; sy: number } | null {
 
 /** A corner handle of the selected zone under the pointer, if any. */
 function handleAt(sx: number, sy: number): number | null {
+  if (!props.editable) return null
   const selected = props.zones.find((zone) => zone.id === props.selectedId)
   if (!selected) return null
   for (let index = 0; index < selected.polygon.length; index += 1) {
@@ -209,7 +220,7 @@ function drawZone(context: CanvasRenderingContext2D, zone: Zone, selected: boole
   context.stroke()
   context.setLineDash([])
 
-  if (selected) {
+  if (selected && props.editable) {
     // Handles only on the selected one. Every zone showing its corners turns a
     // busy map into a field of dots with nothing to grab.
     for (const point of zone.polygon) {
@@ -317,7 +328,7 @@ function onPointerDown(event: PointerEvent) {
   const at = pointerAt(event)
   if (!at) return
 
-  if (isDrawing.value) {
+  if (isDrawing.value && props.editable) {
     const world = toWorld(at.sx, at.sy)
     if (!world) return
     const first = props.drawing?.[0]
@@ -483,9 +494,13 @@ defineExpose({ resetView })
 </script>
 
 <template>
+  <!--
+    touch-none: otherwise the browser claims a finger drag as a scroll and
+    cancels the pointer, so a pan or a corner drag stops after a few pixels.
+  -->
   <div
     ref="wrapper"
-    class="relative h-full w-full select-none overflow-hidden bg-[#e9ebee]"
+    class="relative h-full w-full touch-none select-none overflow-hidden bg-[#e9ebee]"
     :class="
       isDrawing
         ? 'cursor-crosshair'
@@ -507,13 +522,17 @@ defineExpose({ resetView })
 
     <div
       v-if="isDrawing"
-      class="pointer-events-none absolute left-1/2 top-sm -translate-x-1/2 rounded-chip bg-primary px-sm py-xxs text-caption text-on-primary shadow-soft"
+      class="pointer-events-none absolute left-1/2 top-sm max-w-[calc(100%-1rem)] -translate-x-1/2 rounded-chip bg-primary px-sm py-xxs text-center text-caption text-on-primary shadow-soft"
     >
-      {{
-        (props.drawing?.length ?? 0) < 3
-          ? `Click each corner · ${3 - (props.drawing?.length ?? 0)} more to enclose an area`
-          : 'Click the first corner or double-click to finish · Esc to cancel'
-      }}
+      <template v-if="(props.drawing?.length ?? 0) < 3">
+        Tap or click each corner · {{ 3 - (props.drawing?.length ?? 0) }} more to enclose an area
+      </template>
+      <!-- The Finish button is shown on touch only, so only touch is told of it. -->
+      <template v-else>
+        <span class="touch:hidden">Click the first corner or double-click to finish</span>
+        <span class="hidden touch:inline">Tap the first corner or press Finish</span>
+      </template>
+      <span class="hidden lg:inline"> · Esc to cancel</span>
     </div>
 
     <div class="absolute right-sm top-sm flex flex-col gap-xxs">
@@ -529,7 +548,8 @@ defineExpose({ resetView })
     </div>
 
     <div
-      class="pointer-events-none absolute bottom-sm left-sm flex items-center gap-base rounded-control bg-surface/85 px-sm py-xxs text-caption text-muted backdrop-blur-[2px]"
+      v-if="!props.hideLegend"
+      class="pointer-events-none absolute bottom-sm left-sm flex max-w-[calc(100%-1rem)] flex-wrap items-center gap-x-base gap-y-xxs rounded-control bg-surface/85 px-sm py-xxs text-caption text-muted backdrop-blur-[2px]"
     >
       <slot name="legend" />
       <span v-if="hoverWorld" class="font-data text-ink">

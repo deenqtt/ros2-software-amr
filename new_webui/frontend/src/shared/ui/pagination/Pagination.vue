@@ -15,11 +15,16 @@ import { ChevronLeft, ChevronRight } from 'lucide-vue-next'
 import { pageCount, pageRange, PAGE_SIZES } from '@/domain/pagination'
 import { cn } from '@/shared/lib/utils'
 
-const props = defineProps<{
-  page: number
-  pageSize: number
-  total: number
-}>()
+const props = withDefaults(
+  defineProps<{
+    page: number
+    pageSize: number
+    total: number
+    /** What an empty list reads as. */
+    emptyLabel?: string
+  }>(),
+  { emptyLabel: 'No robots' },
+)
 
 const emit = defineEmits<{
   'update:page': [value: number]
@@ -33,7 +38,7 @@ const canNext = computed(() => props.page < pages.value)
 
 const summary = computed(() =>
   range.value.total === 0
-    ? 'No robots'
+    ? props.emptyLabel
     : `${range.value.from}–${range.value.to} of ${range.value.total}`,
 )
 </script>
@@ -49,7 +54,7 @@ const summary = computed(() =>
            is meaningless when there are fewer than 10 rows. -->
       <div
         v-if="props.total > PAGE_SIZES[0]"
-        class="flex items-center gap-[2px] rounded-control bg-surface-strong p-[3px]"
+        class="hidden items-center gap-[2px] rounded-control bg-surface-strong p-[3px] sm:flex"
         role="radiogroup"
         aria-label="Rows per page"
       >

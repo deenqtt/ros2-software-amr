@@ -52,7 +52,7 @@ const emit = defineEmits<{ 'update:modelValue': [value: T] }>()
       :aria-label="props.label"
       :class="
         cn(
-          'flex h-control-sm items-center gap-xs rounded-control border border-hairline bg-surface px-sm text-body-sm text-ink transition-colors',
+          'flex h-control-sm items-center gap-xs rounded-control border border-hairline bg-surface px-sm text-body-sm text-ink transition-colors touch:h-[44px]',
           'hover:border-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40',
           'disabled:cursor-not-allowed disabled:text-muted-soft disabled:opacity-60',
           props.class,
@@ -75,7 +75,7 @@ const emit = defineEmits<{ 'update:modelValue': [value: T] }>()
             :key="option.value"
             :value="option.value"
             :disabled="option.disabled"
-            class="flex cursor-pointer flex-col rounded-control px-sm py-xs text-body-sm text-body outline-none transition-colors data-[highlighted]:bg-surface-strong data-[state=checked]:text-ink data-[disabled]:cursor-not-allowed data-[disabled]:opacity-40"
+            class="flex cursor-pointer flex-col rounded-control px-sm py-xs text-body-sm text-body outline-none transition-colors touch:min-h-[44px] touch:justify-center data-[highlighted]:bg-surface-strong data-[state=checked]:text-ink data-[disabled]:cursor-not-allowed data-[disabled]:opacity-40"
           >
             <SelectItemText>{{ option.label }}</SelectItemText>
             <span v-if="option.hint" class="text-caption text-muted-soft">{{ option.hint }}</span>

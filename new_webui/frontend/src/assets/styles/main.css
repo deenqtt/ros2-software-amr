@@ -4,6 +4,20 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * Fields at 16px on touch screens. iOS Safari zooms the whole page into any
+ * field under 16px when it is focused, and does not zoom back out — the page is
+ * left magnified until the operator pinches it back. Important, because every
+ * field sets its own smaller size with a utility; mouse devices keep theirs.
+ */
+@media (pointer: coarse) {
+  input:not([type='checkbox']):not([type='radio']):not([type='range']),
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}
+
 @layer base {
   html,
   body,

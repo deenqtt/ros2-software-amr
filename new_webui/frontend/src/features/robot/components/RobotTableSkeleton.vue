@@ -21,7 +21,7 @@ withDefaults(defineProps<{ rows?: number }>(), { rows: 3 })
         </div>
       </TableCell>
       <TableCell><Skeleton class="h-3.5 w-44" /></TableCell>
-      <TableCell><Skeleton class="h-3.5 w-10" /></TableCell>
+      <TableCell class="hidden lg:table-cell"><Skeleton class="h-3.5 w-10" /></TableCell>
       <TableCell><Skeleton class="h-5 w-24 rounded-chip" /></TableCell>
       <TableCell><Skeleton class="h-3.5 w-16" /></TableCell>
       <TableCell align="right">

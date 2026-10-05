@@ -14,15 +14,11 @@
  */
 import { computed, onMounted, ref, watch } from 'vue'
 import {
-  Brush,
   ChevronDown,
   ChevronRight,
   CornerDownRight,
-  Download,
   Map as MapIcon,
-  Pencil,
   ScanLine,
-  Trash2,
   Upload,
   RefreshCw,
 } from 'lucide-vue-next'
@@ -31,30 +27,35 @@ import { useRouter } from 'vue-router'
 import { useMapStore } from '@/stores/maps'
 import { useFleetStore } from '@/stores/fleet'
 import { useLinkStore } from '@/stores/links'
-import { mapsApi, MapInUseError } from '@/shared/api/maps'
+import { MapInUseError } from '@/shared/api/maps'
 import { robotsApi } from '@/shared/api/robots'
 import { mapExtentMetres, type MapRecord } from '@/domain/types'
 import { clampPage, pageAfterResize, pageSlice, PAGE_SIZES } from '@/domain/pagination'
 import { Button } from '@/shared/ui/button'
-import { RowActions, RowActionItem, RowActionSeparator } from '@/shared/ui/menu'
 import { Card } from '@/shared/ui/card'
 import { Pagination } from '@/shared/ui/pagination'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/shared/ui/table'
 import { Badge } from '@/shared/ui/badge'
+import { Skeleton } from '@/shared/ui/skeleton'
 import PanelToolbar from '@/shared/components/PanelToolbar.vue'
 import EmptyState from '@/shared/components/EmptyState.vue'
 import ConfirmDialog from '@/shared/components/ConfirmDialog.vue'
+import BlockedTip from '@/shared/components/BlockedTip.vue'
+import { usePermission } from '@/shared/composables/usePermission'
 import MapUploadDialog from '../components/MapUploadDialog.vue'
 import AssignMapDialog from '../components/AssignMapDialog.vue'
 import MapTableSkeleton from '../components/MapTableSkeleton.vue'
 import StartSurveyDialog from '../components/StartSurveyDialog.vue'
 import RenameMapDialog from '../components/RenameMapDialog.vue'
+import MapRowActions from '../components/MapRowActions.vue'
+import { robotsSummary } from '../mapRows'
 import { formatNumber } from '@/shared/lib/utils'
 
 const maps = useMapStore()
 const fleet = useFleetStore()
 const links = useLinkStore()
 const router = useRouter()
+const { canEdit, editBlocker } = usePermission()
 
 const surveyOpen = ref(false)
 
@@ -81,6 +82,7 @@ onMounted(async () => {
 })
 
 function startSurvey(robotId: string) {
+  if (!canEdit.value) return
   surveyOpen.value = false
   void router.push(`/maps/survey/${robotId}`)
 }
@@ -164,6 +166,16 @@ function robotsOn(mapId: string) {
   return fleet.robots.filter((robot) => robot.activeMapId === mapId)
 }
 
+/** The phone row's second line: who runs it and how big it is, or a version's note. */
+function phoneCaption(row: { map: MapRecord; child: boolean }): string {
+  if (row.child) return row.map.note || gridLabel(row.map)
+  const robots = robotsSummary(
+    robotsOn(row.map.id).map((r) => r.name),
+    ROBOTS_SHOWN,
+  )
+  return `${robots} · ${extentLabel(row.map)}`
+}
+
 function extentLabel(map: MapRecord): string {
   const extent = mapExtentMetres(map)
   if (!extent) return '—'
@@ -193,6 +205,7 @@ async function onUpload(payload: {
   imageFile: File
   note: string | null
 }) {
+  if (!canEdit.value) return
   uploading.value = true
   uploadError.value = null
   try {
@@ -208,7 +221,7 @@ async function onUpload(payload: {
 
 async function onAssign(robotIds: string[]) {
   const map = assigning.value
-  if (!map) return
+  if (!map || !canEdit.value) return
   assignPending.value = true
   assignError.value = null
 
@@ -237,7 +250,7 @@ async function onAssign(robotIds: string[]) {
 
 async function onRename(name: string) {
   const map = renaming.value
-  if (!map) return
+  if (!map || !canEdit.value) return
   renamePending.value = true
   renameError.value = null
   try {
@@ -278,7 +291,7 @@ function reassignInsteadOfRemoving() {
 
 async function confirmRemoval() {
   const map = pendingRemoval.value
-  if (!map) return
+  if (!map || !canEdit.value) return
   removing.value = true
   try {
     await maps.remove(map.id)
@@ -298,7 +311,7 @@ async function confirmRemoval() {
 </script>
 
 <template>
-  <div class="p-lg">
+  <div class="p-sm sm:p-base md:p-lg">
     <Card>
       <PanelToolbar title="Maps" :subtitle="subtitle">
         <template #icon><MapIcon :size="14" class="shrink-0 text-muted" /></template>
@@ -312,14 +325,18 @@ async function confirmRemoval() {
           >
             <RefreshCw :size="15" :class="maps.loading && 'animate-spin'" />
           </Button>
-          <Button variant="outline" @click="surveyOpen = true">
-            <ScanLine :size="15" />
-            <span>Create map</span>
-          </Button>
-          <Button @click="uploadOpen = true">
-            <Upload :size="15" />
-            <span>Upload map</span>
-          </Button>
+          <BlockedTip :reason="editBlocker">
+            <Button variant="outline" :disabled="!canEdit" @click="surveyOpen = true">
+              <ScanLine :size="15" />
+              <span>Create map</span>
+            </Button>
+          </BlockedTip>
+          <BlockedTip :reason="editBlocker">
+            <Button :disabled="!canEdit" aria-label="Upload map" @click="uploadOpen = true">
+              <Upload :size="15" />
+              <span class="hidden sm:inline">Upload map</span>
+            </Button>
+          </BlockedTip>
         </template>
       </PanelToolbar>
 
@@ -331,202 +348,325 @@ async function confirmRemoval() {
         </EmptyState>
       </div>
 
-      <Table v-else>
-        <TableHeader>
-          <TableRow>
-            <!--
-              w-full + max-w-0 on the name column: a table cell sizes to its
-              content, so a long note used to widen the table and put the whole
-              thing behind a horizontal scrollbar. This makes the column take
-              whatever is left and lets its text truncate against that.
-
-              min-w keeps the name itself: on a narrow screen the column that
-              gives way has to be one of the others, not the map's identity.
-              They go in order of how rarely they decide anything — size, who
-              surveyed it, then extent (the subtitle still carries the grid).
-            -->
-            <TableHead class="w-full min-w-[12rem] max-w-0">Map</TableHead>
-            <TableHead class="hidden whitespace-nowrap lg:table-cell">Extent</TableHead>
-            <TableHead class="hidden whitespace-nowrap xl:table-cell">Size</TableHead>
-            <TableHead class="whitespace-nowrap">Robots</TableHead>
-            <TableHead class="hidden whitespace-nowrap xl:table-cell">Surveyed by</TableHead>
-            <TableHead align="right">Actions</TableHead>
-          </TableRow>
-        </TableHeader>
-
-        <MapTableSkeleton v-if="showSkeleton" />
-
-        <TableBody v-else-if="maps.count > 0">
-          <TableRow v-for="row in rendered" :key="row.map.id" interactive>
-            <TableCell class="w-full min-w-[12rem] max-w-0">
-              <div class="flex items-center gap-sm" :class="row.child ? 'pl-lg' : ''">
-                <!--
-                  The expander replaces the icon on a map with history, so the
-                  row does not grow a control it usually has no use for.
-                -->
-                <button
-                  v-if="!row.child && row.group.older.length"
-                  type="button"
-                  :aria-expanded="expanded.has(row.group.key)"
-                  :aria-label="`${expanded.has(row.group.key) ? 'Hide' : 'Show'} older versions of ${row.map.name}`"
-                  :title="`${expanded.has(row.group.key) ? 'Hide' : 'Show'} the ${row.group.older.length} older version${row.group.older.length === 1 ? '' : 's'} of ${row.map.name}`"
-                  class="flex h-8 w-8 shrink-0 items-center justify-center rounded-control bg-surface-strong text-muted transition-colors hover:text-ink"
-                  @click="toggleGroup(row.group.key)"
-                >
-                  <component
-                    :is="expanded.has(row.group.key) ? ChevronDown : ChevronRight"
-                    :size="15"
-                  />
-                </button>
+      <template v-else>
+        <!--
+          Phone: a list, not a table. Each map is its name, who runs it and how
+          big it is; the pixel grid, file size and surveyor are one tap deeper
+          (the table, on a wider screen, or the map itself). Tapping a row
+          assigns it, since that is the one action that changes what a robot
+          does; everything else is in the row's menu.
+        -->
+        <ul v-if="showSkeleton" class="divide-y divide-hairline md:hidden">
+          <li v-for="row in 3" :key="row" class="flex items-center gap-sm px-base py-sm">
+            <Skeleton class="h-9 w-9" />
+            <div class="flex-1 space-y-xs">
+              <Skeleton class="h-4 w-28" />
+              <Skeleton class="h-3 w-40" />
+            </div>
+          </li>
+        </ul>
+        <ul v-else-if="maps.count > 0" class="divide-y divide-hairline md:hidden">
+          <li
+            v-for="row in rendered"
+            :key="row.map.id"
+            class="flex items-start pr-xs"
+            :class="row.child ? 'pl-lg' : ''"
+          >
+            <div class="min-w-0 flex-1">
+              <!-- A viewer cannot assign, so for them the row is not a control at all. -->
+              <component
+                :is="canEdit ? 'button' : 'div'"
+                :type="canEdit ? 'button' : undefined"
+                class="flex min-h-[56px] w-full min-w-0 items-center gap-sm py-sm pl-base pr-xs text-left"
+                :class="canEdit && 'transition-colors active:bg-surface-strong'"
+                @click="canEdit && (assigning = row.map)"
+              >
                 <span
-                  v-else
-                  class="flex h-8 w-8 shrink-0 items-center justify-center rounded-control text-muted"
+                  class="flex h-9 w-9 shrink-0 items-center justify-center rounded-control text-muted"
                   :class="row.child ? '' : 'bg-surface-strong'"
                 >
-                  <MapIcon v-if="!row.child" :size="15" />
-                  <CornerDownRight v-else :size="13" class="text-muted-soft" />
+                  <MapIcon v-if="!row.child" :size="16" />
+                  <CornerDownRight v-else :size="14" class="text-muted-soft" />
                 </span>
-                <div class="min-w-0">
-                  <div class="flex items-center gap-xs">
+                <span class="min-w-0 flex-1">
+                  <span class="flex items-center gap-xs">
                     <span
                       class="truncate text-ink"
-                      :class="row.child ? 'text-body-sm' : 'text-title-sm'"
+                      :class="row.child ? 'text-body-sm' : 'text-body-md font-medium'"
                     >
                       {{ row.child ? `v${row.map.version}` : row.map.name }}
                     </span>
                     <Badge v-if="!row.child" class="bg-surface-strong text-body">
                       v{{ row.map.version }}
                     </Badge>
-                    <!-- Older versions stay listed: they are what robots still
-                         running them are running. -->
+                  </span>
+                  <span
+                    class="mt-[2px] block truncate text-body-sm text-body"
+                    data-testid="map-caption"
+                  >
+                    {{ phoneCaption(row) }}
+                  </span>
+                </span>
+              </component>
+              <button
+                v-if="!row.child && row.group.older.length"
+                type="button"
+                :aria-expanded="expanded.has(row.group.key)"
+                :aria-label="`${expanded.has(row.group.key) ? 'Hide' : 'Show'} ${row.group.older.length} older version${row.group.older.length === 1 ? '' : 's'} of ${row.map.name}`"
+                class="-mt-xs mb-xs flex w-full items-center gap-xxs pl-[64px] text-left text-caption text-muted transition-colors hover:text-ink touch:min-h-[44px]"
+                @click="toggleGroup(row.group.key)"
+              >
+                <component
+                  :is="expanded.has(row.group.key) ? ChevronDown : ChevronRight"
+                  :size="13"
+                />
+                {{ expanded.has(row.group.key) ? 'Hide' : '+' + row.group.older.length }}
+                older version{{ row.group.older.length === 1 ? '' : 's' }}
+              </button>
+            </div>
+            <div class="shrink-0 pt-sm">
+              <MapRowActions
+                :map="row.map"
+                with-assign
+                :label="`Map actions for ${row.map.name} v${row.map.version}`"
+                @assign="assigning = row.map"
+                @rename="renaming = row.map"
+                @remove="askRemove(row.map)"
+              />
+            </div>
+          </li>
+        </ul>
+        <div v-else class="p-base md:hidden">
+          <EmptyState
+            title="No maps yet"
+            description="Upload a .yaml and its image, or let a robot publish one after a mapping run."
+          >
+            <template #icon><MapIcon :size="20" class="text-muted" /></template>
+            <template #action>
+              <div class="flex gap-xs">
+                <BlockedTip :reason="editBlocker">
+                  <Button size="sm" :disabled="!canEdit" @click="surveyOpen = true">
+                    <ScanLine :size="14" /> Create map
+                  </Button>
+                </BlockedTip>
+                <BlockedTip :reason="editBlocker">
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    :disabled="!canEdit"
+                    @click="uploadOpen = true"
+                  >
+                    <Upload :size="14" /> Upload
+                  </Button>
+                </BlockedTip>
+              </div>
+            </template>
+          </EmptyState>
+        </div>
+
+        <div class="hidden md:block">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <!--
+                  w-full + max-w-0 on the name column: a table cell sizes to its
+                  content, so a long note used to widen the table and put the whole
+                  thing behind a horizontal scrollbar. This makes the column take
+                  whatever is left and lets its text truncate against that.
+
+                  min-w keeps the name itself: on a narrow screen the column that
+                  gives way has to be one of the others, not the map's identity.
+                  They go in order of how rarely they decide anything — size, who
+                  surveyed it, then extent (the subtitle still carries the grid).
+                -->
+                <TableHead class="w-full min-w-[12rem] max-w-0">Map</TableHead>
+                <TableHead class="hidden whitespace-nowrap lg:table-cell">Extent</TableHead>
+                <TableHead class="hidden whitespace-nowrap xl:table-cell">Size</TableHead>
+                <TableHead class="whitespace-nowrap">Robots</TableHead>
+                <TableHead class="hidden whitespace-nowrap xl:table-cell">Surveyed by</TableHead>
+                <TableHead align="right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+
+            <MapTableSkeleton v-if="showSkeleton" />
+
+            <TableBody v-else-if="maps.count > 0">
+              <TableRow v-for="row in rendered" :key="row.map.id" interactive>
+                <TableCell class="w-full min-w-[12rem] max-w-0">
+                  <div class="flex items-center gap-sm" :class="row.child ? 'pl-lg' : ''">
+                    <!--
+                      The expander replaces the icon on a map with history, so the
+                      row does not grow a control it usually has no use for.
+                    -->
                     <button
                       v-if="!row.child && row.group.older.length"
                       type="button"
-                      class="rounded-chip bg-surface-strong px-xxs text-caption text-muted transition-colors hover:text-ink"
+                      :aria-expanded="expanded.has(row.group.key)"
+                      :aria-label="`${expanded.has(row.group.key) ? 'Hide' : 'Show'} older versions of ${row.map.name}`"
+                      :title="`${expanded.has(row.group.key) ? 'Hide' : 'Show'} the ${row.group.older.length} older version${row.group.older.length === 1 ? '' : 's'} of ${row.map.name}`"
+                      class="flex h-8 w-8 shrink-0 items-center justify-center rounded-control bg-surface-strong text-muted transition-colors hover:text-ink touch:h-11 touch:w-11"
                       @click="toggleGroup(row.group.key)"
                     >
-                      +{{ row.group.older.length }} older
+                      <component
+                        :is="expanded.has(row.group.key) ? ChevronDown : ChevronRight"
+                        :size="15"
+                      />
                     </button>
+                    <span
+                      v-else
+                      class="flex h-8 w-8 shrink-0 items-center justify-center rounded-control text-muted"
+                      :class="row.child ? '' : 'bg-surface-strong'"
+                    >
+                      <MapIcon v-if="!row.child" :size="15" />
+                      <CornerDownRight v-else :size="13" class="text-muted-soft" />
+                    </span>
+                    <div class="min-w-0">
+                      <div class="flex items-center gap-xs">
+                        <span
+                          class="truncate text-ink"
+                          :class="row.child ? 'text-body-sm' : 'text-title-sm'"
+                        >
+                          {{ row.child ? `v${row.map.version}` : row.map.name }}
+                        </span>
+                        <Badge v-if="!row.child" class="bg-surface-strong text-body">
+                          v{{ row.map.version }}
+                        </Badge>
+                        <!-- Older versions stay listed: they are what robots still
+                             running them are running. -->
+                        <button
+                          v-if="!row.child && row.group.older.length"
+                          type="button"
+                          class="rounded-chip bg-surface-strong px-xxs text-caption text-muted transition-colors hover:text-ink touch:min-h-[44px] touch:px-sm"
+                          @click="toggleGroup(row.group.key)"
+                        >
+                          +{{ row.group.older.length }} older
+                        </button>
+                      </div>
+                      <!-- Truncated with the full text on hover: a note describing
+                           why a version exists can be a sentence, and it must not
+                           decide how wide the table is. -->
+                      <p
+                        class="truncate font-data text-caption text-muted"
+                        :title="row.child ? (row.map.note ?? undefined) : undefined"
+                      >
+                        {{ row.child ? (row.map.note || gridLabel(row.map)) : gridLabel(row.map) }}
+                      </p>
+                    </div>
                   </div>
-                  <!-- Truncated with the full text on hover: a note describing
-                       why a version exists can be a sentence, and it must not
-                       decide how wide the table is. -->
-                  <p
-                    class="truncate font-data text-caption text-muted"
-                    :title="row.child ? (row.map.note ?? undefined) : undefined"
+                </TableCell>
+
+                <TableCell class="hidden lg:table-cell">
+                  <span class="whitespace-nowrap font-data text-body-sm text-body">
+                    {{ extentLabel(row.map) }}
+                  </span>
+                </TableCell>
+
+                <TableCell class="hidden xl:table-cell">
+                  <span class="whitespace-nowrap font-data text-body-sm text-body">
+                    {{ sizeLabel(row.map.imageBytes) }}
+                  </span>
+                </TableCell>
+
+                <TableCell>
+                  <!--
+                    Names, not bare dots: which robot runs which map is the question
+                    this column exists to answer, and a hover tooltip answers it for
+                    nobody on a touch screen. Two names, then a count.
+                  -->
+                  <div
+                    v-if="robotsOn(row.map.id).length"
+                    class="flex items-center gap-xs whitespace-nowrap"
+                    :title="robotsOn(row.map.id).map((r) => r.name).join(', ')"
                   >
-                    {{ row.child ? (row.map.note || gridLabel(row.map)) : gridLabel(row.map) }}
-                  </p>
-                </div>
-              </div>
-            </TableCell>
-
-            <TableCell class="hidden lg:table-cell">
-              <span class="whitespace-nowrap font-data text-body-sm text-body">
-                {{ extentLabel(row.map) }}
-              </span>
-            </TableCell>
-
-            <TableCell class="hidden xl:table-cell">
-              <span class="whitespace-nowrap font-data text-body-sm text-body">
-                {{ sizeLabel(row.map.imageBytes) }}
-              </span>
-            </TableCell>
-
-            <TableCell>
-              <!--
-                Names, not bare dots: which robot runs which map is the question
-                this column exists to answer, and a hover tooltip answers it for
-                nobody on a touch screen. Two names, then a count.
-              -->
-              <div
-                v-if="robotsOn(row.map.id).length"
-                class="flex items-center gap-xs whitespace-nowrap"
-                :title="robotsOn(row.map.id).map((r) => r.name).join(', ')"
-              >
-                <span
-                  v-for="robot in robotsOn(row.map.id).slice(0, ROBOTS_SHOWN)"
-                  :key="robot.id"
-                  class="flex items-center gap-xxs text-body-sm text-body"
-                >
-                  <span
-                    class="h-2 w-2 shrink-0 rounded-full"
-                    :style="{ backgroundColor: `rgb(var(--robot-accent-${robot.accent}))` }"
-                  />
-                  {{ robot.name }}
-                </span>
-                <span
-                  v-if="robotsOn(row.map.id).length > ROBOTS_SHOWN"
-                  class="rounded-chip bg-surface-strong px-xxs text-caption text-muted"
-                >
-                  +{{ robotsOn(row.map.id).length - ROBOTS_SHOWN }}
-                </span>
-              </div>
-              <span v-else class="text-body-sm text-muted-soft">—</span>
-            </TableCell>
-
-            <TableCell class="hidden xl:table-cell">
-              <span class="whitespace-nowrap text-body-sm text-body">
-                {{ robotName(row.map.createdByRobotId) }}
-              </span>
-            </TableCell>
-
-            <TableCell align="right">
-              <div class="flex justify-end gap-xxs">
-                <!--
-                  Assign stays outside the menu: it is the only action that
-                  changes what a robot does, and it sits next to the column that
-                  shows the current assignment. The rest are occasional.
-                -->
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  :title="`Assign ${row.map.name} v${row.map.version} to robots`"
-                  @click="assigning = row.map"
-                >
-                  Assign
-                </Button>
-                <RowActions :label="`More actions for ${row.map.name} v${row.map.version}`">
-                  <RowActionItem :icon="Pencil" @select="renaming = row.map">Rename</RowActionItem>
-                  <RowActionItem :icon="Brush" :to="`/maps/edit/${row.map.id}`">
-                    Edit cells
-                  </RowActionItem>
-                  <RowActionItem :icon="Download" :href="mapsApi.archiveUrl(row.map.id)" download>
-                    Download
-                  </RowActionItem>
-                  <RowActionSeparator class="my-xxs h-px bg-hairline" />
-                  <RowActionItem :icon="Trash2" destructive @select="askRemove(row.map)">
-                    Remove
-                  </RowActionItem>
-                </RowActions>
-              </div>
-            </TableCell>
-          </TableRow>
-        </TableBody>
-
-        <TableBody v-else>
-          <TableRow>
-            <TableCell colspan="6" class="h-auto p-base">
-              <EmptyState
-                title="No maps yet"
-                description="Upload a .yaml and its image, or let a robot publish one after a mapping run."
-              >
-                <template #icon><MapIcon :size="20" class="text-muted" /></template>
-                <template #action>
-                  <div class="flex gap-xs">
-                    <Button size="sm" @click="surveyOpen = true">
-                      <ScanLine :size="14" /> Create map
-                    </Button>
-                    <Button size="sm" variant="secondary" @click="uploadOpen = true">
-                      <Upload :size="14" /> Upload
-                    </Button>
+                    <span
+                      v-for="robot in robotsOn(row.map.id).slice(0, ROBOTS_SHOWN)"
+                      :key="robot.id"
+                      class="flex items-center gap-xxs text-body-sm text-body"
+                    >
+                      <span
+                        class="h-2 w-2 shrink-0 rounded-full"
+                        :style="{ backgroundColor: `rgb(var(--robot-accent-${robot.accent}))` }"
+                      />
+                      {{ robot.name }}
+                    </span>
+                    <span
+                      v-if="robotsOn(row.map.id).length > ROBOTS_SHOWN"
+                      class="rounded-chip bg-surface-strong px-xxs text-caption text-muted"
+                    >
+                      +{{ robotsOn(row.map.id).length - ROBOTS_SHOWN }}
+                    </span>
                   </div>
-                </template>
-              </EmptyState>
-            </TableCell>
-          </TableRow>
-        </TableBody>
-      </Table>
+                  <span v-else class="text-body-sm text-muted-soft">—</span>
+                </TableCell>
+
+                <TableCell class="hidden xl:table-cell">
+                  <span class="whitespace-nowrap text-body-sm text-body">
+                    {{ robotName(row.map.createdByRobotId) }}
+                  </span>
+                </TableCell>
+
+                <TableCell align="right">
+                  <div class="flex justify-end gap-xxs">
+                    <!--
+                      Assign stays outside the menu: it is the only action that
+                      changes what a robot does, and it sits next to the column that
+                      shows the current assignment. The rest are occasional.
+                    -->
+                    <BlockedTip :reason="editBlocker">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        :disabled="!canEdit"
+                        :title="`Assign ${row.map.name} v${row.map.version} to robots`"
+                        @click="assigning = row.map"
+                      >
+                        Assign
+                      </Button>
+                    </BlockedTip>
+                    <MapRowActions
+                      :map="row.map"
+                      @rename="renaming = row.map"
+                      @remove="askRemove(row.map)"
+                    />
+                  </div>
+                </TableCell>
+              </TableRow>
+            </TableBody>
+
+            <TableBody v-else>
+              <TableRow>
+                <TableCell colspan="6" class="h-auto p-base">
+                  <EmptyState
+                    title="No maps yet"
+                    description="Upload a .yaml and its image, or let a robot publish one after a mapping run."
+                  >
+                    <template #icon><MapIcon :size="20" class="text-muted" /></template>
+                    <template #action>
+                      <div class="flex gap-xs">
+                        <BlockedTip :reason="editBlocker">
+                          <Button size="sm" :disabled="!canEdit" @click="surveyOpen = true">
+                            <ScanLine :size="14" /> Create map
+                          </Button>
+                        </BlockedTip>
+                        <BlockedTip :reason="editBlocker">
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            :disabled="!canEdit"
+                            @click="uploadOpen = true"
+                          >
+                            <Upload :size="14" /> Upload
+                          </Button>
+                        </BlockedTip>
+                      </div>
+                    </template>
+                  </EmptyState>
+                </TableCell>
+              </TableRow>
+            </TableBody>
+          </Table>
+        </div>
+      </template>
 
       <!-- "Page 1 of 1" says nothing; the pager appears once there is a second page. -->
       <Pagination

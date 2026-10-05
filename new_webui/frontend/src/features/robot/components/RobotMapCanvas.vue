@@ -24,14 +24,7 @@
  */
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { Maximize, Minus, Plus } from 'lucide-vue-next'
-import type {
-  LaserScan,
-  NavPath,
-  OccupancyGrid,
-  Pose,
-  PoseCloud,
-  Zone,
-} from '@/domain/types'
+import type { LaserScan, NavPath, OccupancyGrid, Pose, PoseCloud, Zone } from '@/domain/types'
 import { ZONE_KIND_STYLE } from '@/features/zones/zoneKind'
 import { Button } from '@/shared/ui/button'
 import type { MissionOverlay, StepStatus } from '../missionMarkers'
@@ -39,6 +32,12 @@ import type { MissionOverlay, StepStatus } from '../missionMarkers'
 export type MapTool = 'view' | 'initialPose' | 'goal'
 
 const props = defineProps<{
+  /**
+   * How far a panel laid over the map's right edge reaches into it (a tablet's
+   * open status panel). The zoom controls step left by that much so they stay
+   * reachable instead of disappearing under the panel.
+   */
+  rightInset?: string
   grid: OccupancyGrid | null
   costmap: OccupancyGrid | null
   plan: NavPath | null
@@ -51,6 +50,12 @@ const props = defineProps<{
   footprint: { length: number; width: number } | null
   /** The stops of the route being run, when there is one. */
   mission?: MissionOverlay | null
+  /**
+   * The one-off goal sent from this page, while it runs and after it fails.
+   * Without it a failed goal left nothing on screen saying where the robot
+   * had been asked to go.
+   */
+  goal?: { x: number; y: number; theta: number; failed: boolean } | null
   layers: Record<string, boolean>
   tool: MapTool
 }>()
@@ -279,6 +284,42 @@ function drawPlan(context: CanvasRenderingContext2D) {
   context.setLineDash([])
 }
 
+function drawGoal(context: CanvasRenderingContext2D) {
+  const goal = props.goal
+  if (!goal) return
+  const screen = project(goal.x, goal.y)
+  if (!screen) return
+  const colour = goal.failed ? '#cf202f' : '#0f9d58'
+  context.save()
+  context.strokeStyle = colour
+  context.fillStyle = colour
+  context.lineWidth = 2.5
+  // A target, not a dot: two rings read as "here" at any zoom.
+  context.beginPath()
+  context.arc(screen.sx, screen.sy, 10, 0, Math.PI * 2)
+  context.stroke()
+  context.beginPath()
+  context.arc(screen.sx, screen.sy, 3.5, 0, Math.PI * 2)
+  context.fill()
+  // Arrival heading. Canvas y grows downward while a ROS yaw turns counter-clockwise.
+  const tipX = screen.sx + Math.cos(goal.theta) * 22
+  const tipY = screen.sy - Math.sin(goal.theta) * 22
+  context.beginPath()
+  context.moveTo(screen.sx + Math.cos(goal.theta) * 10, screen.sy - Math.sin(goal.theta) * 10)
+  context.lineTo(tipX, tipY)
+  context.stroke()
+  if (goal.failed) {
+    // A cross through the target: the robot was asked to go here and could not.
+    context.beginPath()
+    context.moveTo(screen.sx - 6, screen.sy - 6)
+    context.lineTo(screen.sx + 6, screen.sy + 6)
+    context.moveTo(screen.sx + 6, screen.sy - 6)
+    context.lineTo(screen.sx - 6, screen.sy + 6)
+    context.stroke()
+  }
+  context.restore()
+}
+
 /**
  * Done, current and still to come must be told apart at a glance and from
  * across the room: filled green, filled blue with a halo, and hollow.
@@ -430,10 +471,7 @@ function drawDraft(context: CanvasRenderingContext2D) {
   context.stroke()
   context.beginPath()
   context.moveTo(screen.sx, screen.sy)
-  context.lineTo(
-    screen.sx + Math.cos(draft.theta) * 30,
-    screen.sy - Math.sin(draft.theta) * 30,
-  )
+  context.lineTo(screen.sx + Math.cos(draft.theta) * 30, screen.sy - Math.sin(draft.theta) * 30)
   context.stroke()
 }
 
@@ -446,6 +484,7 @@ function paintOverlay() {
   if (props.layers.zones !== false) drawZones(context)
   if (props.layers.particles) drawParticles(context)
   if (props.layers.plan !== false) drawPlan(context)
+  drawGoal(context)
   if (props.layers.mission !== false) drawMission(context)
   if (props.layers.scan !== false) drawScan(context)
   if (props.layers.robot !== false) drawRobot(context)
@@ -597,6 +636,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  if (paintQueued) cancelAnimationFrame(paintQueued)
   observer?.disconnect()
   observer = null
 })
@@ -622,7 +662,29 @@ watch(
   },
 )
 
-watch(() => props.layers, () => blit(), { deep: true })
+watch(
+  () => props.layers,
+  () => blit(),
+  { deep: true },
+)
+
+/**
+ * One overlay paint per display frame, however many messages arrived.
+ *
+ * TF alone arrives at 20 Hz, scan at 5, and each used to repaint at once —
+ * through a deep watch that walked every range of every scan and every pose
+ * of every plan before deciding to draw. Messages always arrive as new
+ * objects, so a shallow watch sees them; the zones list is the one input
+ * edited in place, and keeps its deep watch.
+ */
+let paintQueued = 0
+function schedulePaint() {
+  if (paintQueued) return
+  paintQueued = requestAnimationFrame(() => {
+    paintQueued = 0
+    paintOverlay()
+  })
+}
 
 watch(
   [
@@ -630,21 +692,25 @@ watch(
     () => props.scan,
     () => props.plan,
     () => props.particles,
-    () => props.zones,
     () => props.mission,
+    () => props.goal,
     () => props.tool,
   ],
-  () => paintOverlay(),
-  { deep: true },
+  schedulePaint,
 )
+watch(() => props.zones, schedulePaint, { deep: true })
 
 defineExpose({ resetView })
 </script>
 
 <template>
+  <!--
+    touch-none: otherwise the browser claims a finger drag as a page scroll or
+    pull-to-refresh and cancels the pointer, so a pan or a pose/goal drag stops.
+  -->
   <div
     ref="wrapper"
-    class="relative h-full w-full select-none overflow-hidden bg-[#e9ebee]"
+    class="relative h-full w-full touch-none select-none overflow-hidden bg-[#e9ebee]"
     :class="props.tool === 'view' ? 'cursor-grab' : 'cursor-crosshair'"
     @pointerdown="onPointerDown"
     @pointermove="onPointerMove"
@@ -656,9 +722,10 @@ defineExpose({ resetView })
     <canvas ref="base" class="absolute inset-0" />
     <canvas ref="overlay" class="pointer-events-none absolute inset-0" />
 
+    <!-- Below lg the page's tool bar shares the top row, so the hint drops beneath it. -->
     <div
       v-if="props.tool !== 'view'"
-      class="pointer-events-none absolute left-1/2 top-sm -translate-x-1/2 rounded-chip bg-primary px-sm py-xxs text-caption text-on-primary shadow-soft"
+      class="pointer-events-none absolute left-1/2 top-[3.5rem] max-w-[calc(100%-1.5rem)] -translate-x-1/2 rounded-chip bg-primary px-sm py-xxs text-center text-caption text-on-primary shadow-soft touch:max-lg:top-[4.25rem] lg:top-sm"
     >
       {{
         props.tool === 'initialPose'
@@ -673,27 +740,50 @@ defineExpose({ resetView })
       </p>
     </div>
 
-    <div class="absolute right-sm top-sm flex flex-col gap-xxs">
-      <Button variant="secondary" size="icon-sm" title="Zoom in" @click="zoomCentre(ZOOM_STEP)">
+    <div
+      class="absolute right-sm top-sm flex flex-col gap-xxs transition-[right] duration-150"
+      :style="props.rightInset ? { right: `calc(${props.rightInset} + 12px)` } : undefined"
+    >
+      <Button
+        variant="secondary"
+        size="icon-sm"
+        title="Zoom in"
+        aria-label="Zoom in"
+        @click="zoomCentre(ZOOM_STEP)"
+      >
         <Plus :size="13" />
       </Button>
-      <Button variant="secondary" size="icon-sm" title="Zoom out" @click="zoomCentre(1 / ZOOM_STEP)">
+      <Button
+        variant="secondary"
+        size="icon-sm"
+        title="Zoom out"
+        aria-label="Zoom out"
+        @click="zoomCentre(1 / ZOOM_STEP)"
+      >
         <Minus :size="13" />
       </Button>
-      <Button variant="secondary" size="icon-sm" title="Fit map" @click="resetView">
+      <Button
+        variant="secondary"
+        size="icon-sm"
+        title="Fit map"
+        aria-label="Fit map"
+        @click="resetView"
+      >
         <Maximize :size="13" />
       </Button>
     </div>
 
     <div
-      class="pointer-events-none absolute bottom-sm left-sm flex items-center gap-base rounded-control bg-surface/85 px-sm py-xxs text-caption text-muted backdrop-blur-[2px]"
+      class="pointer-events-none absolute bottom-sm left-sm flex max-w-[calc(100%-1.5rem)] flex-wrap items-center gap-x-base gap-y-xxs rounded-control bg-surface/85 px-sm py-xxs text-caption text-muted backdrop-blur-[2px]"
     >
       <slot name="legend" />
-      <span v-if="props.pose" class="font-data text-ink">
+      <span v-if="props.pose" class="whitespace-nowrap font-data text-ink">
         {{ props.pose.x.toFixed(2) }}, {{ props.pose.y.toFixed(2) }} m
       </span>
       <!-- Only once there is a map: before that the question is the link, not AMCL. -->
-      <span v-else-if="props.grid" class="text-status-warn">no pose — is AMCL localised?</span>
+      <span v-else-if="props.grid" class="whitespace-nowrap text-status-warn"
+        >no pose — is AMCL localised?</span
+      >
     </div>
   </div>
 </template>

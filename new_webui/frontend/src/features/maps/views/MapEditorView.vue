@@ -54,6 +54,10 @@ import { Dialog } from '@/shared/ui/dialog'
 import PanelToolbar from '@/shared/components/PanelToolbar.vue'
 import EmptyState from '@/shared/components/EmptyState.vue'
 import ConfirmDialog from '@/shared/components/ConfirmDialog.vue'
+import BlockedTip from '@/shared/components/BlockedTip.vue'
+import LargerScreenNotice from '@/shared/components/LargerScreenNotice.vue'
+import { usePermission } from '@/shared/composables/usePermission'
+import { useUiStore } from '@/stores/ui'
 import { cn, formatNumber } from '@/shared/lib/utils'
 
 const route = useRoute()
@@ -61,6 +65,24 @@ const router = useRouter()
 const maps = useMapStore()
 const fleet = useFleetStore()
 const editor = useMapEditor()
+const { canEdit, editBlocker } = usePermission()
+const ui = useUiStore()
+
+/**
+ * Painting cells wants a precise pointer and room to see the walls around
+ * them, so a phone gets advice first. Advice, not a block: "Open anyway" is
+ * for this visit only, and the gate is computed so turning or widening the
+ * screen past a phone lifts it. The map still loads behind it, so opening
+ * anyway is instant.
+ */
+const openAnyway = ref(false)
+const phoneNotice = computed(() => ui.screen === 'phone' && !openAnyway.value)
+
+/**
+ * Without the admin role the page is a viewer: Pan is the only tool, so the
+ * canvas can still be moved around but never painted on.
+ */
+const activeTool = computed<Tool>(() => (canEdit.value ? editor.tool.value : 'pan'))
 
 const mapId = computed(() => String(route.params.mapId ?? ''))
 const record = computed(() => maps.byId(mapId.value))
@@ -90,7 +112,8 @@ const brushLabel = computed(() => {
 })
 
 function stepBrush(direction: number) {
-  const next = BRUSH_METRES[Math.min(Math.max(brushIndex.value + direction, 0), BRUSH_METRES.length - 1)]
+  const next =
+    BRUSH_METRES[Math.min(Math.max(brushIndex.value + direction, 0), BRUSH_METRES.length - 1)]
   if (next !== undefined) editor.brushMetres.value = next
 }
 
@@ -202,10 +225,12 @@ function repaint(indices: Int32Array | null) {
 }
 
 function onBegin(cell: { column: number; row: number }) {
+  if (!canEdit.value) return
   repaint(editor.begin(cell))
 }
 
 function onExtend(cell: { column: number; row: number }) {
+  if (!canEdit.value) return
   repaint(editor.extend(cell))
 }
 
@@ -234,6 +259,7 @@ function reset() {
 function onKeydown(event: KeyboardEvent) {
   const target = event.target as HTMLElement | null
   if (target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return
+  if (!canEdit.value) return
 
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') {
     event.preventDefault()
@@ -311,7 +337,7 @@ async function onSave() {
   const found = record.value
   const grid = editor.grid.value
   const yaml = yamlBytes.value
-  if (!found || !grid || !yaml) return
+  if (!found || !grid || !yaml || !canEdit.value) return
   if (!note.value.trim()) {
     saveError.value = 'Say what you changed. This becomes the version history.'
     return
@@ -380,12 +406,8 @@ watch(saveOpen, (open) => {
 </script>
 
 <template>
-  <div class="p-lg">
-    <EmptyState
-      v-if="loadError"
-      title="Cannot edit this map"
-      :description="loadError"
-    >
+  <div class="p-sm sm:p-base md:p-lg">
+    <EmptyState v-if="loadError" title="Cannot edit this map" :description="loadError">
       <template #action>
         <Button size="sm" variant="secondary" as-child>
           <RouterLink to="/maps">Back to maps</RouterLink>
@@ -395,17 +417,18 @@ watch(saveOpen, (open) => {
 
     <Card v-else>
       <PanelToolbar
-        :title="record ? `Edit ${record.name} v${record.version}` : 'Edit map'"
+        :title="
+          record ? `${canEdit ? 'Edit' : 'View'} ${record.name} v${record.version}` : 'Edit map'
+        "
         :subtitle="
-          editor.grid.value
-            ? `${editor.placement.value.resolution} m per cell`
-            : 'Loading…'
+          editor.grid.value ? `${editor.placement.value.resolution} m per cell` : 'Loading…'
         "
       >
         <template #icon><Brush :size="14" class="shrink-0 text-muted" /></template>
-        <template #actions>
+        <template v-if="!phoneNotice" #actions>
+          <!-- The count is in the save dialog as well; a phone needs the room. -->
           <span
-            class="font-data text-caption"
+            class="hidden font-data text-caption sm:inline"
             :class="editor.isDirty.value ? 'text-status-act' : 'text-muted-soft'"
           >
             {{ changedLabel }}
@@ -418,7 +441,7 @@ watch(saveOpen, (open) => {
               variant="ghost"
               size="icon-sm"
               title="Undo — Ctrl+Z"
-              :disabled="!editor.canUndo.value"
+              :disabled="!canEdit || !editor.canUndo.value"
               @click="undo"
             >
               <Undo2 :size="14" />
@@ -427,7 +450,7 @@ watch(saveOpen, (open) => {
               variant="ghost"
               size="icon-sm"
               title="Redo — Ctrl+Shift+Z"
-              :disabled="!editor.canRedo.value"
+              :disabled="!canEdit || !editor.canRedo.value"
               @click="redo"
             >
               <Redo2 :size="14" />
@@ -436,25 +459,46 @@ watch(saveOpen, (open) => {
               variant="ghost"
               size="icon-sm"
               title="Discard every change"
-              :disabled="!editor.isDirty.value"
+              :disabled="!canEdit || !editor.isDirty.value"
               @click="confirmReset = true"
             >
               <RotateCcw :size="13" />
             </Button>
           </div>
-          <Button size="sm" :disabled="!editor.isDirty.value" @click="saveOpen = true">
-            <Save :size="13" /> Save
-          </Button>
-          <Button variant="ghost" size="sm" @click="leave">
-            <ArrowLeft :size="14" /> Maps
+          <BlockedTip :reason="editBlocker">
+            <Button
+              size="sm"
+              :disabled="!canEdit || !editor.isDirty.value"
+              @click="saveOpen = true"
+            >
+              <Save :size="13" /> Save
+            </Button>
+          </BlockedTip>
+          <Button variant="ghost" size="sm" aria-label="Back to maps" @click="leave">
+            <ArrowLeft :size="14" /> <span class="hidden sm:inline">Maps</span>
           </Button>
         </template>
       </PanelToolbar>
 
-      <CardContent class="space-y-base">
-        <div v-if="loading" class="h-[min(68vh,40rem)] animate-pulse rounded-surface bg-hairline-soft" />
+      <LargerScreenNotice
+        v-if="phoneNotice"
+        class="py-xl"
+        description="Painting cells needs a precise pointer and room to see the walls around them. You can still look at the map here."
+        back-to="/maps"
+        back-label="Back to maps"
+        @continue="openAnyway = true"
+      />
+
+      <CardContent v-else class="space-y-base">
+        <div
+          v-if="loading"
+          class="h-[min(68vh,40rem)] animate-pulse rounded-surface bg-hairline-soft"
+        />
 
         <template v-else>
+          <p v-if="!canEdit" class="text-caption text-muted">
+            View only — editing maps needs the admin role.
+          </p>
           <!--
             A tool rail beside the canvas, not a row of controls above it.
             Five icons squeezed into a header read as less important than the
@@ -462,18 +506,24 @@ watch(saveOpen, (open) => {
             is the control an operator changes most.
           -->
           <div class="flex items-start gap-sm">
-            <div class="flex shrink-0 flex-col gap-xxs rounded-surface border border-hairline p-xxs">
+            <div
+              class="flex shrink-0 flex-col gap-xxs rounded-surface border border-hairline p-xxs"
+            >
               <button
                 v-for="item in TOOLS"
                 :key="item.value"
                 type="button"
-                :title="`${item.label} — ${item.hint}`"
+                :title="
+                  !canEdit && item.value !== 'pan' ? editBlocker : `${item.label} — ${item.hint}`
+                "
                 :aria-label="item.label"
-                :aria-pressed="editor.tool.value === item.value"
+                :aria-pressed="activeTool === item.value"
+                :disabled="!canEdit && item.value !== 'pan'"
                 :class="
                   cn(
                     'flex h-9 w-9 items-center justify-center rounded-control transition-colors',
-                    editor.tool.value === item.value
+                    'disabled:cursor-not-allowed disabled:opacity-40',
+                    activeTool === item.value
                       ? 'bg-primary text-on-primary'
                       : 'text-muted hover:bg-surface-strong hover:text-ink',
                   )
@@ -492,7 +542,7 @@ watch(saveOpen, (open) => {
               <div
                 class="flex min-h-[2.75rem] flex-wrap items-center gap-sm rounded-surface border border-hairline px-sm py-xxs"
               >
-                <template v-if="editor.usesMaterial.value">
+                <template v-if="canEdit && editor.usesMaterial.value">
                   <span class="text-label uppercase text-muted">Paint</span>
                   <div class="flex gap-xxs">
                     <button
@@ -520,7 +570,7 @@ watch(saveOpen, (open) => {
                   </div>
                 </template>
 
-                <template v-if="editor.usesBrushSize.value">
+                <template v-if="canEdit && editor.usesBrushSize.value">
                   <span class="h-5 w-px bg-hairline" />
                   <span class="text-label uppercase text-muted">Brush</span>
                   <!--
@@ -556,7 +606,7 @@ watch(saveOpen, (open) => {
                   </div>
                 </template>
 
-                <span v-if="editor.tool.value === 'pan'" class="text-body-sm text-muted">
+                <span v-if="activeTool === 'pan'" class="text-body-sm text-muted">
                   Drag to move the view. Nothing is painted with this tool.
                 </span>
 
@@ -565,35 +615,35 @@ watch(saveOpen, (open) => {
                 </span>
               </div>
 
-          <MapEditCanvas
-            ref="canvas"
-            :grid="editor.grid.value"
-            :placement="editor.placement.value"
-            :tool="editor.tool.value"
-            :brush-cells="editor.brushCells.value"
-            :drag-from="editor.dragFrom.value"
-            :drag-to="editor.dragTo.value"
-            :preview="editor.displayCells.value"
-            @begin="onBegin"
-            @extend="onExtend"
-            @end="onEnd"
-          />
+              <MapEditCanvas
+                ref="canvas"
+                :grid="editor.grid.value"
+                :placement="editor.placement.value"
+                :tool="activeTool"
+                :brush-cells="editor.brushCells.value"
+                :drag-from="editor.dragFrom.value"
+                :drag-to="editor.dragTo.value"
+                :preview="editor.displayCells.value"
+                @begin="onBegin"
+                @extend="onExtend"
+                @end="onEnd"
+              />
             </div>
           </div>
 
           <p class="text-caption text-muted">
-            Keys: <span class="font-ident">B</span> brush,
-            <span class="font-ident">L</span> line,
-            <span class="font-ident">R</span> block,
-            <span class="font-ident">F</span> fill,
-            <span class="font-ident">H</span> pan,
-            <span class="font-ident">[</span> <span class="font-ident">]</span> brush size,
-            <span class="font-ident">Esc</span> cancel a shape,
-            <span class="font-ident">Space</span> pan,
-            <span class="font-ident">\</span> hold to see the original,
-            <span class="font-ident">Ctrl+Z</span> undo.
-            Resolution, origin and size cannot be changed here — every station and
-            keepout coordinate is expressed against them.
+            <!-- Keyboard shortcuts mean nothing to a finger. -->
+            <span class="touch:hidden">
+              Keys: <span class="font-ident">B</span> brush, <span class="font-ident">L</span> line,
+              <span class="font-ident">R</span> block, <span class="font-ident">F</span> fill,
+              <span class="font-ident">H</span> pan, <span class="font-ident">[</span>
+              <span class="font-ident">]</span> brush size,
+              <span class="font-ident">Esc</span> cancel a shape,
+              <span class="font-ident">Space</span> pan, <span class="font-ident">\</span> hold to
+              see the original, <span class="font-ident">Ctrl+Z</span> undo.
+            </span>
+            Resolution, origin and size cannot be changed here — every station and keepout
+            coordinate is expressed against them.
           </p>
         </template>
       </CardContent>
@@ -634,7 +684,9 @@ watch(saveOpen, (open) => {
             />
             <span class="min-w-0">
               <span class="block text-body-sm text-ink">
-                {{ option.value === 'overwrite' ? `Replace v${record?.version ?? ''}` : option.label }}
+                {{
+                  option.value === 'overwrite' ? `Replace v${record?.version ?? ''}` : option.label
+                }}
               </span>
               <span class="block text-caption leading-relaxed text-muted">
                 {{ option.description }}
@@ -654,8 +706,8 @@ watch(saveOpen, (open) => {
             <span>
               <span class="font-medium">{{ robotsOnThisVersion.join(', ') }}</span>
               {{ robotsOnThisVersion.length === 1 ? 'is' : 'are' }} assigned to this version and
-              will reload the new contents within ten seconds. There is nothing to put them back
-              on if this is wrong.
+              will reload the new contents within ten seconds. There is nothing to put them back on
+              if this is wrong.
             </span>
           </p>
         </div>

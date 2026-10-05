@@ -33,7 +33,7 @@ defineEmits<{ 'update:modelValue': [value: string] }>()
     :aria-invalid="props.invalid || undefined"
     :class="
       cn(
-        'h-control w-full rounded-control border bg-canvas px-sm text-body-md text-ink',
+        'h-control w-full rounded-control border bg-canvas px-sm text-body-md text-ink touch:h-[44px]',
         'transition-colors duration-150 ease-out placeholder:text-muted-soft',
         'focus:outline-none focus:ring-0',
         props.mono ? 'font-ident' : 'font-sans',

@@ -14,14 +14,14 @@
  * its agent next syncs, and the panel says so.
  */
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { PanelRightClose, PanelRightOpen, Pencil, Shapes, Trash2 } from 'lucide-vue-next'
+import { PanelRightClose, PanelRightOpen, Plus, Shapes, X } from 'lucide-vue-next'
 import { toast } from 'vue-sonner'
 import { useMapStore } from '@/stores/maps'
 import { useZoneStore } from '@/stores/zones'
+import { useUiStore } from '@/stores/ui'
 import { mapsApi } from '@/shared/api/maps'
 import { decodePgm, type Grid } from '@/domain/map/pgm'
 import {
-  polygonArea,
   SPEED_MAX,
   SPEED_MIN,
   SPEED_STEP,
@@ -30,20 +30,35 @@ import {
   type ZoneKind,
   type ZonePoint,
 } from '@/domain/types'
-import { avoidLevel, ZONE_KIND_LIST, ZONE_KIND_STYLE, zoneSetting } from '../zoneKind'
+import { avoidLevel, ZONE_KIND_LIST, ZONE_KIND_STYLE } from '../zoneKind'
 import ZoneMapCanvas from '../components/ZoneMapCanvas.vue'
+import ZoneListItem from '../components/ZoneListItem.vue'
 import { Button } from '@/shared/ui/button'
 import { Input } from '@/shared/ui/input'
 import { FormField } from '@/shared/ui/label'
 import { Select } from '@/shared/ui/select'
 import { Dialog } from '@/shared/ui/dialog'
-import { RowActions, RowActionItem, RowActionSeparator } from '@/shared/ui/menu'
 import EmptyState from '@/shared/components/EmptyState.vue'
 import ConfirmDialog from '@/shared/components/ConfirmDialog.vue'
+import MapListToggle, { type MapListView } from '@/shared/components/MapListToggle.vue'
+import { usePermission } from '@/shared/composables/usePermission'
+import { useScreenBlocker } from '@/shared/composables/useScreenBlocker'
 import { cn } from '@/shared/lib/utils'
 
 const maps = useMapStore()
 const zones = useZoneStore()
+const { canEdit, editBlocker } = usePermission()
+const ui = useUiStore()
+
+/**
+ * A phone gets the map full width and the list as the other half of a
+ * Map/List switch. Drawing and reshaping stay on bigger screens: a fingertip
+ * covers several cells, so corners dropped by thumb land roughly — and a
+ * keep-out a few cells off blocks an aisle or misses the hazard.
+ */
+const phone = computed(() => ui.screen === 'phone')
+const view = ref<MapListView>('map')
+const { tooSmall: drawTooSmall, reason: drawReason } = useScreenBlocker('Drawing zones')
 
 const selectedMapId = ref<string | null>(null)
 const grid = ref<Grid | null>(null)
@@ -106,6 +121,7 @@ onMounted(async () => {
 // ── Drawing ──────────────────────────────────────────────────────────────────
 
 function startDrawing(kind: ZoneKind) {
+  if (!canEdit.value || drawTooSmall.value) return
   drawingKind.value = kind
   drawing.value = []
   selectedId.value = null
@@ -115,7 +131,9 @@ function cancelDrawing() {
   drawing.value = null
 }
 
+/** Guarded here too: the corners come from clicks on the map, not a button. */
 function addPoint(point: ZonePoint) {
+  if (!canEdit.value) return
   drawing.value = [...(drawing.value ?? []), point]
 }
 
@@ -127,7 +145,7 @@ function undoPoint() {
 /** The ring is closed; now it needs a name and its settings. */
 function closeDrawing() {
   const polygon = drawing.value
-  if (!polygon || polygon.length < ZONE_MIN_POINTS) return
+  if (!polygon || polygon.length < ZONE_MIN_POINTS || !canEdit.value) return
   form.value = {
     open: true,
     editing: null,
@@ -155,6 +173,7 @@ let reshapeWrite: ReturnType<typeof setTimeout> | null = null
 const reshaped = ref<Map<string, ZonePoint[]>>(new Map())
 
 function movePoint(payload: { id: string; index: number; point: ZonePoint }) {
+  if (!canEdit.value) return
   const current = reshaped.value.get(payload.id) ?? zones.byId(payload.id)?.polygon
   if (!current) return
   const next = [...current]
@@ -211,6 +230,7 @@ const saving = ref(false)
 const formError = ref<string | null>(null)
 
 function openEdit(zone: Zone) {
+  if (!canEdit.value) return
   form.value = {
     open: true,
     editing: zone,
@@ -253,7 +273,7 @@ const legendKinds = computed(() =>
 )
 
 async function onSubmit() {
-  if (nameProblem.value || !selectedMapId.value) return
+  if (nameProblem.value || !selectedMapId.value || !canEdit.value) return
   saving.value = true
   formError.value = null
   try {
@@ -292,7 +312,7 @@ async function onSubmit() {
 const togglingId = ref<string | null>(null)
 
 async function toggleEnabled(zone: Zone) {
-  if (togglingId.value) return
+  if (togglingId.value || !canEdit.value) return
   togglingId.value = zone.id
   try {
     const updated = await zones.update(zone.id, { enabled: !zone.enabled })
@@ -309,7 +329,7 @@ const removing = ref(false)
 
 async function confirmRemoval() {
   const zone = pendingRemoval.value
-  if (!zone) return
+  if (!zone || !canEdit.value) return
   removing.value = true
   try {
     await zones.remove(zone.id)
@@ -360,9 +380,19 @@ watch(
   },
 )
 
-function areaLabel(zone: Zone): string {
-  return `${polygonArea(zone.polygon).toFixed(1)} m²`
+const selectedZone = computed(
+  () => shownZones.value.find((zone) => zone.id === selectedId.value) ?? null,
+)
+
+/** From the phone list: show the zone where it is. */
+function showOnMap(id: string) {
+  selectedId.value = id
+  view.value = 'map'
 }
+
+watch(phone, (small) => {
+  if (small) cancelDrawing()
+})
 </script>
 
 <template>
@@ -370,52 +400,72 @@ function areaLabel(zone: Zone): string {
     <div
       class="flex shrink-0 flex-wrap items-center gap-xs border-b border-hairline bg-surface px-base py-xs"
     >
-      <Shapes :size="14" class="shrink-0 text-muted" />
+      <Shapes v-if="!phone" :size="14" class="shrink-0 text-muted" />
       <Select
         v-if="mapOptions.length"
         label="Map"
         :model-value="selectedMapId"
         :options="mapOptions"
-        class="min-w-[12rem]"
+        :class="phone ? 'min-w-0 flex-1' : 'min-w-[10rem] lg:min-w-[12rem]'"
         @update:model-value="selectMap"
       />
 
-      <!--
-        One button per kind rather than "Add zone" then a picker: the kind
-        decides the colour of the outline being drawn, so it has to be chosen
-        before the first corner, not after the last one.
-      -->
-      <!-- "Draw" makes these read as actions; on their own they looked like the legend. -->
-      <div class="flex flex-wrap items-center gap-xxs">
-        <span class="mr-xxs text-caption text-muted">Draw</span>
-        <button
-          v-for="kind in ZONE_KIND_LIST"
-          :key="kind.value"
-          type="button"
-          :title="kind.unavailable ?? `Draw a ${kind.label.toLowerCase()} zone — ${kind.hint} (${kind.filter})`"
-          :disabled="!grid || Boolean(kind.unavailable)"
-          :class="
-            cn(
-              'flex h-control-sm items-center gap-xs rounded-control border px-sm text-body-sm transition-colors disabled:cursor-not-allowed disabled:opacity-50',
-              drawing !== null && drawingKind === kind.value
-                ? 'border-primary bg-primary/10 text-ink'
-                : 'border-hairline text-body hover:border-primary',
-            )
-          "
-          @click="startDrawing(kind.value)"
-        >
-          <span class="h-3 w-3 rounded-[3px]" :style="{ backgroundColor: kind.colour }" />
-          {{ kind.label }}
-        </button>
-      </div>
+      <MapListToggle v-if="phone" v-model="view" :count="zones.count" class="shrink-0" />
 
-      <template v-if="drawing !== null">
-        <Button size="sm" variant="ghost" :disabled="!drawing.length" @click="undoPoint">
-          Undo corner
-        </Button>
-        <Button size="sm" variant="ghost" @click="cancelDrawing">Cancel</Button>
+      <template v-else>
+        <!--
+          One button per kind rather than "Add zone" then a picker: the kind
+          decides the colour of the outline being drawn, so it has to be chosen
+          before the first corner, not after the last one.
+        -->
+        <!-- "Draw" makes these read as actions; on their own they looked like the legend. -->
+        <div class="flex flex-wrap items-center gap-xxs">
+          <span class="mr-xxs text-caption text-muted">Draw</span>
+          <!-- A kind that cannot be drawn yet is left to the desktop: on a
+               tablet its disabled button costs a toolbar row. -->
+          <button
+            v-for="kind in ZONE_KIND_LIST"
+            :key="kind.value"
+            type="button"
+            :title="
+              kind.unavailable ??
+              (editBlocker || `Draw a ${kind.label.toLowerCase()} zone — ${kind.hint} (${kind.filter})`)
+            "
+            :disabled="!canEdit || !grid || Boolean(kind.unavailable)"
+            :class="
+              cn(
+                'flex h-control-sm items-center gap-xs rounded-control border px-sm text-body-sm transition-colors disabled:cursor-not-allowed disabled:opacity-50',
+                drawing !== null && drawingKind === kind.value
+                  ? 'border-primary bg-primary/10 text-ink'
+                  : 'border-hairline text-body hover:border-primary',
+                kind.unavailable && 'hidden lg:flex',
+              )
+            "
+            @click="startDrawing(kind.value)"
+          >
+            <span class="h-3 w-3 rounded-[3px]" :style="{ backgroundColor: kind.colour }" />
+            {{ kind.label }}
+          </button>
+        </div>
+
+        <template v-if="drawing !== null">
+          <Button size="sm" variant="ghost" :disabled="!drawing.length" @click="undoPoint">
+            Undo corner
+          </Button>
+          <!-- Touch only: a finger has no Enter key and no dependable double
+               tap, while a mouse keeps the toolbar it already had. -->
+          <Button
+            size="sm"
+            variant="outline"
+            class="hidden touch:inline-flex"
+            :disabled="drawing.length < ZONE_MIN_POINTS"
+            @click="closeDrawing"
+          >
+            Finish
+          </Button>
+          <Button size="sm" variant="ghost" @click="cancelDrawing">Cancel</Button>
+        </template>
       </template>
-
     </div>
 
     <div class="flex min-h-0 flex-1">
@@ -442,6 +492,8 @@ function areaLabel(zone: Zone): string {
           :selected-id="selectedId"
           :drawing="drawing"
           :drawing-kind="drawingKind"
+          :editable="canEdit && !phone"
+          :hide-legend="phone && selectedZone !== null"
           @select="selectedId = $event"
           @add-point="addPoint"
           @close-drawing="closeDrawing"
@@ -454,9 +506,69 @@ function areaLabel(zone: Zone): string {
             </span>
           </template>
         </ZoneMapCanvas>
+
+        <!--
+          Phone, map view: the tapped zone as a card over the bottom of the
+          map, with its switch, so turning it off for a shift needs no list.
+        -->
+        <div
+          v-if="phone && view === 'map' && selectedZone"
+          class="absolute inset-x-sm bottom-sm z-10 flex items-start gap-xxs rounded-surface border border-hairline bg-surface p-xxs shadow-soft"
+        >
+          <ZoneListItem
+            class="min-w-0 flex-1"
+            :zone="selectedZone"
+            detail
+            :toggling="togglingId === selectedZone.id"
+            @toggle="toggleEnabled(selectedZone)"
+            @edit="openEdit(selectedZone)"
+            @remove="pendingRemoval = selectedZone"
+          />
+          <Button variant="ghost" size="icon-sm" aria-label="Close" @click="selectedId = null">
+            <X :size="15" />
+          </Button>
+        </div>
+
+        <!--
+          Phone, list view: over the map rather than instead of it, so the map
+          keeps its zoom and pan for the trip back.
+        -->
+        <div
+          v-if="phone && view === 'list'"
+          class="absolute inset-0 z-10 overflow-y-auto bg-surface"
+        >
+          <div class="flex flex-wrap items-center gap-x-sm gap-y-xxs border-b border-hairline p-sm">
+            <Button size="sm" variant="outline" disabled>
+              <Plus :size="13" />
+              Draw a zone
+            </Button>
+            <!-- Said in words: a phone has no hover to show a tooltip. -->
+            <p class="text-caption text-muted">{{ editBlocker || drawReason }}</p>
+          </div>
+
+          <EmptyState
+            v-if="!zones.count"
+            title="No zones on this map"
+            description="Zones are drawn on a tablet or laptop."
+          />
+          <ul v-else class="space-y-xxs p-xs">
+            <li v-for="zone in shownZones" :key="zone.id">
+              <ZoneListItem
+                :zone="zone"
+                :selected="selectedId === zone.id"
+                :toggling="togglingId === zone.id"
+                @select="showOnMap(zone.id)"
+                @toggle="toggleEnabled(zone)"
+                @edit="openEdit(zone)"
+                @remove="pendingRemoval = zone"
+              />
+            </li>
+          </ul>
+        </div>
       </div>
 
       <aside
+        v-if="!phone"
         class="flex shrink-0 flex-col border-l border-hairline bg-surface transition-[width] duration-150"
         :class="panelOpen ? 'w-[18rem]' : 'w-[3rem]'"
       >
@@ -482,80 +594,18 @@ function areaLabel(zone: Zone): string {
           />
 
           <div v-else class="space-y-xxs">
-            <div
+            <ZoneListItem
               v-for="zone in zones.zones"
               :key="zone.id"
-              :class="
-                cn(
-                  'flex items-start gap-xs rounded-control border p-xs transition-colors',
-                  selectedId === zone.id
-                    ? 'border-primary bg-primary/[0.06]'
-                    : 'border-transparent hover:border-hairline',
-                  !zone.enabled && 'opacity-60',
-                )
-              "
-            >
-              <button
-                type="button"
-                class="flex min-w-0 flex-1 items-start gap-xs text-left"
-                @click="selectedId = zone.id"
-              >
-                <span
-                  class="mt-px flex h-6 w-6 shrink-0 items-center justify-center rounded-control text-white"
-                  :style="{ backgroundColor: ZONE_KIND_STYLE[zone.kind].colour }"
-                >
-                  <component :is="ZONE_KIND_STYLE[zone.kind].icon" :size="13" />
-                </span>
-                <span class="min-w-0 flex-1">
-                  <span class="block truncate text-body-sm text-ink">{{ zone.name }}</span>
-                  <span class="block font-data text-caption text-muted">
-                    {{ ZONE_KIND_STYLE[zone.kind].label
-                    }}<template v-if="zoneSetting(zone)"> · {{ zoneSetting(zone) }}</template>
-                    · {{ areaLabel(zone) }}
-                  </span>
-                  <!-- A zone that exists but is switched off is not the same as
-                       one that is not there, and the list has to say which. -->
-                  <span v-if="!zone.enabled" class="block text-caption text-status-warn">
-                    Switched off — robots ignore it
-                  </span>
-                  <span
-                    v-else-if="selectedId === zone.id && zone.note"
-                    class="mt-xxs block text-caption text-muted-soft"
-                  >
-                    {{ zone.note }}
-                  </span>
-                </span>
-              </button>
-
-              <!--
-                On/off in the row, not the menu: switching a zone off for a
-                shift and back on is the most common thing done to one.
-              -->
-              <button
-                type="button"
-                role="switch"
-                :aria-checked="zone.enabled"
-                :aria-label="`${zone.name} active`"
-                :title="zone.enabled ? `Switch ${zone.name} off` : `Switch ${zone.name} on`"
-                :disabled="togglingId === zone.id"
-                class="mt-[3px] flex h-5 w-9 shrink-0 items-center rounded-full p-[2px] transition-colors disabled:opacity-50"
-                :class="zone.enabled ? 'bg-primary' : 'bg-hairline'"
-                @click="toggleEnabled(zone)"
-              >
-                <span
-                  class="h-4 w-4 rounded-full bg-white shadow-soft transition-transform"
-                  :class="zone.enabled ? 'translate-x-4' : 'translate-x-0'"
-                />
-              </button>
-
-              <RowActions :label="`More actions for ${zone.name}`">
-                <RowActionItem :icon="Pencil" @select="openEdit(zone)">Edit</RowActionItem>
-                <RowActionSeparator class="my-xxs h-px bg-hairline" />
-                <RowActionItem :icon="Trash2" destructive @select="pendingRemoval = zone">
-                  Remove
-                </RowActionItem>
-              </RowActions>
-            </div>
+              :zone="zone"
+              :selected="selectedId === zone.id"
+              :detail="selectedId === zone.id"
+              :toggling="togglingId === zone.id"
+              @select="selectedId = zone.id"
+              @toggle="toggleEnabled(zone)"
+              @edit="openEdit(zone)"
+              @remove="pendingRemoval = zone"
+            />
           </div>
         </div>
       </aside>
@@ -634,7 +684,7 @@ function areaLabel(zone: Zone): string {
         </FormField>
 
         <label class="flex items-center gap-xs text-body-sm text-body">
-          <input v-model="form.enabled" type="checkbox" class="accent-[rgb(var(--color-primary))]" />
+          <input v-model="form.enabled" type="checkbox" class="accent-[rgb(var(--primary))]" />
           Active — robots obey it
         </label>
       </form>

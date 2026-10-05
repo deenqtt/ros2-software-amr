@@ -13,13 +13,16 @@
 import {
   Bell,
   Bot,
+  History,
   LayoutDashboard,
   Map as MapIcon,
   MapPin,
   Route,
   Shapes,
+  Users,
   type LucideIcon,
 } from 'lucide-vue-next'
+import type { Role } from '@/domain/auth'
 
 export interface NavItem {
   to: string
@@ -27,6 +30,8 @@ export interface NavItem {
   icon: LucideIcon
   /** Rendered as a count pill on the rail and in the bell. */
   badgeKey?: 'alarms'
+  /** Hidden from anyone below this role, rather than shown and refused. */
+  role?: Role
 }
 
 export interface NavGroup {
@@ -50,4 +55,21 @@ export const NAV_GROUPS: NavGroup[] = [
     id: 'alerts',
     items: [{ to: '/alarm', label: 'Alarm', icon: Bell, badgeKey: 'alarms' }],
   },
+  {
+    // Super admin only. Hidden, not disabled: these are not part of anyone
+    // else's job, and a rail of greyed-out entries is noise on every screen.
+    id: 'admin',
+    items: [
+      { to: '/users', label: 'Users', icon: Users, role: 'super_admin' },
+      { to: '/activity', label: 'Activity', icon: History, role: 'super_admin' },
+    ],
+  },
 ]
+
+/** The groups this role sees, with empty groups dropped. */
+export function navGroupsFor(can: (role: Role) => boolean): NavGroup[] {
+  return NAV_GROUPS.map((group) => ({
+    ...group,
+    items: group.items.filter((item) => !item.role || can(item.role)),
+  })).filter((group) => group.items.length > 0)
+}

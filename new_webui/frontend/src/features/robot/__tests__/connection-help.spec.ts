@@ -6,7 +6,11 @@ describe('connectionHelp', () => {
     const help = connectionHelp('offline', 'ws://10.0.0.5:9090', 3)
     expect(help.title).toContain('attempt 3')
     expect(help.detail).toContain('ws://10.0.0.5:9090')
-    expect(help.detail).toContain('rosbridge')
+    expect(help.checks).toEqual([
+      'The robot is powered on',
+      'rosbridge is running on port 9090',
+      "This device is on the robot's network",
+    ])
     expect(help.tone).toBe('fault')
   })
 

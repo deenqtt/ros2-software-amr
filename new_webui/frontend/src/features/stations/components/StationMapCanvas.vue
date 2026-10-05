@@ -36,6 +36,8 @@ const props = defineProps<{
   route?: string[]
   /** False where stations are picked rather than placed: a click must not nudge one. */
   movable?: boolean
+  /** Hides the legend and readout, for while a card covers the bottom of the map. */
+  hideLegend?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -620,10 +622,13 @@ defineExpose({ resetView })
     the map *is* the page, space around it reads as canvas — which is why every
     map tool letterboxes and nobody minds. Filling also means the map grows with
     the window instead of being capped by a number someone has to keep tuning.
+
+    touch-none: otherwise the browser claims a finger drag as a scroll and
+    cancels the pointer, so a pan or a marker drag stops after a few pixels.
   -->
   <div
     ref="wrapper"
-    class="relative h-full w-full select-none overflow-hidden bg-[#e9ebee]"
+    class="relative h-full w-full touch-none select-none overflow-hidden bg-[#e9ebee]"
     :class="
       props.placing
         ? 'cursor-crosshair'
@@ -646,9 +651,10 @@ defineExpose({ resetView })
 
     <div
       v-if="props.placing"
-      class="pointer-events-none absolute left-1/2 top-sm -translate-x-1/2 rounded-chip bg-primary px-sm py-xxs text-caption text-on-primary shadow-soft"
+      class="pointer-events-none absolute left-1/2 top-sm max-w-[calc(100%-1rem)] -translate-x-1/2 rounded-chip bg-primary px-sm py-xxs text-center text-caption text-on-primary shadow-soft"
     >
-      Click where the station goes, drag to aim it · Esc to cancel
+      Tap or click where the station goes, drag to aim it<span class="hidden lg:inline">
+        · Esc to cancel</span>
     </div>
 
     <div class="absolute right-sm top-sm flex flex-col gap-xxs">
@@ -673,7 +679,8 @@ defineExpose({ resetView })
       on every screen in order to show a number that is read occasionally.
     -->
     <div
-      class="pointer-events-none absolute bottom-sm left-sm flex items-center gap-base rounded-control bg-surface/85 px-sm py-xxs text-caption text-muted backdrop-blur-[2px]"
+      v-if="!props.hideLegend"
+      class="pointer-events-none absolute bottom-sm left-sm flex max-w-[calc(100%-1rem)] flex-wrap items-center gap-x-base gap-y-xxs rounded-control bg-surface/85 px-sm py-xxs text-caption text-muted backdrop-blur-[2px]"
     >
       <slot name="legend" />
       <span v-if="hoverWorld" class="font-data text-ink">

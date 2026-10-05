@@ -409,9 +409,7 @@ watch(
 )
 watch([() => props.pose, () => props.scan], paintOverlay)
 
-const zoomLabel = computed(() =>
-  metresToPx.value ? `${Math.round(metresToPx.value)} px/m` : '',
-)
+const zoomLabel = computed(() => (metresToPx.value ? `${Math.round(metresToPx.value)} px/m` : ''))
 </script>
 
 <template>
@@ -458,7 +456,7 @@ const zoomLabel = computed(() =>
         type="button"
         :title="control.label"
         :aria-label="control.label"
-        class="flex h-7 w-7 items-center justify-center rounded-control border border-hairline bg-surface/90 text-muted backdrop-blur-[2px] transition-colors hover:border-primary hover:text-primary"
+        class="flex h-7 w-7 items-center justify-center rounded-control border border-hairline bg-surface/90 text-muted backdrop-blur-[2px] transition-colors hover:border-primary hover:text-primary touch:h-11 touch:w-11"
         @pointerdown.stop
         @click="control.run()"
       >
@@ -470,19 +468,21 @@ const zoomLabel = computed(() =>
       v-if="props.grid"
       class="pointer-events-none absolute bottom-sm left-sm flex flex-wrap items-center gap-sm rounded-chip bg-surface/85 px-sm py-xxs text-caption text-muted backdrop-blur-[2px]"
     >
+      <!-- On a phone only the overlays: free, occupied and unknown read off the
+           map itself, and the full legend wrapped over it. -->
       <span class="flex items-center gap-xxs">
         <span class="h-2 w-3 rounded-[1px] bg-[rgb(0,82,255)]" /> robot
       </span>
       <span class="flex items-center gap-xxs">
         <span class="h-2 w-2 rounded-[1px] bg-[rgb(207,32,47)]" /> laser
       </span>
-      <span class="flex items-center gap-xxs">
+      <span class="hidden items-center gap-xxs md:flex">
         <span class="h-2 w-2 rounded-[1px] border border-hairline bg-[#f6f7f8]" /> free
       </span>
-      <span class="flex items-center gap-xxs">
+      <span class="hidden items-center gap-xxs md:flex">
         <span class="h-2 w-2 rounded-[1px] bg-[#1a1a1a]" /> occupied
       </span>
-      <span class="flex items-center gap-xxs">
+      <span class="hidden items-center gap-xxs md:flex">
         <span class="h-2 w-2 rounded-[1px] bg-[rgb(128,132,140)]" /> unknown
       </span>
       <span v-if="zoomLabel" class="font-data">{{ zoomLabel }}</span>

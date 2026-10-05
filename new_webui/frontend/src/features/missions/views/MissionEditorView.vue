@@ -17,7 +17,6 @@ import {
   ArrowLeft,
   ArrowUp,
   ListOrdered,
-  MousePointerClick,
   Plus,
   Save,
   Trash2,
@@ -26,6 +25,7 @@ import { toast } from 'vue-sonner'
 import { useMapStore } from '@/stores/maps'
 import { useStationStore } from '@/stores/stations'
 import { useMissionStore } from '@/stores/missions'
+import { useUiStore } from '@/stores/ui'
 import { missionsApi } from '@/shared/api/missions'
 import { mapsApi } from '@/shared/api/maps'
 import { decodePgm, type Grid } from '@/domain/map/pgm'
@@ -39,8 +39,8 @@ import {
   type StepTask,
   type StationType,
 } from '@/domain/types'
-import { STATION_TYPE_LIST, STATION_TYPE_STYLE } from '@/features/stations/stationType'
-import StationMapCanvas from '@/features/stations/components/StationMapCanvas.vue'
+import { STATION_TYPE_STYLE } from '@/features/stations/stationType'
+import MissionRouteMap from '../components/MissionRouteMap.vue'
 import { Skeleton } from '@/shared/ui/skeleton'
 import { Button } from '@/shared/ui/button'
 import { Card, CardContent } from '@/shared/ui/card'
@@ -50,6 +50,9 @@ import { Select } from '@/shared/ui/select'
 import PanelToolbar from '@/shared/components/PanelToolbar.vue'
 import EmptyState from '@/shared/components/EmptyState.vue'
 import ConfirmDialog from '@/shared/components/ConfirmDialog.vue'
+import BlockedTip from '@/shared/components/BlockedTip.vue'
+import CollapsibleSection from '@/shared/components/CollapsibleSection.vue'
+import { usePermission } from '@/shared/composables/usePermission'
 import { cn } from '@/shared/lib/utils'
 
 const route = useRoute()
@@ -57,6 +60,9 @@ const router = useRouter()
 const maps = useMapStore()
 const stations = useStationStore()
 const missions = useMissionStore()
+const ui = useUiStore()
+// Without the admin role the page is a read-only view of the route.
+const { canEdit, editBlocker } = usePermission()
 
 const missionId = computed(() => String(route.params.missionId ?? ''))
 
@@ -88,6 +94,24 @@ function snapshot(): string {
 }
 
 const isDirty = computed(() => snapshot() !== baseline.value)
+
+/** One rule for both Save buttons, the toolbar's and the phone's sticky one. */
+const saveDisabled = computed(
+  () =>
+    !canEdit.value ||
+    !isDirty.value ||
+    Boolean(nameProblem.value) ||
+    brokenSteps.value.length > 0 ||
+    saving.value,
+)
+
+/**
+ * On a phone the toolbar Save scrolls away with the steps it saves; a bar at
+ * the bottom keeps it in reach while there is something to save.
+ */
+const showSaveBar = computed(
+  () => ui.screen === 'phone' && canEdit.value && (isDirty.value || saving.value),
+)
 
 const stationOptions = computed(() =>
   stations.stations.map((station) => ({
@@ -212,6 +236,10 @@ function addStep() {
 /** A click on the map adds that station as the next stop. */
 function onMapSelect(stationId: string | null) {
   if (!stationId) return
+  if (!canEdit.value) {
+    focusedStationId.value = stationId
+    return
+  }
   appendStep(stationId)
   focusedStationId.value = stationId
   toast.success(`Step ${steps.value.length}: ${stationName(stationId)}`, { duration: 1500 })
@@ -262,7 +290,7 @@ const confirmOptions: { value: StepConfirm; label: string }[] = STEP_CONFIRMS.ma
 }))
 
 async function save() {
-  if (nameProblem.value || brokenSteps.value.length) return
+  if (!canEdit.value || nameProblem.value || brokenSteps.value.length) return
   saving.value = true
   saveError.value = null
   try {
@@ -306,7 +334,7 @@ watch(
 </script>
 
 <template>
-  <div class="p-lg">
+  <div class="p-sm sm:p-base md:p-lg">
     <EmptyState v-if="loadError" title="Cannot edit this mission" :description="loadError">
       <template #action>
         <Button size="sm" variant="secondary" as-child>
@@ -317,26 +345,24 @@ watch(
 
     <Card v-else>
       <PanelToolbar
-        :title="mission ? `Edit ${mission.name}` : 'Edit mission'"
+        :title="mission ? `${canEdit ? 'Edit' : 'View'} ${mission.name}` : 'Edit mission'"
         :subtitle="`${steps.length} step${steps.length === 1 ? '' : 's'}`"
       >
         <template #icon><ListOrdered :size="14" class="shrink-0 text-muted" /></template>
         <template #actions>
           <span
-            class="font-data text-caption"
+            class="hidden font-data text-caption sm:inline"
             :class="isDirty ? 'text-status-act' : 'text-muted-soft'"
           >
             {{ isDirty ? 'Unsaved changes' : 'Saved' }}
           </span>
-          <Button
-            size="sm"
-            :disabled="!isDirty || Boolean(nameProblem) || brokenSteps.length > 0 || saving"
-            @click="save"
-          >
-            <Save :size="13" /> {{ saving ? 'Saving…' : 'Save' }}
-          </Button>
-          <Button variant="ghost" size="sm" @click="leave">
-            <ArrowLeft :size="14" /> Missions
+          <BlockedTip :reason="editBlocker">
+            <Button size="sm" :disabled="saveDisabled" @click="save">
+              <Save :size="13" /> {{ saving ? 'Saving…' : 'Save' }}
+            </Button>
+          </BlockedTip>
+          <Button variant="ghost" size="sm" aria-label="Back to missions" @click="leave">
+            <ArrowLeft :size="14" /> <span class="hidden sm:inline">Missions</span>
           </Button>
         </template>
       </PanelToolbar>
@@ -369,15 +395,23 @@ watch(
 
         <div v-else class="grid items-start gap-base xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
           <div class="min-w-0 space-y-base">
+            <p v-if="!canEdit" class="text-caption text-muted">
+              View only — editing missions needs the admin role.
+            </p>
             <div class="grid gap-base md:grid-cols-2">
               <FormField label="Name" required :error="saveError ?? nameProblem ?? undefined">
                 <template #default="{ id, invalid }">
-                  <Input :id="id" v-model="name" :invalid="invalid" />
+                  <Input :id="id" v-model="name" :invalid="invalid" :disabled="!canEdit" />
                 </template>
               </FormField>
               <FormField label="Note" hint="What this route is for.">
                 <template #default="{ id }">
-                  <Input :id="id" v-model="note" placeholder="Morning shuttle from the dock" />
+                  <Input
+                    :id="id"
+                    v-model="note"
+                    placeholder="Morning shuttle from the dock"
+                    :disabled="!canEdit"
+                  />
                 </template>
               </FormField>
             </div>
@@ -392,7 +426,7 @@ watch(
                   size="sm"
                   variant="outline"
                   class="ml-auto"
-                  :disabled="!stations.count"
+                  :disabled="!canEdit || !stations.count"
                   @click="addStep"
                 >
                   <Plus :size="13" /> Add step
@@ -414,14 +448,14 @@ watch(
               <EmptyState
                 v-else-if="!steps.length"
                 title="No steps yet"
-                description="Click a station on the map, or use Add step."
+                :description="canEdit ? 'Click a station on the map, or use Add step.' : undefined"
               />
 
               <div
                 v-for="(step, index) in steps"
                 v-else
                 :key="step.key"
-                class="flex items-start gap-sm rounded-control border p-sm transition-colors"
+                class="flex flex-wrap items-start gap-sm rounded-control border p-sm transition-colors md:flex-nowrap"
                 :class="
                   stations.byId(step.stationId) === null
                     ? 'border-status-fault/50 bg-status-fault/[0.04]'
@@ -454,15 +488,19 @@ watch(
                     :model-value="step.stationId"
                     :options="stationOptions"
                     class="col-span-2 w-full"
+                    :disabled="!canEdit"
                     @update:model-value="patch(step.key, { stationId: $event })"
                   />
-                  <span class="mt-xxs text-caption text-muted" aria-hidden="true">At the station</span>
+                  <span class="mt-xxs text-caption text-muted" aria-hidden="true"
+                    >At the station</span
+                  >
                   <span class="mt-xxs text-caption text-muted" aria-hidden="true">Then</span>
                   <Select
                     label="At the station"
                     :model-value="step.task"
                     :options="taskOptions"
                     class="w-full"
+                    :disabled="!canEdit"
                     @update:model-value="patch(step.key, { task: $event as StepTask })"
                   />
                   <Select
@@ -470,6 +508,7 @@ watch(
                     :model-value="step.confirm"
                     :options="confirmOptions"
                     class="w-full"
+                    :disabled="!canEdit"
                     @update:model-value="patch(step.key, { confirm: $event as StepConfirm })"
                   />
                   <p
@@ -480,12 +519,16 @@ watch(
                   </p>
                 </div>
 
-                <div class="mt-[2px] flex shrink-0">
+                <!-- Under the selects on a phone, where a side column would
+                     leave them too narrow to read. -->
+                <div
+                  class="flex w-full shrink-0 justify-end border-t border-hairline pt-xs md:mt-[2px] md:w-auto md:justify-start md:border-0 md:pt-0"
+                >
                   <Button
                     variant="ghost"
                     size="icon-sm"
                     title="Move up"
-                    :disabled="index === 0"
+                    :disabled="!canEdit || index === 0"
                     @click="move(index, -1)"
                   >
                     <ArrowUp :size="13" />
@@ -494,7 +537,7 @@ watch(
                     variant="ghost"
                     size="icon-sm"
                     title="Move down"
-                    :disabled="index === steps.length - 1"
+                    :disabled="!canEdit || index === steps.length - 1"
                     @click="move(index, 1)"
                   >
                     <ArrowDown :size="13" />
@@ -504,6 +547,7 @@ watch(
                     size="icon-sm"
                     title="Remove this step"
                     class="hover:text-status-fault"
+                    :disabled="!canEdit"
                     @click="removeStep(step.key)"
                   >
                     <Trash2 :size="13" />
@@ -523,47 +567,62 @@ watch(
                 every lap, if this route is ever set to loop.
               </p>
             </div>
+
+            <div
+              v-if="showSaveBar"
+              class="sticky bottom-0 -mx-base flex items-center gap-sm border-t border-hairline bg-surface px-base py-sm md:hidden"
+            >
+              <span class="shrink-0 font-data text-caption text-status-act">
+                {{ saving ? 'Saving…' : 'Unsaved changes' }}
+              </span>
+              <BlockedTip :reason="editBlocker" class="flex-1">
+                <Button class="w-full" :disabled="saveDisabled" @click="save">
+                  <Save :size="14" /> {{ saving ? 'Saving…' : 'Save' }}
+                </Button>
+              </BlockedTip>
+            </div>
           </div>
 
+          <!--
+            On a phone the map sits under the steps and would push them a
+            screen apart from the save bar; folded, its header still counts the
+            stops. Tapping stations to build a route still works once opened.
+          -->
+          <CollapsibleSection
+            v-if="ui.screen === 'phone'"
+            title="Route map"
+            :summary="`${steps.length} stop${steps.length === 1 ? '' : 's'}`"
+          >
+            <div class="relative h-[20rem] overflow-hidden rounded-surface border border-hairline">
+              <MissionRouteMap
+                :grid="grid"
+                :placement="placement"
+                :stations="stations.stations"
+                :selected-id="focusedStationId"
+                :route="routeIds"
+                :loading="mapLoading"
+                :error="mapError"
+                :can-edit="canEdit"
+                @select="onMapSelect"
+              />
+            </div>
+          </CollapsibleSection>
           <!-- Sticky, so a long route can be scrolled while its shape stays in view. -->
           <div
+            v-else
             class="relative h-[24rem] overflow-hidden rounded-surface border border-hairline xl:sticky xl:top-base xl:h-[calc(100vh-10rem)] xl:min-h-[28rem]"
           >
-            <Skeleton v-if="mapLoading" class="h-full w-full rounded-none" />
-            <EmptyState
-              v-else-if="mapError"
-              class="p-lg"
-              title="Cannot show this map"
-              :description="mapError"
-            />
-            <StationMapCanvas
-              v-else
+            <MissionRouteMap
               :grid="grid"
               :placement="placement"
               :stations="stations.stations"
               :selected-id="focusedStationId"
-              :placing="false"
-              :movable="false"
               :route="routeIds"
+              :loading="mapLoading"
+              :error="mapError"
+              :can-edit="canEdit"
               @select="onMapSelect"
-            >
-              <template #legend>
-                <span class="flex items-center gap-xxs whitespace-nowrap text-ink">
-                  <MousePointerClick :size="12" /> Click a station to add it
-                </span>
-                <span
-                  v-for="kind in STATION_TYPE_LIST"
-                  :key="kind.value"
-                  class="hidden items-center gap-xxs whitespace-nowrap 2xl:flex"
-                >
-                  <span
-                    class="h-2.5 w-2.5 rounded-full"
-                    :style="{ backgroundColor: kind.colour }"
-                  />
-                  {{ kind.label }}
-                </span>
-              </template>
-            </StationMapCanvas>
+            />
           </div>
         </div>
       </CardContent>
