@@ -3,17 +3,17 @@
 # 🤖 AMR Control
 
 **Web UI untuk mengelola armada robot AMR berbasis ROS 2** — peta, station, zone, mission,
-dan pemantauan robot secara live, dilengkapi Robot Agent di setiap robot dan layar Kiosk.
+pemantauan live, akun & hak akses, ditambah Robot Agent dan layar Kiosk di setiap robot.
 
+[![Web UI](https://github.com/deenqtt/ros2-software-amr/actions/workflows/webui.yml/badge.svg)](https://github.com/deenqtt/ros2-software-amr/actions/workflows/webui.yml)
 ![Vue](https://img.shields.io/badge/Vue-3.5-42b883?logo=vuedotjs&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178c6?logo=typescript&logoColor=white)
-![Vite](https://img.shields.io/badge/Vite-7-646cff?logo=vite&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.118-009688?logo=fastapi&logoColor=white)
-![Python](https://img.shields.io/badge/Python-3.12-3776ab?logo=python&logoColor=white)
+![Qt](https://img.shields.io/badge/PySide6-Qt%20Quick-41cd52?logo=qt&logoColor=white)
 ![ROS 2](https://img.shields.io/badge/ROS%202-Jazzy-22314e?logo=ros&logoColor=white)
-![Nav2](https://img.shields.io/badge/Nav2-MPPI%20%7C%20Smac-1a6ef5)
+![Docker](https://img.shields.io/badge/image-amd64%20%7C%20arm64-2496ed?logo=docker&logoColor=white)
 
-<img src="docs/images/web-ui/14-mission-editor.png" alt="Mission editor" width="900" />
+<img src="docs/images/web-ui/01-dashboard.png" alt="Dashboard armada" width="900" />
 
 </div>
 
@@ -22,7 +22,9 @@ dan pemantauan robot secara live, dilengkapi Robot Agent di setiap robot dan lay
 ## Daftar Isi
 
 - [Tentang](#tentang)
+- [Tech Stack](#tech-stack)
 - [Fitur](#fitur)
+- [Menu & Hak Akses](#menu--hak-akses)
 - [Arsitektur](#arsitektur)
 - [Struktur Repository](#struktur-repository)
 - [Menjalankan Secara Lokal](#menjalankan-secara-lokal)
@@ -30,6 +32,7 @@ dan pemantauan robot secara live, dilengkapi Robot Agent di setiap robot dan lay
 - [Robot Agent](#robot-agent)
 - [Kiosk](#kiosk)
 - [Pengujian](#pengujian)
+- [CI & Image Docker](#ci--image-docker)
 - [Deployment Produksi](#deployment-produksi)
 - [Dokumentasi](#dokumentasi)
 - [Status & Batasan](#status--batasan)
@@ -43,51 +46,94 @@ mendaftarkan robot, membuat dan merapikan peta, menandai titik tujuan, menggamba
 larangan, menyusun rute, menjalankan mission, dan memantau hasilnya — untuk satu robot
 maupun satu armada.
 
-Sistem terdiri dari tiga bagian:
-
 | Bagian | Berjalan di | Peran |
 |---|---|---|
-| **Web UI + Backend** (`new_webui/`) | Server | Antarmuka operator dan *registry* (database) seluruh armada |
-| **Robot Agent** (`amr_agent/`) | Setiap robot (mis. Jetson) | Menjalankan apa yang diatur di Web UI: Nav2/SLAM, peta, station, zone, mission |
-| **Kiosk** (`amr_agent/kiosk/`) | Layar di robot | Tampilan untuk orang di sekitar robot (PySide6/QML, ikut folder agent) |
+| **Web UI + Backend** (`new_webui/`) | Server (PC atau Raspberry Pi 4/5) | Antarmuka operator, akun & hak akses, *registry* (database) seluruh armada |
+| **Robot Agent** (`amr_agent/`) | Setiap robot (Jetson) | Menjalankan apa yang diatur di Web UI: Nav2/SLAM, peta, station, zone, mission |
+| **Kiosk** (`amr_agent/kiosk/`) | Layar di robot | Wajah robot dan layar "Pesanan Anda sudah tiba" untuk orang di sekitar robot |
 
 > **Prinsip utama:** browser tidak "menyetir" mission. Web UI menyimpan apa yang harus dikerjakan
-> ke backend; robot sendiri yang mengambil dan melaksanakannya. Menutup browser tidak menghentikan robot.
+> ke backend; robot sendiri yang mengambil dan melaksanakannya. Menutup browser tidak menghentikan robot,
+> dan robot tetap menyelesaikan mission walau server atau WiFi putus.
+
+---
+
+## Tech Stack
+
+| Bagian | Teknologi |
+|---|---|
+| **Web UI** | Vue 3.5 · TypeScript 5.9 · Vite 7 · Tailwind CSS 3 · Pinia · Vue Router · Reka UI · roslib (rosbridge) · lucide icons · Vitest |
+| **Backend** | Python 3.12 · FastAPI · Pydantic v2 · SQLite (migrasi bernomor) · session cookie HttpOnly · password scrypt · pytest · ruff |
+| **Robot Agent** | Python · rclpy (ROS 2 Jazzy) · Nav2 (`navigate_to_pose`) · slam_toolbox · costmap filter dari zone |
+| **Kiosk** | Python · PySide6 / Qt Quick (QML, dirender GPU) · rclpy lokal · font Plus Jakarta Sans · suara Piper / espeak-ng |
+| **Deploy** | Docker (2 image multi-arch amd64 + arm64) · nginx · docker compose · GitHub Actions dengan runner ARM native · GHCR |
 
 ---
 
 ## Fitur
 
+### 🔐 Login, akun & hak akses
+
+- **Login** dengan username dan password; sesi berakhir setelah 12 jam tanpa aktivitas (satu shift).
+- **Empat role** berjenjang — *Viewer*, *Operator*, *Admin*, *Super admin* (lihat [Menu & Hak Akses](#menu--hak-akses)).
+  Tombol yang tidak boleh dipakai tetap terlihat, tapi terkunci dengan keterangan role yang dibutuhkan.
+- **Super admin pertama** dibuat dari `.env` server baru, dan **wajib mengganti password** saat login pertama.
+  Password sementara yang dibuat admin untuk orang lain juga wajib diganti.
+- **Menu pengguna** di pojok kanan atas: nama & role, **Ganti password**, **Keluar**.
+- Perlindungan: 5 kali salah password → jeda 5 menit; hanya hash token sesi yang disimpan.
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/images/web-ui/19-login.png" alt="Login" /></td>
+    <td width="50%"><img src="docs/images/web-ui/20-set-password.png" alt="Ganti password pertama" /></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Halaman login (mengikuti tema terang/gelap)</sub></td>
+    <td align="center"><sub>Wajib membuat password sendiri saat login pertama</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/images/web-ui/21-user-menu.png" alt="Menu pengguna" /></td>
+    <td width="50%"><img src="docs/images/web-ui/33-viewer-role-robots.png" alt="Tampilan role Viewer" /></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Menu pengguna: ganti password dan keluar</sub></td>
+    <td align="center"><sub>Role <i>Viewer</i>: tombol yang tidak diizinkan terkunci</sub></td>
+  </tr>
+</table>
+
 ### 🧭 Navigasi live
 
-Peta live, posisi dan laser robot, rute yang direncanakan, costmap, dan zone — lengkap dengan
-**Set pose**, **Go here**, **Cancel goal**, dan tombol **Stop** (batalkan goal + mission + parkir robot).
+Peta live, posisi dan laser robot, rute yang direncanakan, costmap, zone, dan marker mission
+bernomor — dengan **Set pose**, **Go here**, **Cancel goal**, dan **Stop & park**
+(batalkan goal + mission + parkir robot). Layer bisa dinyalakan/dimatikan satu per satu.
 
 <table>
   <tr>
     <td width="50%"><img src="docs/images/web-ui/04-robot-navigation.png" alt="Navigasi robot" /></td>
-    <td width="50%"><img src="docs/images/web-ui/05-robot-navigation-costmap.png" alt="Layer costmap" /></td>
+    <td width="50%"><img src="docs/images/web-ui/32-robot-navigation-layers.png" alt="Layer peta" /></td>
   </tr>
   <tr>
-    <td align="center"><sub>Halaman navigasi: status, kartu mission, alat & layer peta</sub></td>
-    <td align="center"><sub>Layer costmap: dinding dan zone keep-out terlihat sebagai area mahal/terlarang</sub></td>
+    <td align="center"><sub>Halaman navigasi: robot menuju goal, status & kartu mission</sub></td>
+    <td align="center"><sub>Pilihan layer: costmap, laser, partikel, rute, mission, zone</sub></td>
   </tr>
 </table>
 
 ### 🗺️ Peta
 
-- **Mapping (SLAM)** — kemudikan robot dengan joystick di layar atau gamepad (dengan tombol *deadman*), lalu simpan peta.
-- **Map editor** — brush, garis, kotak, fill, undo/redo; simpan sebagai **versi baru** (versi lama tetap aman).
+- **Survey (SLAM)** — kemudikan robot dengan joystick di layar atau gamepad (tombol *deadman*), lalu simpan peta.
+- **Map editor** — brush, garis, kotak, fill, undo/redo; disimpan sebagai **versi baru** (versi lama tetap aman).
 - **Registry & versi** — upload `.yaml` + `.pgm/.png`, assign peta ke robot, rename, download.
 
 <table>
   <tr>
-    <td width="50%"><img src="docs/images/web-ui/09-maps.png" alt="Daftar peta" /></td>
-    <td width="50%"><img src="docs/images/web-ui/10-map-editor.png" alt="Map editor" /></td>
+    <td width="33%"><img src="docs/images/web-ui/09-maps.png" alt="Daftar peta" /></td>
+    <td width="33%"><img src="docs/images/web-ui/10-map-editor.png" alt="Map editor" /></td>
+    <td width="33%"><img src="docs/images/web-ui/34-map-survey-mapping.png" alt="Survey" /></td>
   </tr>
   <tr>
-    <td align="center"><sub>Daftar peta, versi, dan robot yang memakainya</sub></td>
+    <td align="center"><sub>Daftar peta & versi</sub></td>
     <td align="center"><sub>Map editor</sub></td>
+    <td align="center"><sub>Survey: membuat peta dengan SLAM</sub></td>
   </tr>
 </table>
 
@@ -104,18 +150,19 @@ Peta live, posisi dan laser robot, rute yang direncanakan, costmap, dan zone —
   | 🟪 **Trigger** | Menyalakan sinyal (lampu/buzzer) selama di dalam area |
 
 - **Mission** — rute berurutan dari beberapa station; dijalankan **Once**, **Laps**, atau **Until stopped**,
-  dengan kontrol *Stop after lap*, *Cancel mission*, dan *Cancel goal*.
+  dengan *Stop after lap*, *Cancel mission*, dan *Cancel goal*. Step bertanda **Wait for confirm** menahan robot
+  sampai pesanan diambil dan dikonfirmasi di Kiosk (atau 2 menit berlalu).
 
 <table>
   <tr>
     <td width="33%"><img src="docs/images/web-ui/15-stations.png" alt="Station" /></td>
     <td width="33%"><img src="docs/images/web-ui/16-zones.png" alt="Zone" /></td>
-    <td width="33%"><img src="docs/images/web-ui/12-missions.png" alt="Mission" /></td>
+    <td width="33%"><img src="docs/images/web-ui/14-mission-editor.png" alt="Mission editor" /></td>
   </tr>
   <tr>
     <td align="center"><sub>Station</sub></td>
-    <td align="center"><sub>Zone keep-out</sub></td>
-    <td align="center"><sub>Daftar mission</sub></td>
+    <td align="center"><sub>Zone</sub></td>
+    <td align="center"><sub>Mission editor: step dan rute di peta</sub></td>
   </tr>
 </table>
 
@@ -123,19 +170,92 @@ Peta live, posisi dan laser robot, rute yang direncanakan, costmap, dan zone —
 
 - **Dashboard** — semua robot sekaligus, robot bermasalah di atas (*Needs attention*), status Nav2/SLAM, mode **Working / Parked / Surveying**, tombol **Park / Release**.
 - **Robot details** — kesehatan setiap topic ROS (OK / Waiting / Stale), frekuensi, terakhir diterima.
-- **Notifikasi** — pop-up dan catatan di lonceng 🔔 / halaman **Alarm** setiap robot tiba di station, mission selesai, gagal, atau dibatalkan.
-- **Marker mission di peta** — setiap step tampil bernomor: hijau = selesai, biru = tujuan sekarang, putih = belum.
+- **Notifikasi** — pop-up dan lonceng 🔔 setiap robot tiba di station, mission selesai, gagal (beserta alasannya), atau dibatalkan; riwayat lengkap di halaman **Alarm**.
 
 <table>
   <tr>
-    <td width="50%"><img src="docs/images/web-ui/01-dashboard.png" alt="Dashboard" /></td>
-    <td width="50%"><img src="docs/images/web-ui/08-robot-detail.png" alt="Robot details" /></td>
+    <td width="33%"><img src="docs/images/web-ui/08-robot-detail.png" alt="Robot details" /></td>
+    <td width="33%"><img src="docs/images/web-ui/06-notifications-bell.png" alt="Notifikasi" /></td>
+    <td width="33%"><img src="docs/images/web-ui/17-alarms.png" alt="Alarm" /></td>
   </tr>
   <tr>
-    <td align="center"><sub>Dashboard armada</sub></td>
     <td align="center"><sub>Kesehatan topic robot</sub></td>
+    <td align="center"><sub>Lonceng notifikasi</sub></td>
+    <td align="center"><sub>Halaman Alarm</sub></td>
   </tr>
 </table>
+
+### 👥 Users & 🕒 Activity (Super admin)
+
+- **Users** — tambah akun dengan password sementara, ubah role, nonaktifkan, reset password, hapus.
+  Super admin terakhir tidak bisa diturunkan, dinonaktifkan, atau dihapus.
+- **Activity** — jejak audit: siapa mengubah apa dan kapan, termasuk login yang gagal dan aksi yang ditolak.
+  Pencarian, filter jenis/orang/rentang waktu, pagination, dan **Export CSV**.
+
+<table>
+  <tr>
+    <td width="33%"><img src="docs/images/web-ui/23-users.png" alt="Users" /></td>
+    <td width="33%"><img src="docs/images/web-ui/24-users-add-dialog.png" alt="Tambah user" /></td>
+    <td width="33%"><img src="docs/images/web-ui/25-activity.png" alt="Activity" /></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Daftar akun</sub></td>
+    <td align="center"><sub>Tambah akun</sub></td>
+    <td align="center"><sub>Activity log</sub></td>
+  </tr>
+</table>
+
+### 📱 Tampilan HP & tablet
+
+Semua halaman responsif. Di HP hanya yang penting yang tampil: menu jadi *drawer*, dialog jadi
+*bottom sheet* layar penuh, tombol 44 px agar mudah disentuh, panel navigasi jadi lembar yang bisa
+ditarik, dan robot bermasalah selalu di atas. Halaman yang butuh layar lebar (map editor) memberi
+tahu untuk pindah ke tablet/laptop.
+
+<table>
+  <tr>
+    <td width="25%"><img src="docs/images/web-ui/mobile/01-dashboard.png" alt="Dashboard HP" /></td>
+    <td width="25%"><img src="docs/images/web-ui/mobile/26-phone-menu-drawer.png" alt="Menu HP" /></td>
+    <td width="25%"><img src="docs/images/web-ui/mobile/04-robot-navigation.png" alt="Navigasi HP" /></td>
+    <td width="25%"><img src="docs/images/web-ui/mobile/27-robot-navigation-sheet.png" alt="Panel navigasi HP" /></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Dashboard</sub></td>
+    <td align="center"><sub>Menu drawer</sub></td>
+    <td align="center"><sub>Navigasi</sub></td>
+    <td align="center"><sub>Status & mission</sub></td>
+  </tr>
+</table>
+
+Semua screenshot ada di [`docs/images/web-ui/`](docs/images/web-ui/) (desktop) dan
+[`docs/images/web-ui/mobile/`](docs/images/web-ui/mobile/) (HP, 390 px).
+
+---
+
+## Menu & Hak Akses
+
+Setiap role mencakup hak role di bawahnya.
+
+| Role | Bisa |
+|---|---|
+| **Viewer** | Melihat armada, peta, mission, dan riwayat. Tidak mengubah apa pun. |
+| **Operator** | + menjalankan/menghentikan mission, mengirim goal, mengemudikan dan memarkir robot. |
+| **Admin** | + mengedit peta, station, zone, mission, dan daftar robot. |
+| **Super admin** | + mengelola akun (Users) dan membaca Activity log. |
+
+| Menu | Isi | Role minimal untuk mengubah |
+|---|---|---|
+| **Dashboard** | Ringkasan armada, robot yang perlu perhatian, Park / Release | Operator |
+| **Robot** | Daftar robot, tambah/edit robot; per robot: **Navigation** dan **Details** | Operator (navigasi) · Admin (daftar robot) |
+| **Maps** | Daftar & versi peta, map editor, survey SLAM | Admin |
+| **Mission** | Daftar mission, editor rute, jalankan & hentikan | Admin (edit) · Operator (jalankan) |
+| **Station** | Titik tujuan per peta | Admin |
+| **Zone** | Area keep out / avoid / speed limit / trigger | Admin |
+| **Alarm** | Riwayat notifikasi, acknowledge | Semua role |
+| **Users** | Akun dan role | Super admin (menu tersembunyi untuk role lain) |
+| **Activity** | Jejak audit, export CSV | Super admin (menu tersembunyi untuk role lain) |
+
+Hak akses dijaga di **backend**; kunci di UI hanya memberi tahu lebih awal.
 
 ---
 
@@ -143,11 +263,11 @@ Peta live, posisi dan laser robot, rute yang direncanakan, costmap, dan zone —
 
 ```mermaid
 flowchart LR
-    subgraph Server
-        UI["Web UI<br/>(Vue 3)"]
-        API["Backend<br/>(FastAPI)"]
-        DB[("SQLite<br/>robot · peta · station<br/>zone · mission · run")]
-        UI -- REST --> API --> DB
+    subgraph Server["Server (PC / Raspberry Pi)"]
+        NG["nginx<br/>(image amr-web)"]
+        API["Backend FastAPI<br/>(image amr-backend)"]
+        DB[("SQLite<br/>akun · audit · robot · peta<br/>station · zone · mission · run")]
+        NG -- "/backend/" --> API --> DB
     end
 
     subgraph Robot["Setiap robot (Jetson)"]
@@ -155,22 +275,25 @@ flowchart LR
         NAV["Nav2 / SLAM"]
         ZM["zone_mask_server"]
         RB["rosbridge :9090"]
-        KI["Kiosk"]
+        KI["Kiosk (Qt)"]
         AG -- launch --> NAV
         AG -- launch --> ZM
         ZM -- filter mask --> NAV
-        KI -. ws .-> RB
+        AG -- "/amr/kiosk" --> KI
+        KI -- "/mission_confirm" --> AG
     end
 
-    AG -- "HTTP poll ±10 s<br/>tugas & laporan" --> API
-    UI -. "WebSocket (live)<br/>peta · laser · pose · goal" .-> RB
+    B["Browser operator"] -- "HTTP(S), login" --> NG
+    AG -- "HTTP poll ±10 s<br/>tugas & laporan" --> NG
+    B -. "WebSocket (live)<br/>peta · laser · pose · goal" .-> RB
 ```
 
 | Jalur | Isi |
 |---|---|
-| **Browser → Backend** (REST) | Semua data yang dibuat operator: robot, peta, station, zone, mission, run |
+| **Browser → nginx → Backend** (REST, cookie sesi) | Semua data operator: robot, peta, station, zone, mission, run, akun |
 | **Agent → Backend** (HTTP, robot yang menarik) | Peta & mode yang diminta, station, zone, run; laporan step / tiba / selesai |
 | **Browser ↔ Robot** (rosbridge) | Hanya data *live*: peta, laser, pose, costmap, rute, serta *Set pose* / *Go here* |
+| **Agent ↔ Kiosk** (ROS lokal di robot) | Fase pengantaran untuk layar, tombol konfirmasi — tetap jalan tanpa jaringan |
 
 Robot yang **menarik** data (bukan server yang mendorong), sehingga robot tetap bekerja walau
 berada di belakang NAT atau berpindah access point WiFi.
@@ -181,18 +304,23 @@ berada di belakang NAT atau berpindah access point WiFi.
 
 ```
 ros2-software-amr/
+├── .github/workflows/     CI: test + build image amd64/arm64 → GHCR
 ├── new_webui/
 │   ├── frontend/          Vue 3 + Vite + TypeScript + Tailwind + Pinia + roslib
-│   │   └── src/
-│   │       ├── app/        shell, router, koneksi ROS (pool), notifikasi run
-│   │       ├── features/   dashboard, robot, maps, mapping, missions, stations, zones, alarm
-│   │       ├── domain/     tipe data & logika ROS (TF, status, topic health)
-│   │       └── shared/     komponen UI, API client
+│   │   ├── src/
+│   │   │   ├── app/        shell, router, layout responsif, koneksi ROS (pool)
+│   │   │   ├── features/   auth, admin (users/activity), dashboard, robot, maps,
+│   │   │   │               mapping, missions, stations, zones, alarm
+│   │   │   ├── domain/     tipe data, role, logika ROS (TF, status, topic health)
+│   │   │   └── shared/     komponen UI, API client
+│   │   ├── Dockerfile      image amr-web (nginx + hasil build)
+│   │   └── nginx/          konfigurasi nginx di dalam image
 │   ├── backend/           FastAPI + SQLite
-│   │   ├── app/            api/, repositories/, schemas/, migrations/
-│   │   └── tests/          pytest
-│   └── deploy/            contoh konfigurasi nginx produksi
-├── amr_agent/             Robot Agent (di-copy ke setiap robot)
+│   │   ├── app/            api/, repositories/, schemas/, migrations/, auth, audit
+│   │   ├── tests/          pytest
+│   │   └── Dockerfile      image amr-backend
+│   └── deploy/            docker-compose.yml, .env.example, contoh proxy robot & nginx
+├── amr_agent/             Robot Agent + Kiosk (di-copy ke setiap robot)
 │   ├── robot_agent_node.py   agent utama (rclpy)
 │   ├── agent_state.py        "ingatan" offline: registry, station, zone, outbox
 │   ├── backend_client.py     klien HTTP ke backend
@@ -212,8 +340,7 @@ ros2-software-amr/
 
 ### Prasyarat
 
-- **Python 3.12+** (backend)
-- **Node.js 20+** dan npm (frontend)
+- **Python 3.12+** (backend) dan **Node.js 20+** (frontend)
 - Robot atau simulasi ROS 2 dengan **rosbridge** di port 9090 (untuk data live)
 
 ### 1. Backend — `http://localhost:3002`
@@ -222,11 +349,12 @@ ros2-software-amr/
 cd new_webui/backend
 python3 -m venv .venv
 ./.venv/bin/pip install -e ".[dev]"
-cp .env.example .env
+cp .env.example .env     # isi AMR_BOOTSTRAP_USER / AMR_BOOTSTRAP_PASSWORD untuk akun pertama
 ./.venv/bin/python -m app --reload
 ```
 
 Migrasi database berjalan otomatis saat start. Dokumentasi API: `http://localhost:3002/docs`.
+Alternatif tanpa `.env`: `./.venv/bin/python -m app create-admin <username>`.
 
 ### 2. Frontend — `http://localhost:3100`
 
@@ -237,10 +365,11 @@ cp .env.example .env
 npm run dev
 ```
 
-### 3. Tambahkan robot
+### 3. Login & tambahkan robot
 
-Buka `http://localhost:3100` → **Robot** → **Add robot**, isi nama dan alamat rosbridge
-(mis. `ws://192.168.2.133:9090`), lalu jalankan [Robot Agent](#robot-agent) di robot dengan ID yang ditampilkan.
+Login dengan akun super admin, buat password sendiri, lalu **Robot** → **Add robot**: isi nama dan
+alamat rosbridge (mis. `ws://192.168.2.133:9090`), lalu jalankan [Robot Agent](#robot-agent) di robot
+dengan ID yang ditampilkan.
 
 ---
 
@@ -255,15 +384,21 @@ Buka `http://localhost:3100` → **Robot** → **Add robot**, isi nama dan alama
 | `AMR_HOST` / `AMR_PORT` | `0.0.0.0` / `3002` | Alamat server |
 | `AMR_CORS_ORIGINS` | `http://localhost:3100` | Origin browser yang diizinkan (pisahkan dengan koma) |
 | `AMR_ENV` | `development` | `production` menolak start bila CORS tidak aman |
+| `AMR_SESSION_IDLE_MINUTES` | `720` | Sesi berakhir setelah sekian menit tanpa aktivitas |
+| `AMR_COOKIE_SECURE` | `false` | `true` hanya bila situs memakai HTTPS |
+| `AMR_AGENT_AUTH` | `optional` | `required` menolak agent tanpa token (token agent belum ada) |
+| `AMR_AUDIT_RETENTION_DAYS` | `365` | Catatan Activity yang lebih lama dihapus saat start |
+| `AMR_BOOTSTRAP_USER` / `AMR_BOOTSTRAP_PASSWORD` | — | Super admin pertama, hanya dipakai saat database belum punya akun |
 
 ### Frontend — `new_webui/frontend/.env`
 
 | Variabel | Contoh | Keterangan |
 |---|---|---|
-| `VITE_API_BASE_URL` | `http://localhost:3002/api` | Alamat API. Kosong = `/backend/api` (same-origin di balik nginx) |
-| `VITE_API_STATIC_URL` | `http://localhost:3002` | Alamat file statis backend |
+| `VITE_API_BASE_URL` | `/backend/api` | Alamat API (lewat proxy dev server / nginx, satu origin) |
+| `VITE_API_STATIC_URL` | `/backend` | Alamat file statis backend (gambar peta) |
+| `VITE_DEV_BACKEND` | `http://localhost:3002` | Tujuan proxy `/backend` saat `npm run dev` |
 | `VITE_DEFAULT_ROS_URL` | `ws://localhost:8765` | Isian awal form *Add robot* |
-| `VITE_DEFAULT_CAMERA_PORT` | `8080` | Port stream kamera default |
+| `VITE_SITE_NAME` | `Plant 1 · Warehouse A` | Ditampilkan di halaman login (opsional) |
 
 ---
 
@@ -278,7 +413,11 @@ Program kecil di setiap robot yang menjadi penghubung antara Web UI dan robot.
 3. Mengunduh & memverifikasi peta (hash), menyimpannya di cache robot.
 4. Menyalakan/mematikan Nav2 atau SLAM sesuai mode; `zone_mask_server` ikut menyala bersama Nav2.
 5. Menyimpan station & zone ke disk robot dan meneruskan zone ke Nav2.
-6. Mengambil dan menjalankan mission, melaporkan setiap step, tiba, selesai, gagal, atau batal.
+6. Mengambil dan menjalankan mission, melaporkan setiap step, tiba, selesai, gagal (beserta alasannya), atau batal.
+
+**Konfirmasi pengambilan** (`mission_via=nav`): di step bertanda *confirm* robot menunggu tombol
+**Sudah diambil** di Kiosk (service `/mission_confirm`) sampai `confirm_timeout` (default 120 detik),
+lalu lanjut sendiri. Status pengantaran untuk layar dikirim di topic `/amr/kiosk`.
 
 **Tahan server mati:** robot menyimpan "ingatan" di `~/amr_agent/state/` —
 boot dari registry & peta cache bila server tidak terjangkau, laporan masuk antrean dan dikirim
@@ -287,13 +426,13 @@ berurutan saat koneksi kembali, dan run yang sudah selesai tidak pernah dijalank
 ### Instalasi di robot
 
 ```bash
-# dari komputer pengembang
-ssh user@ip-robot 'mkdir -p ~/amr_agent'
-scp amr_agent/*.py amr_agent/*.sh user@ip-robot:~/amr_agent/
+# dari komputer pengembang: seluruh folder agent (termasuk kiosk), tanpa venv lokal
+rsync -a --exclude .venv --exclude __pycache__ amr_agent/ user@ip-robot:~/amr_agent/
 
-# di robot: rosbridge, lalu agent
+# di robot: rosbridge, lalu agent (+ kiosk di layar robot)
 ros2 launch rosbridge_server rosbridge_websocket_launch.xml port:=9090
-~/amr_agent/run_agent_gprp.sh <robot-id> http://<ip-server>:3002
+pip install PySide6        # sekali, untuk kiosk
+~/amr_agent/run_agent_gprp.sh --kiosk <robot-id> http://<server>/backend
 ```
 
 > `run_agent_gprp.sh` saat ini disetel untuk simulasi **Isaac Sim** (`*_sim_launch.py`, `use_sim_time:=true`).
@@ -309,8 +448,9 @@ peta itu otomatis berlaku untuk semuanya. Satu robot menjalankan satu mission pa
 
 ## Kiosk
 
-Tampilan layar robot untuk orang di sekitarnya: wajah robot animasi, tujuan perjalanan, dan
-layar **"Pesanan Anda sudah tiba"** dengan tombol konfirmasi besar.
+Layar di robot untuk orang di sekitarnya: wajah robot beranimasi, tujuan dan rute, dan layar
+**"Pesanan Anda sudah tiba"** dengan satu tombol besar. Aplikasi **PySide6/Qt Quick** yang berjalan
+di robot itu sendiri dan membaca ROS secara lokal — tetap jalan walau WiFi atau server putus.
 
 <table>
   <tr>
@@ -319,35 +459,45 @@ layar **"Pesanan Anda sudah tiba"** dengan tombol konfirmasi besar.
     <td width="33%"><img src="docs/images/kiosk/kiosk-arrived.png" alt="Kiosk arrived" /></td>
   </tr>
   <tr>
-    <td align="center"><sub>Siap</sub></td>
-    <td align="center"><sub>Mengantar</sub></td>
-    <td align="center"><sub>Tiba — tunggu konfirmasi</sub></td>
+    <td align="center"><sub>Siap — mata melirik dan mengikuti sentuhan</sub></td>
+    <td align="center"><sub>Mengantar — tujuan, rute, sinyal belok</sub></td>
+    <td align="center"><sub>Tiba — tombol konfirmasi, hitung mundur 2 menit</sub></td>
   </tr>
   <tr>
     <td width="33%"><img src="docs/images/kiosk/kiosk-blocked.png" alt="Kiosk blocked" /></td>
+    <td width="33%"><img src="docs/images/kiosk/kiosk-thanks.png" alt="Kiosk thanks" /></td>
     <td width="33%"><img src="docs/images/kiosk/kiosk-charging.png" alt="Kiosk charging" /></td>
-    <td width="33%"><img src="docs/images/kiosk/kiosk-estop.png" alt="Kiosk E-STOP" /></td>
   </tr>
   <tr>
-    <td align="center"><sub>Terhalang</sub></td>
+    <td align="center"><sub>Terhalang — "Permisi"</sub></td>
+    <td align="center"><sub>Terima kasih — sebelum lanjut ke stop berikutnya</sub></td>
     <td align="center"><sub>Mengisi daya</sub></td>
+  </tr>
+  <tr>
+    <td width="33%"><img src="docs/images/kiosk/kiosk-error.png" alt="Kiosk error" /></td>
+    <td width="33%"><img src="docs/images/kiosk/kiosk-estop.png" alt="Kiosk E-STOP" /></td>
+    <td width="33%"><img src="docs/images/kiosk/kiosk-staff.png" alt="Kiosk menu staf" /></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Butuh bantuan — beserta alasan untuk staf</sub></td>
     <td align="center"><sub>E-STOP</sub></td>
+    <td align="center"><sub>Menu staf (tahan pojok kiri atas + PIN)</sub></td>
   </tr>
 </table>
 
-Coba langsung: buka `kiosk-mockup/index.html` di browser, tekan **`D`** untuk panel simulasi
-(tombol 1–9 mengganti layar), atau tekan lama pojok kiri atas untuk menu staf (PIN mockup `1234`).
-
-Versi yang jalan di robot ada di [`amr_agent/kiosk/`](amr_agent/kiosk/README.md): aplikasi
-PySide6/QML yang membaca topic lokal `/amr/kiosk` dari agent dan memanggil `/mission_confirm` saat
-tombol **Sudah diambil** ditekan. Di mode `mission_via=nav`, agent menunggu di step `confirm` sampai
-dikonfirmasi atau 2 menit berlalu, lalu lanjut sendiri.
+- **Wajah**: kelopak mata bergeser untuk tiap ekspresi (fokus, semangat, senang, cemas, sebal, ngantuk), berkedip acak, tertawa saat disentuh.
+- **Suara**: chime per kejadian dan kalimat ("Pesanan untuk Meja 5 sudah tiba…") lewat Piper/espeak-ng bila terpasang; pengingat saat 30 detik tersisa.
+- **Menu staf** (PIN): *Lanjutkan sekarang*, *Teks besar*, *Info teknis*.
+- Bahasa Indonesia / Inggris; landscape dan portrait.
 
 ```bash
 pip install PySide6
-python3 amr_agent/kiosk/kiosk_app.py --mock --window      # coba tanpa ROS
+python3 amr_agent/kiosk/kiosk_app.py --mock --window     # coba tanpa ROS: tombol 1–9, L, S
 ./amr_agent/run_agent_gprp.sh --kiosk <robot_id> <backend_url>   # di robot, bersama agent
 ```
+
+Detail opsi, topic, dan suara: [`amr_agent/kiosk/README.md`](amr_agent/kiosk/README.md).
+Desain awalnya (HTML statis) ada di [`kiosk-mockup/`](kiosk-mockup/).
 
 ---
 
@@ -355,30 +505,64 @@ python3 amr_agent/kiosk/kiosk_app.py --mock --window      # coba tanpa ROS
 
 ```bash
 # backend
-cd new_webui/backend && ./.venv/bin/python -m pytest
+cd new_webui/backend && ./.venv/bin/python -m pytest && ./.venv/bin/ruff check .
 
 # frontend
 cd new_webui/frontend
 npm test            # unit test (Vitest)
 npm run typecheck   # vue-tsc
-npm run lint        # ESLint
+npx eslint .        # lint
 npm run build       # build produksi
+
+# robot agent + kiosk (tanpa ROS)
+python3 -m pytest amr_agent/tests
 ```
+
+---
+
+## CI & Image Docker
+
+Setiap push ke `main` yang menyentuh `new_webui/` menjalankan
+[`.github/workflows/webui.yml`](.github/workflows/webui.yml):
+
+1. **Test** — backend (ruff + pytest) dan frontend (eslint + typecheck + vitest).
+2. **Build** — kedua image di-build di **runner native**: `ubuntu-24.04` (amd64) dan `ubuntu-24.04-arm` (arm64), tanpa emulasi.
+3. **Publish** — digabung menjadi satu tag multi-arch di GitHub Container Registry.
+
+| Image | Isi |
+|---|---|
+| `ghcr.io/deenqtt/amr-backend` | FastAPI + SQLite, migrasi otomatis saat start |
+| `ghcr.io/deenqtt/amr-web` | nginx yang menyajikan UI dan mem-proxy `/backend/` ke backend |
+
+| Pemicu | Tag |
+|---|---|
+| Push ke `main` | `main`, `sha-<commit>` |
+| Git tag `v1.2.0` | `1.2.0`, `1.2`, `latest` |
+| Pull request | build & test saja, tidak dipublish |
+
+Image tidak berisi rahasia apa pun — akun super admin pertama diatur di `.env` di mesin tujuan.
 
 ---
 
 ## Deployment Produksi
 
-Web UI dan backend berjalan di **server** di balik nginx (satu origin, prefix `/backend/`),
-sedangkan setiap robot menjalankan agent dan rosbridge. Panduan lengkap — port, contoh nginx,
-systemd service, dan perilaku saat jaringan putus — ada di
-[`docs/runbooks/PRODUCTION_DEPLOYMENT.md`](docs/runbooks/PRODUCTION_DEPLOYMENT.md).
+Server (PC amd64) atau **Raspberry Pi 4/5 dengan OS 64-bit** — file dan image yang sama:
 
 ```bash
-cd new_webui/frontend
-cp .env.production.example .env.production
-npm run build        # → dist/, disajikan nginx (new_webui/deploy/nginx.conf.example)
+mkdir -p /opt/amr && cd /opt/amr
+# docker-compose.yml dan .env.example dari new_webui/deploy/
+cp .env.example .env && nano .env        # versi, CORS, super admin pertama
+mkdir -p data maps nginx && sudo chown 10001:10001 data maps
+docker compose up -d                     # UI di http://<server>/
 ```
+
+- **Update:** ubah `AMR_VERSION` di `.env`, lalu `docker compose pull && docker compose up -d`.
+- **Backup:** `/opt/amr/data` dan `/opt/amr/maps`.
+- **Robot** mengarah ke `http://<server>/backend`.
+- **Raspberry Pi:** simpan `/opt/amr` di SSD/USB, bukan SD card.
+
+Panduan lengkap — port, proxy rosbridge lewat server, instalasi tanpa Docker, perilaku saat
+jaringan putus — ada di [`docs/runbooks/PRODUCTION_DEPLOYMENT.md`](docs/runbooks/PRODUCTION_DEPLOYMENT.md).
 
 ---
 
@@ -386,17 +570,18 @@ npm run build        # → dist/, disajikan nginx (new_webui/deploy/nginx.conf.e
 
 | Dokumen | Isi |
 |---|---|
-| 📘 [`docs/Panduan_AMR_Web_UI.pdf`](docs/Panduan_AMR_Web_UI.pdf) | Panduan pengguna lengkap (35 halaman): setiap halaman UI, Robot Agent, multi-robot, Kiosk, troubleshooting |
-| 🚀 [`docs/runbooks/PRODUCTION_DEPLOYMENT.md`](docs/runbooks/PRODUCTION_DEPLOYMENT.md) | Deployment server + robot |
+| 🚀 [`docs/runbooks/PRODUCTION_DEPLOYMENT.md`](docs/runbooks/PRODUCTION_DEPLOYMENT.md) | Deployment server (Docker) + robot |
+| 🖥️ [`amr_agent/kiosk/README.md`](amr_agent/kiosk/README.md) | Kiosk: menjalankan, opsi, topic, suara |
 | 🔌 [`docs/ROS_INTERFACE_CONTRACT.md`](docs/ROS_INTERFACE_CONTRACT.md) | Topic, service dan action antara Web UI dan robot |
 | 🎨 [`DESIGN.md`](DESIGN.md) | Design system Web UI |
+| 📘 [`docs/Panduan_AMR_Web_UI.pdf`](docs/Panduan_AMR_Web_UI.pdf) | Panduan pengguna (versi sebelum login, role, dan kiosk PySide6) |
 
 ---
 
 ## Status & Batasan
 
-- ✅ Web UI, backend, Robot Agent, notifikasi mission, zone ke Nav2, dan agent tahan server mati sudah berjalan dan teruji.
-- 🧪 Kiosk masih **mockup**; aksi *Pick/Drop* dan *Wait for confirm* belum dijalankan di robot simulasi.
-- 🔒 Backend dan rosbridge **belum memakai login** — jalankan di jaringan tertutup/VPN.
+- ✅ Web UI, login & role, audit, backend, Robot Agent, notifikasi mission, zone ke Nav2, tampilan HP, dan agent tahan server mati sudah berjalan dan teruji.
+- 🧪 Kiosk PySide6 dan penantian konfirmasi di agent sudah teruji tanpa robot (unit test + mode `--mock`); belum dicoba di simulasi/robot.
+- 🔒 Robot agent belum memakai token (`AMR_AGENT_AUTH=optional`) dan rosbridge belum memakai login — jalankan robot di jaringan tertutup/VPN.
 - 🚦 Robot belum saling berkoordinasi (tidak ada pengaturan lalu lintas antar robot); penugasan mission masih manual.
 - 🐢 Pada jaringan lambat, posisi robot di UI bisa tertinggal; perbaikan sudah dianalisa dan direncanakan.

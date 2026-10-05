@@ -178,8 +178,13 @@ Window {
         anchors.fill: parent
         u: window.u
     }
+    Connections {
+        target: kiosk
+        function onStaffRequested() { staffPanel.open(); staffPanel.unlocked = true }
+    }
 
-    // Simulation keys (--mock): 1–9 jump between states, L switches language.
+    // Simulation keys (--mock): 1–9 jump between states, L switches language,
+    // S opens the staff menu.
     Item {
         focus: true
         Keys.onPressed: (event) => {

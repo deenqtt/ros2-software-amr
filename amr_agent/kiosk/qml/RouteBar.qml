@@ -15,6 +15,9 @@ Row {
         Item {
             readonly property bool done: index < routeBar.current || (index === routeBar.current && routeBar.currentDone)
             readonly property bool active: index === routeBar.current && !routeBar.currentDone
+            // Each stop's connector reaches back under the previous stop's
+            // dot; earlier stops on top keep the dots whole.
+            z: -index
             width: 15 * routeBar.u
             height: 7 * routeBar.u
 

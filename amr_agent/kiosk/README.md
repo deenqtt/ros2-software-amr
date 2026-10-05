@@ -29,6 +29,7 @@ python3 amr_agent/kiosk/kiosk_app.py --mock --window --size 800x1280   # portrai
 | 9 | Emergency stop (again to clear) |
 | + / − | Battery up / down |
 | L | Indonesian / English |
+| S | Staff menu (mock only, no PIN) |
 
 Tap the face while idle; tap it six times quickly. Staff menu: hold the
 top-left corner for 1.2 s, PIN `1234` (set `AMR_KIOSK_PIN`).

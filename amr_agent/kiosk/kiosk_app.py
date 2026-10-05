@@ -80,6 +80,8 @@ class Kiosk(QObject):
     """Everything QML binds to. One `changed` signal: the screen is small."""
 
     changed = Signal()
+    # --mock only: open the staff menu without the long press, for review.
+    staffRequested = Signal()
     # Sources may push from a ROS thread; this hops to the Qt thread.
     _pushed = Signal(dict)
 
@@ -266,7 +268,9 @@ class Kiosk(QObject):
 
     @Slot(str)
     def key(self, key: str) -> None:
-        if self._source is not None:
+        if key in ("s", "S") and self.mock:
+            self.staffRequested.emit()
+        elif self._source is not None:
             self._source.key(key)
 
 
@@ -306,7 +310,7 @@ def main() -> int:
         source = MockSource(kiosk.push)
         # For docs and review: jump to a state at start, e.g. --mock-keys 4.
         for index, key in enumerate(args.mock_keys):
-            QTimer.singleShot(50 + 10 * index, lambda key=key: source.key(key))
+            QTimer.singleShot(300 + 10 * index, lambda key=key: kiosk.key(key))
     else:
         from sources import RosSource
 
