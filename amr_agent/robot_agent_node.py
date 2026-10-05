@@ -64,6 +64,16 @@ calls    /station_config      custom_interfaces/srv/StationConfig
            changes — a dragged dock moves no map, so a load-only push would
            leave the robot driving to where the station used to be.
 
+service  /mission_confirm     std_srvs/Trigger   (mission_via=nav only)
+           Somebody took the order at a `confirm` stop; drive on. With
+           mission_via=mission_plan the mission manager serves this name
+           itself, so the kiosk calls the same service either way.
+
+topic    /amr/kiosk           std_msgs/String  (JSON, latched, 1 Hz)
+           What the screen on the robot shows: phase (idle, moving, near,
+           blocked, waiting, thanks, done, failed, off), mission name, route as
+           station names, current step, seconds left to confirm. See delivery.py.
+
 topic    /robot_mode_status   std_msgs/String  (JSON, 1 Hz)
            {"mode", "state", "map", "map_id", "detail", "managed", "backend",
             "teleop"}
@@ -135,6 +145,22 @@ from nav2_msgs.action import NavigateToPose
 from nav2_msgs.srv import LoadMap, ReloadDockDatabase, SaveMap
 
 from agent_state import TERMINAL_STATES, AgentState
+from delivery import (
+    CONFIRMED,
+    PHASE_BLOCKED,
+    PHASE_DONE,
+    PHASE_FAILED,
+    PHASE_IDLE,
+    PHASE_MOVING,
+    PHASE_NEAR,
+    PHASE_OFF,
+    PHASE_THANKS,
+    PHASE_WAITING,
+    TIMED_OUT,
+    ConfirmGate,
+    ProgressWatch,
+    kiosk_status,
+)
 from backend_client import BackendClient, BackendError
 from custom_interfaces.action import MissionPlan
 from custom_interfaces.srv import RobotMode, StationConfig
@@ -203,6 +229,17 @@ MISSION_ACTION = "/mission_plan"
 MISSION_POLL_SERVICE = "/mission_poll"
 
 ZONES_TOPIC = "/amr/zones"
+KIOSK_TOPIC = "/amr/kiosk"
+MISSION_CONFIRM_SERVICE = "/mission_confirm"
+# After "Sudah diambil", the robot waits this long before driving off: the
+# person is still standing at the tray, and a robot pulling away under their
+# hands is the moment they stop trusting it.
+THANKS_HOLD_S = 3.0
+# How long "all delivered" stays on the screen before it goes back to idle.
+DONE_HOLD_S = 10.0
+# And "I need help" after a failed run. Long, because somebody has to walk over;
+# not forever, because the operator may have sorted it out from the web UI.
+FAILED_HOLD_S = 300.0
 
 NO_MAP_DETAIL = "No map assigned — nothing to navigate on"
 # How long to wait before trying a failed stack again. Long enough that the
@@ -374,6 +411,11 @@ class RobotAgent(Node):
         # from the registry here and drives there with Nav2's own
         # navigate_to_pose, which is what a robot without that manager has.
         self.declare_parameter("mission_via", "mission_plan")
+        # How long a `confirm` stop waits for somebody to take the order before
+        # the robot carries on by itself (mission_via=nav). 0 waits forever.
+        # Two minutes: long enough to walk over from the far side of a room,
+        # short enough that a forgotten tray does not hold the whole route.
+        self.declare_parameter("confirm_timeout", 120.0)
         # zone_mask_server, run alongside navigation by this agent. For stacks
         # whose own launch does not include it — this repository's navigation
         # launch does, so it stays empty there. A path to the script.
@@ -420,6 +462,16 @@ class RobotAgent(Node):
         # Station poses by id, kept from the last registry read. A mission step
         # names a station; driving there needs to know where that is.
         self._station_poses: dict[str, tuple[float, float, float]] = {}
+        # And their names, for the kiosk: a guest reads "Meja 5", not a uuid.
+        self._station_names: dict[str, str] = {}
+        self._confirm_timeout = float(self.get_parameter("confirm_timeout").value)
+        # The kiosk's view of the current run. Written by the run thread and by
+        # Nav2 feedback on executor threads, read by the publish timer.
+        self._kiosk_lock = threading.Lock()
+        self._kiosk = {"phase": PHASE_IDLE}
+        self._kiosk_since = time.monotonic()
+        self._confirm_gate = ConfirmGate()
+        self._progress = ProgressWatch()
         self._map_save_via = str(self.get_parameter("map_save_via").value).strip().lower()
         # Refused at startup, not at the first save. A typo here would otherwise
         # surface as a failed survey an hour into a shift, after the driving is
@@ -499,6 +551,22 @@ class RobotAgent(Node):
             Trigger, MISSION_POLL_SERVICE, self._on_mission_poll, callback_group=self._cb
         )
         self.create_timer(1.0, self._publish_status, callback_group=self._cb)
+
+        # Latched, so a kiosk started after the agent sees the current state at
+        # once instead of a blank face for up to a second.
+        self._kiosk_pub = self.create_publisher(
+            String, KIOSK_TOPIC, qos_profile=_latched_qos()
+        )
+        self.create_timer(1.0, self._publish_kiosk, callback_group=self._cb)
+        if self._mission_via == "nav":
+            # mission_plan stacks have a mission manager serving this name.
+            # Two servers on one service name is undefined which one answers.
+            self.create_service(
+                Trigger,
+                MISSION_CONFIRM_SERVICE,
+                self._on_mission_confirm,
+                callback_group=self._cb,
+            )
 
         if self._backend is not None:
             self._cache_dir.mkdir(parents=True, exist_ok=True)
@@ -1512,6 +1580,19 @@ class RobotAgent(Node):
             if self._mission_via == "nav"
             else ActionClient(self, MissionPlan, MISSION_ACTION, callback_group=self._cb)
         )
+        route = [
+            self._station_names.get(str(step.get("station_id")), "") or f"Stop {index + 1}"
+            for index, step in enumerate(steps)
+        ]
+        self._kiosk_set(
+            phase=PHASE_MOVING,
+            mission=str(plan.get("mission_name") or ""),
+            route=route,
+            step=step_index,
+            lap=lap,
+            laps=int(laps_target) if mode == "laps" and laps_target else None,
+            detail="",
+        )
         try:
             while True:
                 while step_index < len(steps):
@@ -1519,6 +1600,7 @@ class RobotAgent(Node):
                         self._report_run(
                             run_id, {"state": "canceled", "detail": "robot left navigation mode"}
                         )
+                        self._kiosk_set(phase=PHASE_IDLE)
                         return
 
                     # Checked before every step, not only at the end of a lap.
@@ -1529,8 +1611,11 @@ class RobotAgent(Node):
                         # Remembered, so a server that still lists it as live
                         # (a cancel that raced a lost report) cannot restart it.
                         self._store.mark_finished(run_id, {"state": "canceled"})
+                        self._kiosk_set(phase=PHASE_IDLE)
                         return
                     step = steps[step_index]
+                    self._progress.reset()
+                    self._kiosk_set(phase=PHASE_MOVING, step=step_index, lap=lap)
                     ok, detail = (
                         self._run_step_nav(client, step, run_id)
                         if self._mission_via == "nav"
@@ -1548,6 +1633,7 @@ class RobotAgent(Node):
                             f"[robot_agent] run {run_id} canceled during step {step_index + 1}"
                         )
                         self._store.mark_finished(run_id, {"state": "canceled"})
+                        self._kiosk_set(phase=PHASE_IDLE)
                         return
                     if not ok:
                         # Stop the whole run rather than retrying. An automatic
@@ -1561,6 +1647,7 @@ class RobotAgent(Node):
                             },
                         )
                         self.get_logger().error(f"[robot_agent] run {run_id} failed: {detail}")
+                        self._kiosk_set(phase=PHASE_FAILED, detail=detail)
                         return
                     # Reported the moment it arrives. step_index only moves on
                     # when the next step starts, and never for a lap's last
@@ -1569,6 +1656,11 @@ class RobotAgent(Node):
                     self.get_logger().info(
                         f"[robot_agent] run {run_id} reached step {step_index + 1} (lap {lap})"
                     )
+                    # mission_plan stacks wait for the confirm inside their
+                    # mission manager; with plain Nav2 the waiting is here.
+                    if self._mission_via == "nav" and str(step.get("confirm")) == "confirm":
+                        if not self._await_confirm(run_id, step_index, lap):
+                            return
                     step_index += 1
 
                 # Lap complete. Re-read the run: somebody may have asked it to
@@ -1577,6 +1669,7 @@ class RobotAgent(Node):
                 stopping = stopping or self._run_wants_stop(run_id)
                 if stopping or not self._more_laps(mode, lap, laps_target):
                     self._report_run(run_id, {"state": "done"})
+                    self._kiosk_set(phase=PHASE_DONE)
                     self.get_logger().info(f"[robot_agent] run {run_id} completed at lap {lap}")
                     return
 
@@ -1585,9 +1678,123 @@ class RobotAgent(Node):
         except Exception as exc:  # noqa: BLE001 — a failed run must not kill the agent
             self.get_logger().error(f"[robot_agent] run {run_id} aborted: {exc}")
             self._report_run(run_id, {"state": "failed", "detail": str(exc)})
+            self._kiosk_set(phase=PHASE_FAILED, detail=str(exc))
         finally:
             client.destroy()
             self._run_thread = None
+
+    def _await_confirm(self, run_id: str, step_index: int, lap: int) -> bool:
+        """
+        Hold at a `confirm` stop until the order is taken or the time runs out.
+
+        Returns False when the run must end here (canceled, or the robot left
+        navigation); the caller then returns without reporting anything more.
+        Timing out is not a failure: the robot carries on, as a waiter would
+        after calling twice, and the run says so.
+        """
+        self._confirm_gate.open(self._confirm_timeout)
+        self._kiosk_set(phase=PHASE_WAITING, step=step_index, lap=lap)
+        self.get_logger().info(
+            f"[robot_agent] run {run_id} waiting for a confirm at step {step_index + 1}"
+        )
+        check = {"next": time.time() + RUN_CANCEL_CHECK_S, "canceled": False}
+
+        def should_stop() -> bool:
+            if not self._run_allowed():
+                return True
+            # The backend is asked every few seconds, not every poll.
+            if time.time() >= check["next"]:
+                check["next"] = time.time() + RUN_CANCEL_CHECK_S
+                check["canceled"] = self._run_canceled(run_id)
+            return check["canceled"]
+
+        outcome = self._confirm_gate.wait(should_stop)
+        if outcome == CONFIRMED:
+            self._report_run(run_id, {"detail": f"step {step_index + 1}: order taken"})
+            self._kiosk_set(phase=PHASE_THANKS)
+            time.sleep(THANKS_HOLD_S)
+            return True
+        if outcome == TIMED_OUT:
+            self._report_run(
+                run_id,
+                {"detail": f"step {step_index + 1}: nobody confirmed, carried on"},
+            )
+            self.get_logger().info(
+                f"[robot_agent] run {run_id}: no confirm at step {step_index + 1}; carrying on"
+            )
+            return True
+
+        if check["canceled"]:
+            self.get_logger().info(f"[robot_agent] run {run_id} canceled while waiting")
+            self._store.mark_finished(run_id, {"state": "canceled"})
+        else:
+            self._report_run(
+                run_id, {"state": "canceled", "detail": "robot left navigation mode"}
+            )
+        self._kiosk_set(phase=PHASE_IDLE)
+        return False
+
+    def _on_mission_confirm(self, request, response):
+        """The order was taken: the kiosk's button, or the web UI's."""
+        del request
+        if self._confirm_gate.confirm():
+            response.success = True
+            response.message = "confirmed"
+        else:
+            response.success = False
+            response.message = "nothing is waiting for a confirmation"
+        return response
+
+    def _on_nav_feedback(self, message) -> None:
+        feedback = message.feedback
+        phase = self._progress.update(
+            float(feedback.distance_remaining), int(feedback.number_of_recoveries)
+        )
+        with self._kiosk_lock:
+            driving = self._kiosk.get("phase") in (PHASE_MOVING, PHASE_NEAR, PHASE_BLOCKED)
+        if driving:
+            self._kiosk_set(phase=phase)
+
+    # ── Kiosk ─────────────────────────────────────────────────────────────────
+
+    def _kiosk_set(self, **fields) -> None:
+        with self._kiosk_lock:
+            changed = any(self._kiosk.get(key) != value for key, value in fields.items())
+            if fields.get("phase") not in (None, self._kiosk.get("phase")):
+                self._kiosk_since = time.monotonic()
+            self._kiosk.update(fields)
+        if changed:
+            self._publish_kiosk()
+
+    def _publish_kiosk(self) -> None:
+        with self._kiosk_lock:
+            view = dict(self._kiosk)
+            since = self._kiosk_since
+        phase = view.get("phase", PHASE_IDLE)
+        navigating = self._mode == MODE_NAV and self._state == STATE_RUNNING
+        if not navigating and self._run_thread is None:
+            phase = PHASE_OFF
+        elif phase == PHASE_DONE and time.monotonic() - since > DONE_HOLD_S:
+            phase = PHASE_IDLE
+        elif phase == PHASE_FAILED and time.monotonic() - since > FAILED_HOLD_S:
+            phase = PHASE_IDLE
+        idle = phase in (PHASE_IDLE, PHASE_OFF)
+        msg = String()
+        msg.data = json.dumps(
+            kiosk_status(
+                phase=phase,
+                robot_mode=f"{self._mode}/{self._state}",
+                mission="" if idle else str(view.get("mission") or ""),
+                route=[] if idle else list(view.get("route") or []),
+                step=None if idle else view.get("step"),
+                lap=None if idle else view.get("lap"),
+                laps=None if idle else view.get("laps"),
+                confirm_remaining=self._confirm_gate.remaining(),
+                confirm_timeout=self._confirm_gate.timeout,
+                detail=str(view.get("detail") or "") if phase == PHASE_FAILED else "",
+            )
+        )
+        self._kiosk_pub.publish(msg)
 
     def _run_allowed(self) -> bool:
         return self._mode == MODE_NAV and self._state == STATE_RUNNING
@@ -1695,7 +1902,7 @@ class RobotAgent(Node):
         goal.pose.pose.orientation.z = math.sin(yaw / 2.0)
         goal.pose.pose.orientation.w = math.cos(yaw / 2.0)
 
-        send_future = client.send_goal_async(goal)
+        send_future = client.send_goal_async(goal, feedback_callback=self._on_nav_feedback)
         deadline = time.time() + MISSION_GOAL_ACCEPT_TIMEOUT_S
         while not send_future.done():
             if time.time() > deadline:
@@ -1819,6 +2026,9 @@ class RobotAgent(Node):
                 float(station["yaw"]),
             )
             for station in stations
+        }
+        self._station_names = {
+            str(station["id"]): str(station.get("name") or "") for station in stations
         }
 
     def _push_stations(self, map_id: str) -> None:

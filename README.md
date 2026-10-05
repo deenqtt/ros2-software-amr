@@ -49,7 +49,7 @@ Sistem terdiri dari tiga bagian:
 |---|---|---|
 | **Web UI + Backend** (`new_webui/`) | Server | Antarmuka operator dan *registry* (database) seluruh armada |
 | **Robot Agent** (`amr_agent/`) | Setiap robot (mis. Jetson) | Menjalankan apa yang diatur di Web UI: Nav2/SLAM, peta, station, zone, mission |
-| **Kiosk** (`kiosk-mockup/`) | Layar di robot | Tampilan untuk orang di sekitar robot (mockup) |
+| **Kiosk** (`amr_agent/kiosk/`) | Layar di robot | Tampilan untuk orang di sekitar robot (PySide6/QML, ikut folder agent) |
 
 > **Prinsip utama:** browser tidak "menyetir" mission. Web UI menyimpan apa yang harus dikerjakan
 > ke backend; robot sendiri yang mengambil dan melaksanakannya. Menutup browser tidak menghentikan robot.
@@ -197,8 +197,11 @@ ros2-software-amr/
 │   ├── agent_state.py        "ingatan" offline: registry, station, zone, outbox
 │   ├── backend_client.py     klien HTTP ke backend
 │   ├── zone_mask_server.py   zone → mask filter Nav2
-│   └── run_agent_gprp.sh     peluncur agent
-├── kiosk-mockup/          mockup layar robot (HTML/CSS/JS statis)
+│   ├── delivery.py           tunggu konfirmasi, hampir sampai / terhalang (tanpa ROS)
+│   ├── kiosk/                layar di robot (PySide6/QML)
+│   ├── tests/                test tanpa ROS (pytest)
+│   └── run_agent_gprp.sh     peluncur agent (+ --kiosk)
+├── kiosk-mockup/          desain awal layar robot (HTML/CSS/JS statis)
 ├── docs/                  panduan PDF, runbook produksi, kontrak ROS, screenshot
 └── DESIGN.md              design system yang diikuti Web UI
 ```
@@ -335,8 +338,16 @@ layar **"Pesanan Anda sudah tiba"** dengan tombol konfirmasi besar.
 Coba langsung: buka `kiosk-mockup/index.html` di browser, tekan **`D`** untuk panel simulasi
 (tombol 1–9 mengganti layar), atau tekan lama pojok kiri atas untuk menu staf (PIN mockup `1234`).
 
-> Kiosk saat ini **mockup** dengan data simulasi. Rencana integrasinya: membaca status dari agent lewat
-> rosbridge lokal dan memanggil `/mission_confirm` saat tombol konfirmasi ditekan.
+Versi yang jalan di robot ada di [`amr_agent/kiosk/`](amr_agent/kiosk/README.md): aplikasi
+PySide6/QML yang membaca topic lokal `/amr/kiosk` dari agent dan memanggil `/mission_confirm` saat
+tombol **Sudah diambil** ditekan. Di mode `mission_via=nav`, agent menunggu di step `confirm` sampai
+dikonfirmasi atau 2 menit berlalu, lalu lanjut sendiri.
+
+```bash
+pip install PySide6
+python3 amr_agent/kiosk/kiosk_app.py --mock --window      # coba tanpa ROS
+./amr_agent/run_agent_gprp.sh --kiosk <robot_id> <backend_url>   # di robot, bersama agent
+```
 
 ---
 

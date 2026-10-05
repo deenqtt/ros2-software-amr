@@ -9,19 +9,36 @@
 # is how robot_agent_node.py finds backend_client.py.
 #
 # Usage:
-#   ./run_agent_gprp.sh <robot_id> <backend_url> [ros_ws]
+#   ./run_agent_gprp.sh [--kiosk] <robot_id> <backend_url> [ros_ws]
+#
+# --kiosk also starts the screen on the robot (kiosk/kiosk_app.py) next to the
+# agent, and stops it when the agent stops. It needs a display (the robot's
+# desktop session, or a compositor such as cage) and PySide6.
 #
 # Example:
-#   ./run_agent_gprp.sh 7fc87960-8c98-4d98-8a83-a4401d6bef0a http://192.168.2.84:3002
+#   ./run_agent_gprp.sh --kiosk 7fc87960-8c98-4d98-8a83-a4401d6bef0a http://192.168.2.84:3002
+#
+# Environment (optional):
+#   AMR_CONFIRM_TIMEOUT  seconds a `confirm` stop waits before driving on (120)
+#   AMR_KIOSK_NAME       name on the kiosk's status bar (AMR)
+#   AMR_KIOSK_PIN        staff PIN on the kiosk (1234 — change it)
+#   AMR_KIOSK_ARGS       extra kiosk arguments, e.g. "--lang en --estop-topic /estop"
 #
 set -euo pipefail
+
+KIOSK=0
+ARGS=()
+for arg in "$@"; do
+    if [[ "$arg" == "--kiosk" ]]; then KIOSK=1; else ARGS+=("$arg"); fi
+done
+set -- "${ARGS[@]+"${ARGS[@]}"}"
 
 ROBOT_ID="${1:-}"
 BACKEND_URL="${2:-}"
 ROS_WS="${3:-$HOME/ros2_gprp_amr_ws}"
 
 if [[ -z "$ROBOT_ID" || -z "$BACKEND_URL" ]]; then
-    echo "usage: $0 <robot_id> <backend_url> [ros_ws]" >&2
+    echo "usage: $0 [--kiosk] <robot_id> <backend_url> [ros_ws]" >&2
     echo "  e.g. $0 7fc87960-...-1bef0a http://192.168.2.84:3002" >&2
     exit 64
 fi
@@ -48,7 +65,30 @@ python3 -c 'import custom_interfaces.srv' 2>/dev/null || {
     exit 69
 }
 
-exec python3 "$HERE/robot_agent_node.py" --ros-args \
+# The kiosk is its own process, on purpose: a screen that hangs or crashes must
+# not take the robot's missions with it, and it can be restarted on its own.
+KIOSK_PID=""
+if [[ "$KIOSK" == 1 ]]; then
+    if python3 -c 'import PySide6' 2>/dev/null; then
+        # shellcheck disable=SC2086
+        python3 "$HERE/kiosk/kiosk_app.py" ${AMR_KIOSK_ARGS:-} &
+        KIOSK_PID=$!
+        echo "kiosk started (pid $KIOSK_PID)"
+    else
+        echo "PySide6 is not installed; starting without the kiosk (pip install PySide6)" >&2
+    fi
+fi
+
+# A double parameter: ROS refuses "90" for it, so it always carries a decimal.
+CONFIRM_TIMEOUT="${AMR_CONFIRM_TIMEOUT:-120}"
+[[ "$CONFIRM_TIMEOUT" == *.* ]] || CONFIRM_TIMEOUT="$CONFIRM_TIMEOUT.0"
+
+stop_kiosk() {
+    if [[ -n "$KIOSK_PID" ]]; then kill "$KIOSK_PID" 2>/dev/null || true; fi
+}
+trap stop_kiosk EXIT
+
+python3 "$HERE/robot_agent_node.py" --ros-args \
     -p managed_mode:=true \
     -p use_sim_time_arg:=true \
     -p "backend_url:=$BACKEND_URL" \
@@ -67,4 +107,5 @@ exec python3 "$HERE/robot_agent_node.py" --ros-args \
     -p "station_file:=$HOME/amr_agent/station_data.yaml" \
     -p dock_reload_service:=/docking_server/reload_database \
     -p dock_plugin:=simple_charging_dock \
-    -p mission_via:=nav
+    -p mission_via:=nav \
+    -p "confirm_timeout:=$CONFIRM_TIMEOUT"
