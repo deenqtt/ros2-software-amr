@@ -422,7 +422,11 @@ watch(createOpen, (open) => {
           </div>
           <!-- On a phone the controls get a row of their own, three even
                thumb-sized slots; from md they sit at the end of the line. -->
-          <div class="grid w-full grid-cols-3 gap-xs md:flex md:w-auto md:items-center md:gap-sm">
+          <!-- Phone: Watch and Cancel side by side, the long "Stop after lap"
+                 across the row below, so no label overflows its button. -->
+          <div
+            class="grid w-full grid-flow-row-dense grid-cols-2 gap-xs md:flex md:w-auto md:items-center md:gap-sm"
+          >
             <!-- The run is a robot moving somewhere; watching it is one click. -->
             <Button v-if="run.robotId" variant="ghost" size="sm" class="w-full md:w-auto" as-child>
               <RouterLink
@@ -445,7 +449,7 @@ watch(createOpen, (open) => {
             <BlockedTip
               v-if="run.state === 'running'"
               :reason="operateBlocker"
-              class="w-full md:w-auto"
+              class="col-span-2 w-full md:col-span-1 md:w-auto"
             >
               <Button
                 variant="outline"
@@ -572,7 +576,7 @@ watch(createOpen, (open) => {
                   {{ mission.name }}
                 </span>
                 <span
-                  :class="cn('mt-[2px] block truncate text-body-sm', status.tone)"
+                  :class="cn('mt-[2px] line-clamp-2 text-body-sm', status.tone)"
                   :title="status.detail ?? undefined"
                 >
                   {{ status.label }}

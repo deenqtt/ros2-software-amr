@@ -21,7 +21,10 @@ import EmptyState from '@/shared/components/EmptyState.vue'
 import ConfirmDialog from '@/shared/components/ConfirmDialog.vue'
 import type { StatusTone } from '@/domain/types'
 import UserRowActions from '../components/UserRowActions.vue'
-import UserFormDialog, { type UserFormMode, type UserFormValues } from '../components/UserFormDialog.vue'
+import UserFormDialog, {
+  type UserFormMode,
+  type UserFormValues,
+} from '../components/UserFormDialog.vue'
 import { auditDate } from '../auditLabel'
 
 const auth = useAuthStore()
@@ -141,7 +144,9 @@ async function setDisabled(user: UserAccount, disabled: boolean): Promise<void> 
   confirmPending.value = true
   try {
     replace(await usersApi.update(user.id, { disabled }))
-    toast.success(disabled ? `${user.username} can no longer sign in` : `${user.username} can sign in again`)
+    toast.success(
+      disabled ? `${user.username} can no longer sign in` : `${user.username} can sign in again`,
+    )
     pendingToggle.value = null
   } catch (cause) {
     toast.error(cause instanceof Error ? cause.message : 'Could not change it.')
@@ -227,15 +232,17 @@ function onToggle(user: UserAccount): void {
                 <span class="block truncate text-caption text-muted">
                   <span class="font-ident">{{ user.username }}</span> · {{ ROLE_LABEL[user.role] }}
                 </span>
+                <!-- Under the name, not beside it: on a phone a badge beside it
+                     cut the name and hid the role. -->
+                <StatusBadge v-if="user.disabled" tone="neutral" label="Disabled" class="mt-xxs" />
+                <StatusBadge
+                  v-else-if="user.mustChangePassword"
+                  tone="warning"
+                  label="Temporary password"
+                  title="Has not yet replaced the password set for them"
+                  class="mt-xxs"
+                />
               </span>
-              <StatusBadge v-if="user.disabled" tone="neutral" label="Disabled" class="shrink-0" />
-              <StatusBadge
-                v-else-if="user.mustChangePassword"
-                tone="warning"
-                label="Temporary password"
-                title="Has not yet replaced the password set for them"
-                class="shrink-0"
-              />
             </button>
             <UserRowActions
               :user="user"
@@ -277,7 +284,9 @@ function onToggle(user: UserAccount): void {
                     <div class="min-w-0">
                       <p class="truncate text-title-sm text-ink">
                         {{ user.displayName || user.username }}
-                        <span v-if="isSelf(user)" class="text-caption font-normal text-muted">(you)</span>
+                        <span v-if="isSelf(user)" class="text-caption font-normal text-muted"
+                          >(you)</span
+                        >
                       </p>
                       <p class="truncate font-ident text-caption text-muted">{{ user.username }}</p>
                     </div>
@@ -288,9 +297,15 @@ function onToggle(user: UserAccount): void {
                 </TableCell>
                 <TableCell class="whitespace-nowrap">
                   <StatusBadge
-                    :tone="user.disabled ? 'neutral' : user.mustChangePassword ? 'warning' : 'success'"
+                    :tone="
+                      user.disabled ? 'neutral' : user.mustChangePassword ? 'warning' : 'success'
+                    "
                     :label="
-                      user.disabled ? 'Disabled' : user.mustChangePassword ? 'Temporary password' : 'Active'
+                      user.disabled
+                        ? 'Disabled'
+                        : user.mustChangePassword
+                          ? 'Temporary password'
+                          : 'Active'
                     "
                     :title="
                       !user.disabled && user.mustChangePassword

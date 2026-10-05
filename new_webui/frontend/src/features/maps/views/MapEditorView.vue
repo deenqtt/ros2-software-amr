@@ -544,7 +544,8 @@ watch(saveOpen, (open) => {
               >
                 <template v-if="canEdit && editor.usesMaterial.value">
                   <span class="text-label uppercase text-muted">Paint</span>
-                  <div class="flex gap-xxs">
+                  <!-- Wraps rather than running past the card on a phone. -->
+                  <div class="flex min-w-0 flex-wrap gap-xxs">
                     <button
                       v-for="item in MATERIALS"
                       :key="item.value"
@@ -571,7 +572,7 @@ watch(saveOpen, (open) => {
                 </template>
 
                 <template v-if="canEdit && editor.usesBrushSize.value">
-                  <span class="h-5 w-px bg-hairline" />
+                  <span class="hidden h-5 w-px bg-hairline md:block" />
                   <span class="text-label uppercase text-muted">Brush</span>
                   <!--
                     A stepper, not a set of sizes: they are ordered, and an
