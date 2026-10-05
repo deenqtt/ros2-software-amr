@@ -14,13 +14,14 @@ import sqlite3
 from fastapi import APIRouter, HTTPException, Query, Response, status
 
 from app.api.deps import Connection
+from app.auth import Admin, Reader
 from app.db import transaction
 from app.repositories import maps as maps_repo
 from app.repositories import robots as robots_repo
 from app.repositories import stations as repo
 from app.schemas.station import StationCreate, StationOut, StationPatch
 
-router = APIRouter(prefix="/api/stations", tags=["stations"])
+router = APIRouter(prefix="/api/stations", tags=["stations"], dependencies=[Reader])
 
 
 def _to_out(row: sqlite3.Row) -> StationOut:
@@ -46,7 +47,12 @@ def get_station(station_id: str, connection: Connection) -> StationOut:
     return _to_out(row)
 
 
-@router.post("", response_model=StationOut, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "",
+    response_model=StationOut,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Admin],
+)
 def create_station(body: StationCreate, connection: Connection) -> StationOut:
     """
     Register a station on a map.
@@ -77,7 +83,7 @@ def create_station(body: StationCreate, connection: Connection) -> StationOut:
     return _to_out(row)
 
 
-@router.patch("/{station_id}", response_model=StationOut)
+@router.patch("/{station_id}", response_model=StationOut, dependencies=[Admin])
 def update_station(station_id: str, body: StationPatch, connection: Connection) -> StationOut:
     """
     Change some of a station's fields.
@@ -105,7 +111,7 @@ def update_station(station_id: str, body: StationPatch, connection: Connection) 
     return _to_out(row)
 
 
-@router.delete("/{station_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{station_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Admin])
 def delete_station(station_id: str, connection: Connection) -> Response:
     try:
         with transaction(connection):

@@ -13,6 +13,7 @@ import sqlite3
 from fastapi import APIRouter, HTTPException, Response, status
 
 from app.api.deps import Connection
+from app.auth import Admin, AdminOrAgent, OperatorOrAgent, Reader
 from app.db import transaction
 from app.repositories import maps as maps_repo
 from app.repositories import missions as missions_repo
@@ -21,7 +22,7 @@ from app.schemas.map import AssignMapIn
 from app.schemas.mission import RunPlan, StepOut
 from app.schemas.robot import RobotCreate, RobotOut, RobotUpdate, SetModeIn
 
-router = APIRouter(prefix="/api/robots", tags=["robots"])
+router = APIRouter(prefix="/api/robots", tags=["robots"], dependencies=[Reader])
 
 
 def _to_out(row: sqlite3.Row) -> RobotOut:
@@ -44,7 +45,7 @@ def get_robot(
     return _to_out(row)
 
 
-@router.post("", response_model=RobotOut, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=RobotOut, status_code=status.HTTP_201_CREATED, dependencies=[Admin])
 def create_robot(
     body: RobotCreate,
     connection: Connection,
@@ -61,7 +62,7 @@ def create_robot(
     return _to_out(row)
 
 
-@router.patch("/{robot_id}", response_model=RobotOut)
+@router.patch("/{robot_id}", response_model=RobotOut, dependencies=[Admin])
 def update_robot(
     robot_id: str,
     body: RobotUpdate,
@@ -90,7 +91,7 @@ def update_robot(
     return _to_out(row)
 
 
-@router.delete("/{robot_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{robot_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Admin])
 def delete_robot(
     robot_id: str,
     connection: Connection,
@@ -102,7 +103,7 @@ def delete_robot(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@router.put("/{robot_id}/mode", response_model=RobotOut)
+@router.put("/{robot_id}/mode", response_model=RobotOut, dependencies=[OperatorOrAgent])
 def set_mode(robot_id: str, body: SetModeIn, connection: Connection) -> RobotOut:
     """
     Say what this robot should be doing.
@@ -152,7 +153,7 @@ def get_active_run(robot_id: str, connection: Connection) -> RunPlan | None:
     return RunPlan(**dict(run), steps=steps)
 
 
-@router.put("/{robot_id}/map", response_model=RobotOut)
+@router.put("/{robot_id}/map", response_model=RobotOut, dependencies=[AdminOrAgent])
 def assign_map(
     robot_id: str,
     body: AssignMapIn,

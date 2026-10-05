@@ -52,29 +52,18 @@ def test_cors_allows_every_method_the_api_serves():
     assert required <= allowed, f"CORS blocks {sorted(required - allowed)}"
 
 
-def test_a_non_finite_number_is_rejected_not_a_server_error(tmp_path):
+def test_a_non_finite_number_is_rejected_not_a_server_error(client):
     """
     FastAPI echoes the offending value back in a validation error, and JSON
     cannot represent NaN — so a request carrying one used to be rejected
     correctly and *then* fail in the response encoder, surfacing as a 500. A
     malformed request must never read as a server fault.
     """
-    from fastapi.testclient import TestClient
-
-    from app.main import create_app
-
-    settings = Settings(
-        db_path=tmp_path / "t.db",
-        maps_dir=tmp_path / "maps",
-        cors_origins=["http://localhost:3100"],
-        env="development",
+    response = client.post(
+        "/api/robots",
+        content='{"name": "A", "bridge_url": "ws://h:1", "ros_domain_id": NaN}',
+        headers={"Content-Type": "application/json"},
     )
-    with TestClient(create_app(settings)) as client:
-        response = client.post(
-            "/api/robots",
-            content='{"name": "A", "bridge_url": "ws://h:1", "ros_domain_id": NaN}',
-            headers={"Content-Type": "application/json"},
-        )
 
     assert response.status_code == 422
     assert response.json()["detail"]

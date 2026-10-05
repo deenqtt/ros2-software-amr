@@ -16,7 +16,23 @@ cd new_webui/backend
 python3 -m venv .venv
 ./.venv/bin/pip install -e ".[dev]"
 cp .env.example .env
+./.venv/bin/python -m app create-admin <your-name>   # asks for a password
 ```
+
+There is no default password and no sign-up page. The first super admin comes
+from one of:
+
+- **`.env` on a new server:** set `AMR_BOOTSTRAP_USER` and `AMR_BOOTSTRAP_PASSWORD`.
+  On a database with no accounts, that account is created at startup and has to
+  choose its own password at first sign-in. Once anyone exists the variables are
+  ignored, so remove them after that first sign-in.
+- **The CLI on the server:** `create-admin <name>`. `create-admin <name> --reset`
+  makes an existing account an enabled super admin with a new password — the way
+  back in when every super admin has forgotten theirs.
+
+The super admin makes everyone else from the Users screen. Every password set
+there is temporary: the person replaces it the first time they sign in, and until
+then the API refuses everything but that (403, `code: password_change_required`).
 
 Then, every time:
 
@@ -69,6 +85,43 @@ app/
 | PATCH | `/api/robots/{id}` | Partial. Omitted ≠ null — see below. |
 | DELETE | `/api/robots/{id}` | 204. |
 
+## Sign-in, roles and audit
+
+Every endpoint except `/health` and `/ready` needs a signed-in person, through an
+HttpOnly session cookie set by `POST /api/auth/login`. Four roles, each including
+the one before:
+
+| Role | May |
+|---|---|
+| viewer | read everything: fleet, maps, stations, zones, missions, run history |
+| operator | + start, stop and cancel runs; switch a robot's mode |
+| admin | + edit maps, stations, zones, missions and robots |
+| super_admin | + manage accounts; read the audit trail |
+
+Upgrading from the three-role version makes every existing admin a super admin
+(migration 009), so nobody loses access to the Users screen.
+
+The guard each route needs is declared on the route (`dependencies=[Admin]` …) or
+its router, from `app/auth.py`; nothing checks a role inside a handler.
+
+- A session ends after `AMR_SESSION_IDLE_MINUTES` without a request (12 h: one shift).
+- Five wrong passwords for one name from one address pause that name for five minutes.
+- "No such user" and "wrong password" get the same answer, in the same time.
+- Every change made through the API, and every sign-in attempt, is written to
+  `audit_log` with who, what, when, the result and the address (`GET /api/audit`,
+  super admin). Agent progress reports are not: the run already records them.
+- Runs record who pressed Run (`started_by`).
+
+**Robot agents** do not sign in yet. While `AMR_AGENT_AUTH=optional` (the default),
+the endpoints an agent uses answer without credentials — reads, `PUT /robots/{id}/mode`
+and `/map`, `PATCH /runs/{id}`, `POST /maps` — and anything else is refused. That
+is a known gap until agents carry a token; `required` closes it and stops agents.
+
+**rosbridge is still unauthenticated.** Signing in to this API protects this API.
+The browser talks to each robot's rosbridge directly, and anyone who can reach that
+port can still publish to it; until it is proxied, keep robots on a network the
+plant controls.
+
 ## What is deliberately different from the old backend
 
 Each of these fixes a specific defect found in the old backend (since removed; its
@@ -115,6 +168,5 @@ Maps, missions, stations, keepout zones and alarms. The old backend still owns t
 its code is in [`../../backend/`](../../backend/) and is the reference for the ROS
 contract those endpoints have to keep.
 
-**There is still no authentication.** Naming CORS origins narrows the blast radius but
-does not close it. Before this leaves a trusted network it needs a real auth story,
-and so does rosbridge.
+**Agent credentials and rosbridge.** People sign in (see above); robot agents and
+rosbridge do not yet. Both are next.

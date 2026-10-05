@@ -221,3 +221,5 @@ class RunOut(BaseModel):
     detail: str | None
     started_at: str
     ended_at: str | None
+    #: Who pressed Run. Null for runs from before sign-in existed.
+    started_by: str | None = None

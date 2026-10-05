@@ -87,3 +87,46 @@ def test_foreign_keys_are_enforced(settings):
     row = connection.execute("PRAGMA foreign_keys").fetchone()
     assert row[0] == 1
     connection.close()
+
+
+def test_super_admin_migration_keeps_sessions_and_audit_and_promotes_admins(settings, tmp_path):
+    """
+    009 rebuilds users to widen a CHECK constraint. Done with foreign keys on,
+    dropping the old table would cascade: every session deleted, every audit
+    record orphaned. Pin that the rebuild keeps both, and that existing admins
+    become super admins so nobody loses the Users screen by upgrading.
+    """
+    import shutil
+
+    from app.db import MIGRATIONS_DIR
+
+    before = tmp_path / "before"
+    before.mkdir()
+    for path in sorted(MIGRATIONS_DIR.glob("*.sql")):
+        if int(path.stem.split("_")[0]) < 9:
+            shutil.copy(path, before / path.name)
+
+    connection = connect(settings.db_path)
+    migrate(connection, before)
+    connection.execute(
+        "INSERT INTO users (id, username, role, password_hash) VALUES "
+        "('u1', 'boss', 'admin', 'x'), ('u2', 'ops', 'operator', 'x')"
+    )
+    connection.execute("INSERT INTO sessions (token_hash, user_id) VALUES ('t1', 'u1')")
+    connection.execute(
+        "INSERT INTO audit_log (user_id, username, action) VALUES ('u1', 'boss', 'login')"
+    )
+
+    assert migrate(connection) == [
+        version for version, _, _ in discover_migrations() if version >= 9
+    ]
+
+    roles = dict(connection.execute("SELECT username, role FROM users").fetchall())
+    assert roles == {"boss": "super_admin", "ops": "operator"}
+    assert connection.execute("SELECT user_id FROM sessions").fetchone()["user_id"] == "u1"
+    assert connection.execute("SELECT user_id FROM audit_log").fetchone()["user_id"] == "u1"
+    assert connection.execute("PRAGMA foreign_keys").fetchone()[0] == 1
+    # The rebuilt table still cascades: deleting a person ends their sessions.
+    connection.execute("DELETE FROM users WHERE id = 'u1'")
+    assert connection.execute("SELECT count(*) FROM sessions").fetchone()[0] == 0
+    connection.close()

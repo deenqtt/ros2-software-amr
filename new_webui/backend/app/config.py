@@ -14,7 +14,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Annotated, Literal
 
-from pydantic import Field, field_validator
+from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
@@ -44,6 +44,28 @@ class Settings(BaseSettings):
     cors_origins: Annotated[list[str], NoDecode] = Field(
         default_factory=lambda: ["http://localhost:3100"]
     )
+
+    # Sign-in. A session ends after this long without a request; 12 hours is
+    # one shift, so nobody is signed out mid-shift and a screen left on
+    # overnight is not still signed in at the next one.
+    session_idle_minutes: int = Field(default=12 * 60, ge=5)
+    # Send the session cookie over HTTPS only. Leave off while the site is
+    # served over plain HTTP (the nginx example is), or the browser drops the
+    # cookie and every sign-in appears to fail.
+    cookie_secure: bool = False
+    # How a robot agent is let in. `optional`: an agent may call the endpoints
+    # it needs without credentials — what every agent does today, so nothing
+    # breaks while agent tokens roll out. `required`: only signed-in people;
+    # agents are refused until they carry a token.
+    agent_auth: Literal["optional", "required"] = "optional"
+    audit_retention_days: int = Field(default=365, ge=1)
+
+    # The first super admin on a fresh server. Read only while the database has
+    # no accounts at all; the account must replace this password at first
+    # sign-in, so what sits in .env stops being a working password the moment
+    # someone has used it. Remove both lines once that has happened.
+    bootstrap_user: str | None = None
+    bootstrap_password: SecretStr | None = None
 
     @field_validator("cors_origins", mode="before")
     @classmethod

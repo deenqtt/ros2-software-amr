@@ -9,6 +9,7 @@ real configuration on the way past. The ASGI entry point lives in asgi.py.
 
 from __future__ import annotations
 
+import logging
 import math
 from contextlib import asynccontextmanager
 from typing import Any
@@ -18,9 +19,14 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.api import health, maps, missions, robots, stations, zones
+from app import audit
+from app.api import auth, health, maps, missions, robots, stations, users, zones
 from app.config import Settings, get_settings
 from app.db import connect, migrate
+from app.repositories import audit as audit_repo
+from app.repositories import users as users_repo
+
+log = logging.getLogger(__name__)
 
 
 def _json_safe(value: Any) -> Any:
@@ -53,6 +59,48 @@ async def _on_validation_error(_: Request, error: RequestValidationError) -> JSO
     )
 
 
+def bootstrap_account(connection, settings: Settings) -> None:
+    """
+    Create the first super admin from the environment, on an empty database.
+
+    Only ever on an empty one: once anyone exists, the variables are ignored, so
+    a password left in .env cannot recreate or reset an account later. The
+    account must replace the password at first sign-in.
+    """
+    if not settings.bootstrap_user or settings.bootstrap_password is None:
+        return
+    if users_repo.count_users(connection) > 0:
+        return
+
+    from app.schemas.user import USERNAME_PATTERN
+    from app.security import PASSWORD_MIN, hash_password
+
+    username = settings.bootstrap_user.strip()
+    password = settings.bootstrap_password.get_secret_value()
+    if not USERNAME_PATTERN.match(username) or len(password) < PASSWORD_MIN:
+        log.error(
+            "AMR_BOOTSTRAP_USER / AMR_BOOTSTRAP_PASSWORD ignored: the username needs 3 to 32 "
+            "letters, digits, dots, dashes or underscores, and the password %d characters.",
+            PASSWORD_MIN,
+        )
+        return
+
+    users_repo.create_user(
+        connection,
+        {
+            "username": username,
+            "role": "super_admin",
+            "password_hash": hash_password(password),
+            "must_change_password": 1,
+        },
+    )
+    log.warning(
+        "Created super admin '%s' from AMR_BOOTSTRAP_USER. It must set a new password at "
+        "first sign-in; remove AMR_BOOTSTRAP_PASSWORD from the environment afterwards.",
+        username,
+    )
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     resolved = settings or get_settings()
     resolved.validate_for_runtime()
@@ -66,8 +114,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         try:
             applied = migrate(connection)
             app.state.schema_versions_applied = applied
+            audit_repo.prune(connection, resolved.audit_retention_days)
+            users_repo.prune_sessions(connection, resolved.session_idle_minutes)
+            bootstrap_account(connection, resolved)
+            if users_repo.count_active_super_admins(connection) == 0:
+                log.warning(
+                    "No super admin account exists, so nobody can manage accounts. Set "
+                    "AMR_BOOTSTRAP_USER and AMR_BOOTSTRAP_PASSWORD, or run on this machine:  "
+                    "python -m app create-admin <username>"
+                )
         finally:
             connection.close()
+        if resolved.is_production and resolved.agent_auth == "optional":
+            log.warning(
+                "AMR_AGENT_AUTH=optional: robot agents are let in without credentials, "
+                "and so is anything else that calls the agent's endpoints."
+            )
         yield
 
     app = FastAPI(
@@ -93,8 +155,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
 
     app.add_exception_handler(RequestValidationError, _on_validation_error)
+    audit.install(app)
 
     app.include_router(health.router)
+    app.include_router(auth.router)
+    app.include_router(users.router)
+    app.include_router(users.audit_router)
     app.include_router(robots.router)
     app.include_router(maps.router)
     app.include_router(stations.router)

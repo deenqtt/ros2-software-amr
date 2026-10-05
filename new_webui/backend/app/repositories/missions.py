@@ -25,7 +25,7 @@ _STEP_COLUMNS = """
 _RUN_COLUMNS = """
     id, mission_id, mission_name, robot_id, mode, laps_target,
     lap, step_index, reached_lap, reached_index, reached_at,
-    state, detail, started_at, ended_at
+    state, detail, started_at, ended_at, started_by
 """
 
 LIVE_STATES = ("running", "stopping")
@@ -215,12 +215,12 @@ def start_run(connection: sqlite3.Connection, payload: dict) -> sqlite3.Row:
     connection.execute(
         """
         INSERT INTO mission_runs (
-            id, mission_id, mission_name, robot_id, mode, laps_target
+            id, mission_id, mission_name, robot_id, mode, laps_target, started_by
         ) VALUES (
-            :id, :mission_id, :mission_name, :robot_id, :mode, :laps_target
+            :id, :mission_id, :mission_name, :robot_id, :mode, :laps_target, :started_by
         )
         """,
-        {**payload, "id": run_id},
+        {"started_by": None, **payload, "id": run_id},
     )
     started = get_run(connection, run_id)
     if started is None:  # pragma: no cover — the insert just succeeded

@@ -25,6 +25,7 @@ from fastapi import APIRouter, File, Form, HTTPException, Request, Response, Upl
 from fastapi.responses import FileResponse
 
 from app.api.deps import Connection
+from app.auth import Admin, AdminOrAgent, Reader
 from app.db import transaction
 from app.maps_files import (
     YAML_NAME,
@@ -43,7 +44,7 @@ from app.repositories import robots as robots_repo
 from app.repositories import stations as stations_repo
 from app.schemas.map import MapOut, MapRenameIn
 
-router = APIRouter(prefix="/api/maps", tags=["maps"])
+router = APIRouter(prefix="/api/maps", tags=["maps"], dependencies=[Reader])
 
 
 def _to_out(row: sqlite3.Row) -> MapOut:
@@ -67,7 +68,12 @@ def get_map(map_id: str, connection: Connection) -> MapOut:
     return _to_out(row)
 
 
-@router.post("", response_model=MapOut, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "",
+    response_model=MapOut,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[AdminOrAgent],
+)
 async def create_map(
     request: Request,
     connection: Connection,
@@ -191,7 +197,7 @@ def download_map_file(map_id: str, which: str, request: Request, connection: Con
     )
 
 
-@router.patch("/{map_id}", response_model=MapOut)
+@router.patch("/{map_id}", response_model=MapOut, dependencies=[Admin])
 def rename_map(map_id: str, body: MapRenameIn, connection: Connection) -> MapOut:
     """
     Rename a map.
@@ -231,7 +237,7 @@ def rename_map(map_id: str, body: MapRenameIn, connection: Connection) -> MapOut
     return _to_out(renamed)
 
 
-@router.put("/{map_id}/image", response_model=MapOut)
+@router.put("/{map_id}/image", response_model=MapOut, dependencies=[Admin])
 async def replace_map_image(
     map_id: str,
     request: Request,
@@ -350,7 +356,7 @@ def download_map_archive(map_id: str, request: Request, connection: Connection) 
     )
 
 
-@router.delete("/{map_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{map_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Admin])
 def delete_map(map_id: str, request: Request, connection: Connection) -> Response:
     if repo.get_map(connection, map_id) is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Map not found")

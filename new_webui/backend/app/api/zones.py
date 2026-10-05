@@ -14,12 +14,13 @@ from typing import Annotated
 from fastapi import APIRouter, HTTPException, Query, Response, status
 
 from app.api.deps import Connection
+from app.auth import Admin, Reader
 from app.db import transaction
 from app.repositories import maps as maps_repo
 from app.repositories import zones as repo
 from app.schemas.zone import ZoneCreate, ZoneKind, ZoneOut, ZonePatch
 
-router = APIRouter(prefix="/api/zones", tags=["zones"])
+router = APIRouter(prefix="/api/zones", tags=["zones"], dependencies=[Reader])
 
 
 def _to_out(row: sqlite3.Row) -> ZoneOut:
@@ -69,7 +70,7 @@ def get_zone(zone_id: str, connection: Connection) -> ZoneOut:
     return _to_out(row)
 
 
-@router.post("", response_model=ZoneOut, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=ZoneOut, status_code=status.HTTP_201_CREATED, dependencies=[Admin])
 def create_zone(body: ZoneCreate, connection: Connection) -> ZoneOut:
     if maps_repo.get_map(connection, body.map_id) is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, f"Map not found: {body.map_id}")
@@ -84,7 +85,7 @@ def create_zone(body: ZoneCreate, connection: Connection) -> ZoneOut:
     return _to_out(row)
 
 
-@router.patch("/{zone_id}", response_model=ZoneOut)
+@router.patch("/{zone_id}", response_model=ZoneOut, dependencies=[Admin])
 def update_zone(zone_id: str, body: ZonePatch, connection: Connection) -> ZoneOut:
     """
     Change some of a zone's fields.
@@ -128,7 +129,7 @@ def update_zone(zone_id: str, body: ZonePatch, connection: Connection) -> ZoneOu
     return _to_out(updated)
 
 
-@router.delete("/{zone_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{zone_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Admin])
 def delete_zone(zone_id: str, connection: Connection) -> Response:
     with transaction(connection):
         deleted = repo.delete_zone(connection, zone_id)

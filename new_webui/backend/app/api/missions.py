@@ -14,6 +14,7 @@ import sqlite3
 from fastapi import APIRouter, HTTPException, Query, Response, status
 
 from app.api.deps import Connection
+from app.auth import Admin, CurrentOperator, OperatorOrAgent, Reader
 from app.db import transaction
 from app.repositories import maps as maps_repo
 from app.repositories import missions as repo
@@ -31,8 +32,8 @@ from app.schemas.mission import (
     StepOut,
 )
 
-router = APIRouter(prefix="/api/missions", tags=["missions"])
-runs_router = APIRouter(prefix="/api/runs", tags=["runs"])
+router = APIRouter(prefix="/api/missions", tags=["missions"], dependencies=[Reader])
+runs_router = APIRouter(prefix="/api/runs", tags=["runs"], dependencies=[Reader])
 
 
 def _to_out(connection: sqlite3.Connection, row: sqlite3.Row) -> MissionOut:
@@ -89,7 +90,12 @@ def get_mission(mission_id: str, connection: Connection) -> MissionOut:
     return _to_out(connection, row)
 
 
-@router.post("", response_model=MissionOut, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "",
+    response_model=MissionOut,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Admin],
+)
 def create_mission(body: MissionCreate, connection: Connection) -> MissionOut:
     if maps_repo.get_map(connection, body.map_id) is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, f"Map not found: {body.map_id}")
@@ -110,7 +116,7 @@ def create_mission(body: MissionCreate, connection: Connection) -> MissionOut:
     return get_mission(row["id"], connection)
 
 
-@router.patch("/{mission_id}", response_model=MissionOut)
+@router.patch("/{mission_id}", response_model=MissionOut, dependencies=[Admin])
 def update_mission(mission_id: str, body: MissionPatch, connection: Connection) -> MissionOut:
     row = repo.get_mission(connection, mission_id)
     if row is None:
@@ -134,7 +140,7 @@ def update_mission(mission_id: str, body: MissionPatch, connection: Connection) 
     return get_mission(mission_id, connection)
 
 
-@router.delete("/{mission_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{mission_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Admin])
 def delete_mission(mission_id: str, connection: Connection) -> Response:
     """
     Remove a route.
@@ -167,7 +173,7 @@ def get_run(run_id: str, connection: Connection) -> RunOut:
 
 
 @runs_router.post("", response_model=RunOut, status_code=status.HTTP_201_CREATED)
-def start_run(body: RunStart, connection: Connection) -> RunOut:
+def start_run(body: RunStart, operator: CurrentOperator, connection: Connection) -> RunOut:
     """
     Dispatch a mission to a robot.
 
@@ -214,6 +220,7 @@ def start_run(body: RunStart, connection: Connection) -> RunOut:
                     "robot_id": body.robot_id,
                     "mode": body.mode,
                     "laps_target": body.laps_target,
+                    "started_by": operator.username,
                 },
             )
     except repo.RobotBusyError as error:
@@ -225,7 +232,7 @@ def start_run(body: RunStart, connection: Connection) -> RunOut:
     return RunOut.model_validate(dict(row))
 
 
-@runs_router.patch("/{run_id}", response_model=RunOut)
+@runs_router.patch("/{run_id}", response_model=RunOut, dependencies=[OperatorOrAgent])
 def update_run(run_id: str, body: RunProgress, connection: Connection) -> RunOut:
     """
     Report progress, or end the run.

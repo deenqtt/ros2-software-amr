@@ -23,6 +23,16 @@ from pathlib import Path
 
 MIGRATIONS_DIR = Path(__file__).parent / "migrations"
 
+# First line of a migration that rebuilds a table other tables point at.
+#
+# SQLite cannot change a CHECK constraint in place; the table has to be copied
+# into a new one and swapped in. With foreign keys enforced, dropping the old
+# table runs its ON DELETE actions first — every session would be deleted and
+# every audit record lose its author. SQLite's documented procedure is to turn
+# enforcement off around the rebuild and verify the references afterwards,
+# which is what this marker asks the runner to do.
+FOREIGN_KEYS_OFF = "-- migrate: foreign-keys-off"
+
 
 def connect(db_path: Path) -> sqlite3.Connection:
     """
@@ -96,30 +106,47 @@ def migrate(connection: sqlite3.Connection, directory: Path = MIGRATIONS_DIR) ->
         # executescript() issues an implicit COMMIT before it runs, so wrapping
         # the call in BEGIN/COMMIT from Python does not work — the BEGIN is
         # committed away and the later COMMIT fails with "no transaction is
-        # active". The transaction has to live inside the script itself.
+        # active". The transaction is opened inside the script itself, and
+        # stays open when the script ends, so it is committed from here.
         #
         # The bookkeeping INSERT goes in the same script, so a migration and
         # the record of it are applied or discarded together. Neither value is
         # user input: the version is digits parsed from the filename and the
         # name is the rest of that filename, quoted.
-        statements = path.read_text(encoding="utf-8").rstrip().rstrip(";")
+        text = path.read_text(encoding="utf-8")
+        rebuilds = text.lstrip().startswith(FOREIGN_KEYS_OFF)
+        statements = text.rstrip().rstrip(";")
         escaped_name = name.replace("'", "''")
         script = (
             "BEGIN;\n"
             f"{statements};\n"
             "INSERT INTO schema_migrations (version, name) "
             f"VALUES ({int(version)}, '{escaped_name}');\n"
-            "COMMIT;"
         )
 
+        # The pragma is a no-op inside a transaction, so it is set out here.
+        if rebuilds:
+            connection.execute("PRAGMA foreign_keys = OFF")
         try:
+            # The script leaves its transaction open, so the check below can
+            # still roll the whole migration back.
             connection.executescript(script)
+            if rebuilds:
+                broken = connection.execute("PRAGMA foreign_key_check").fetchall()
+                if broken:
+                    raise sqlite3.IntegrityError(
+                        f"Migration {version} left {len(broken)} broken reference(s)"
+                    )
+            connection.execute("COMMIT")
         except Exception:
             # A failed script leaves its transaction open; close it so the
             # connection is still usable and the partial schema is discarded.
             if connection.in_transaction:
                 connection.execute("ROLLBACK")
             raise
+        finally:
+            if rebuilds:
+                connection.execute("PRAGMA foreign_keys = ON")
         newly_applied.append(version)
 
     return newly_applied
