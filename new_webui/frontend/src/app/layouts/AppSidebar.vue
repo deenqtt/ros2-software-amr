@@ -16,7 +16,8 @@
  */
 import { computed } from 'vue'
 import { RouterLink } from 'vue-router'
-import { Bot, ChevronLeft, ChevronRight, X } from 'lucide-vue-next'
+import { ChevronLeft, ChevronRight, X } from 'lucide-vue-next'
+import BrandMark from '@/shared/components/BrandMark.vue'
 import { navGroupsFor } from '@/app/navigation'
 import { useAlarmStore } from '@/stores/alarms'
 import { useAuthStore } from '@/stores/auth'
@@ -66,11 +67,7 @@ function badgeCount(key?: 'alarms'): number {
         )
       "
     >
-      <span
-        class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-on-primary"
-      >
-        <Bot :size="16" />
-      </span>
+      <BrandMark :size="32" />
       <span v-if="!ui.navCollapsed" class="flex-1 truncate text-title-sm text-ink">
         AMR Control
       </span>

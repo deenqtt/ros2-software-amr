@@ -35,6 +35,7 @@ import { ApiError } from '@/shared/api/client'
 import { serverReachable } from '@/shared/api/auth'
 import { cn } from '@/shared/lib/utils'
 import floorPhoto from '@/assets/images/login-floor.jpg'
+import BrandMark from '@/shared/components/BrandMark.vue'
 
 const LAST_USERNAME_KEY = 'amr.lastUsername'
 const HEALTH_RETRY_MS = 10_000
@@ -242,11 +243,7 @@ const FIELD_BAD = 'border-status-fault/60 focus:border-status-fault focus:ring-s
       <main class="flex flex-col px-lg py-lg sm:px-xl lg:pt-xl">
         <div class="flex items-center justify-between gap-sm">
           <div class="flex items-center gap-sm">
-            <span
-              class="flex h-9 w-9 items-center justify-center rounded-lg border border-hairline bg-surface text-[13px] font-semibold tracking-tighter"
-            >
-              AC
-            </span>
+            <BrandMark :size="36" />
             <span class="text-[15px] font-semibold tracking-tight">AMR Control</span>
           </div>
 

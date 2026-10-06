@@ -19,6 +19,7 @@ import { safeNext } from '@/app/router'
 import { authApi, FieldError } from '@/shared/api/auth'
 import { displayName, ROLE_LABEL } from '@/domain/auth'
 import { cn } from '@/shared/lib/utils'
+import BrandMark from '@/shared/components/BrandMark.vue'
 
 const PASSWORD_MIN = 10
 
@@ -85,11 +86,7 @@ const fieldTone = (bad: boolean) =>
   <div class="flex min-h-full flex-col bg-canvas px-lg py-lg text-ink sm:px-xl">
     <div class="flex items-center justify-between gap-sm">
       <div class="flex items-center gap-sm">
-        <span
-          class="flex h-9 w-9 items-center justify-center rounded-lg border border-hairline bg-surface text-[13px] font-semibold tracking-tighter"
-        >
-          AC
-        </span>
+        <BrandMark :size="36" />
         <span class="text-[15px] font-semibold tracking-tight">AMR Control</span>
       </div>
       <button

@@ -12,7 +12,8 @@
  */
 import { computed } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
-import { ArrowLeft, Bot, LayoutDashboard } from 'lucide-vue-next'
+import { ArrowLeft, LayoutDashboard } from 'lucide-vue-next'
+import BrandMark from '@/shared/components/BrandMark.vue'
 import { NAV_GROUPS } from '@/app/navigation'
 import { Button } from '@/shared/ui/button'
 
@@ -38,11 +39,7 @@ const shortcuts = NAV_GROUPS.flatMap((group) => group.items).filter(
   <div class="flex min-h-full flex-col bg-canvas">
     <header class="flex items-center px-base py-sm sm:px-lg">
       <RouterLink to="/dashboard" class="flex items-center gap-sm text-title-sm text-ink">
-        <span
-          class="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-on-primary"
-        >
-          <Bot :size="16" />
-        </span>
+        <BrandMark :size="32" />
         AMR Control
       </RouterLink>
     </header>
