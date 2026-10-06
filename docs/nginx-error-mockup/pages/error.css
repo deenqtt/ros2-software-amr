@@ -1,0 +1,399 @@
+/*
+ * AMR Control — error pages served by nginx.
+ *
+ * Standalone on purpose: these pages are shown exactly when the app or the
+ * backend is not there, so they cannot lean on the Vue bundle, the API or a
+ * font CDN. The tokens below are copied from
+ * new_webui/frontend/src/assets/styles/tokens.css (light + .dark), the type
+ * scale and button geometry from tailwind.config.ts and shared/ui/button.
+ *
+ * Fonts: Inter when the machine has it, otherwise the system UI face. No
+ * webfont is fetched (offline terminals, and the CSP allows no new hosts).
+ */
+
+:root {
+  --primary: 0 82 255;
+  --primary-active: 0 62 204;
+  --on-primary: 255 255 255;
+  --canvas: 255 255 255;
+  --surface: 255 255 255;
+  --surface-soft: 247 247 247;
+  --surface-strong: 238 240 243;
+  --ink: 10 11 13;
+  --body: 91 97 110;
+  --muted: 124 130 138;
+  --muted-soft: 168 172 179;
+  --hairline: 222 225 230;
+  --hairline-soft: 238 240 243;
+  --status-warn: 244 176 0;
+  --status-warn-text: 154 106 0; /* darker amber: #f4b000 is too light for text on white */
+  --status-fault: 207 32 47;
+  --status-ok: 5 177 105;
+
+  --radius-chip: 4px;
+  --radius-control: 8px;
+  --radius-surface: 12px;
+
+  color-scheme: light;
+}
+
+.dark {
+  --canvas: 10 11 13;
+  --surface: 22 24 28;
+  --surface-soft: 22 24 28;
+  --surface-strong: 35 38 44;
+  --ink: 255 255 255;
+  --body: 168 172 179;
+  --muted: 124 130 138;
+  --muted-soft: 91 97 110;
+  --hairline: 35 38 44;
+  --hairline-soft: 28 30 35;
+  --primary: 45 107 255;
+  --primary-active: 0 82 255;
+  --status-ok: 6 199 118;
+  --status-fault: 232 63 77;
+  --status-warn-text: 244 176 0;
+
+  color-scheme: dark;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+/* `.btn` sets display; without this a hidden button would still show. */
+[hidden] {
+  display: none !important;
+}
+
+body {
+  margin: 0;
+  background: rgb(var(--canvas));
+  color: rgb(var(--body));
+  font-family: Inter, -apple-system, system-ui, 'Segoe UI', Roboto, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  font-feature-settings:
+    'calt' 1,
+    'cv08' 1;
+}
+
+:focus-visible {
+  outline: 2px solid rgb(var(--primary) / 0.6);
+  outline-offset: 2px;
+}
+
+.page {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+/* ── Header: the same identity mark as the sidebar and the 404 view ─────── */
+
+.page-header {
+  display: flex;
+  align-items: center;
+  padding: 12px 16px;
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  border-radius: var(--radius-control);
+  color: rgb(var(--ink));
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.27;
+  text-decoration: none;
+}
+
+.brand-mark {
+  display: flex;
+  width: 32px;
+  height: 32px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: rgb(var(--primary));
+  color: rgb(var(--on-primary));
+}
+
+/* ── Main ───────────────────────────────────────────────────────────────── */
+
+.page-main {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  padding: 16px 16px 32px;
+}
+
+.content {
+  width: 100%;
+  max-width: 40rem;
+  text-align: center;
+}
+
+.illustration {
+  display: block;
+  width: 100%;
+  max-width: 22rem;
+  height: auto;
+  margin: 0 auto 24px;
+}
+
+.eyebrow {
+  margin: 0;
+  color: rgb(var(--muted));
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  line-height: 1.45;
+  text-transform: uppercase;
+}
+
+h1 {
+  margin: 8px 0 0;
+  color: rgb(var(--ink));
+  font-size: 28px;
+  font-weight: 400;
+  letter-spacing: -0.5px;
+  line-height: 1.11;
+  text-wrap: balance;
+}
+
+.lead {
+  max-width: 30rem;
+  margin: 12px auto 0;
+  text-wrap: pretty;
+}
+
+/* ── Status chips: what this page actually knows, in words and a mark ──── */
+
+.status {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin: 16px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  border: 1px solid rgb(var(--hairline));
+  border-radius: var(--radius-chip);
+  color: rgb(var(--body));
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.chip b {
+  color: rgb(var(--ink));
+  font-weight: 600;
+}
+
+.chip svg {
+  flex-shrink: 0;
+}
+
+.tone-fault {
+  color: rgb(var(--status-fault));
+}
+.tone-warn {
+  color: rgb(var(--status-warn-text));
+}
+.tone-idle {
+  color: rgb(var(--muted));
+}
+
+/* ── Actions: shared/ui/button primary + outline ───────────────────────── */
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 24px;
+}
+
+.btn {
+  display: inline-flex;
+  height: 36px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 16px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-control);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background-color 150ms cubic-bezier(0.23, 1, 0.32, 1),
+    border-color 150ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.btn svg {
+  flex-shrink: 0;
+}
+
+.btn-primary {
+  background: rgb(var(--primary));
+  color: rgb(var(--on-primary));
+}
+.btn-primary:hover {
+  background: rgb(var(--primary-active));
+}
+
+.btn-outline {
+  border-color: rgb(var(--hairline));
+  background: transparent;
+  color: rgb(var(--ink));
+}
+.btn-outline:hover {
+  background: rgb(var(--surface-strong));
+}
+
+/* A fingertip needs 44px; a mouse does not (same rule as the app). */
+@media (pointer: coarse) {
+  .btn {
+    min-height: 44px;
+  }
+}
+
+/* ── Safety note: neutral, not an alarm — it states what is unknown ───── */
+
+.notice {
+  display: flex;
+  gap: 12px;
+  max-width: 32rem;
+  margin: 32px auto 0;
+  padding: 12px 16px;
+  border: 1px solid rgb(var(--hairline));
+  border-radius: var(--radius-surface);
+  background: rgb(var(--surface-soft));
+  text-align: left;
+}
+
+.notice svg {
+  flex-shrink: 0;
+  margin-top: 1px;
+  color: rgb(var(--muted));
+}
+
+.notice-title {
+  margin: 0;
+  color: rgb(var(--ink));
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.notice-text {
+  margin: 2px 0 0;
+  font-size: 13px;
+}
+
+/* ── Footer ────────────────────────────────────────────────────────────── */
+
+.page-footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 16px;
+  padding: 12px 16px;
+  border-top: 1px solid rgb(var(--hairline-soft));
+  color: rgb(var(--muted));
+  font-size: 12px;
+}
+
+.page-footer .data {
+  font-variant-numeric: tabular-nums;
+}
+
+@media (min-width: 640px) {
+  .page-header,
+  .page-footer {
+    padding-left: 24px;
+    padding-right: 24px;
+  }
+  .page-main {
+    padding-left: 24px;
+    padding-right: 24px;
+  }
+}
+
+/* Short landscape screens (operator terminals at 1366×768 and below). */
+@media (max-height: 760px) {
+  .illustration {
+    max-width: 17rem;
+    margin-bottom: 16px;
+  }
+  .notice {
+    margin-top: 24px;
+  }
+}
+
+@media (max-width: 420px) {
+  h1 {
+    font-size: 24px;
+  }
+  .actions .btn {
+    flex: 1 1 100%;
+  }
+}
+
+/* ── Illustration motion: 404 only, as in the app; none if asked for less ─ */
+
+@media (prefers-reduced-motion: no-preference) {
+  .nf-route {
+    animation: nf-march 1.6s linear infinite;
+  }
+  .nf-pulse {
+    transform-origin: 80px 130px;
+    animation: nf-pulse 2.4s ease-out infinite;
+  }
+}
+
+@keyframes nf-march {
+  to {
+    stroke-dashoffset: -22;
+  }
+}
+
+@keyframes nf-pulse {
+  0% {
+    transform: scale(0.7);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1.6);
+    opacity: 0;
+  }
+}
+
+.footer-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+}

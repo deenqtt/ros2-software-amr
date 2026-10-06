@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Error pages mockup · AMR Control</title>
+    <!-- Tokens, type and buttons come from the pages themselves. -->
+    <link rel="stylesheet" href="pages/error.css" />
+    <link rel="stylesheet" href="showcase.css" />
+  </head>
+  <body>
+    <header class="sc-header">
+      <div class="sc-title">
+        <span class="brand-mark" aria-hidden="true">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8V4H8" /><rect width="16" height="12" x="4" y="8" rx="2" /><path d="M2 14h2" /><path d="M20 14h2" /><path d="M15 13v2" /><path d="M9 13v2" /></svg>
+        </span>
+        <div>
+          <h1 class="sc-h1">Error pages</h1>
+          <p class="sc-sub">Mockup for review. Not wired into nginx.</p>
+        </div>
+      </div>
+
+      <div class="sc-controls">
+        <div class="sc-group" role="tablist" aria-label="Page to preview" id="pages">
+          <button type="button" role="tab" data-page="all">All</button>
+          <button type="button" role="tab" data-page="403">403</button>
+          <button type="button" role="tab" data-page="404">404</button>
+          <button type="button" role="tab" data-page="500">500</button>
+          <button type="button" role="tab" data-page="502">502</button>
+          <button type="button" role="tab" data-page="503">503</button>
+          <button type="button" role="tab" data-page="504">504</button>
+        </div>
+
+        <label class="sc-field">
+          <span>Screen</span>
+          <select id="viewport">
+            <option value="fit">Fit to window</option>
+            <option value="1920x1080">1920 × 1080 desktop</option>
+            <option value="1366x768" selected>1366 × 768 operator terminal</option>
+            <option value="768x1024">768 × 1024 tablet</option>
+            <option value="390x844">390 × 844 phone</option>
+          </select>
+        </label>
+
+        <div class="sc-group" role="radiogroup" aria-label="Theme" id="themes">
+          <button type="button" role="radio" data-theme="light">Light</button>
+          <button type="button" role="radio" data-theme="dark">Dark</button>
+          <button type="button" role="radio" data-theme="system">System</button>
+        </div>
+      </div>
+    </header>
+
+    <main class="sc-main">
+      <section id="single" aria-live="polite">
+        <div class="sc-bar">
+          <p class="sc-meta" id="single-meta"></p>
+          <a class="sc-open" id="open-link" href="pages/502.html" target="_blank" rel="noopener">Open this page on its own</a>
+        </div>
+        <div class="sc-stage" id="stage">
+          <div class="sc-device" id="device">
+            <iframe id="frame" title="Error page preview" src="pages/502.html"></iframe>
+          </div>
+        </div>
+        <dl class="sc-notes" id="notes"></dl>
+      </section>
+
+      <section id="all" class="sc-grid" hidden aria-label="All error pages"></section>
+    </main>
+
+    <script src="showcase.js"></script>
+  </body>
+</html>

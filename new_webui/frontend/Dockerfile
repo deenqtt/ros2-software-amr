@@ -45,6 +45,9 @@ COPY nginx/default.conf.template nginx/locations.inc.template /etc/nginx/templat
 COPY nginx/tls.conf.template /etc/nginx/templates-tls/default.conf.template
 COPY nginx/locations.inc.template /etc/nginx/templates-tls/
 COPY nginx/security-headers.conf /etc/nginx/amr/security-headers.conf
+# Error pages: static HTML/CSS/JS plus JSON bodies for /backend/. Outside the
+# app's root so a release of the app can never shadow or remove them.
+COPY nginx/errors/ /usr/share/nginx/amr-errors/
 COPY --from=build /src/dist /usr/share/nginx/html
 
 EXPOSE 8080

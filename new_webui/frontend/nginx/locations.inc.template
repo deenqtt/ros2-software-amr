@@ -5,6 +5,37 @@
 # Map uploads are a PGM plus its YAML; a large warehouse map is tens of MB.
 client_max_body_size 33m;  # map image cap is 32 MiB (app/maps_files.py)
 
+# Error pages (nginx/errors/, see docs/nginx-error-mockup/ for the design).
+# Only for responses nginx makes itself: a missing file, a refused address,
+# the backend down or too slow. proxy_intercept_errors stays off, so anything
+# the backend answers, error or not, reaches the browser exactly as sent.
+# Client-side routes never get here: location / falls back to index.html, and
+# the app shows its own "not found" for an unknown route.
+error_page 403 /_errors/page/403.html;
+error_page 404 /_errors/page/404.html;
+error_page 500 /_errors/page/500.html;
+error_page 502 /_errors/page/502.html;
+error_page 503 /_errors/page/503.html;
+error_page 504 /_errors/page/504.html;
+
+# The pages themselves: reachable only as an error page, never by address.
+location ^~ /_errors/page/ {
+    internal;
+    alias /usr/share/nginx/amr-errors/page/;
+    add_header Cache-Control "no-store" always;
+    include /etc/nginx/amr/security-headers.conf;
+}
+
+# Their stylesheet and script: separate files, because the CSP allows no
+# inline script. Absolute paths, since an error page is shown at whatever
+# address failed.
+location ^~ /_errors/ {
+    alias /usr/share/nginx/amr-errors/;
+    add_header Cache-Control "no-cache";
+    include /etc/nginx/amr/security-headers.conf;
+    try_files $uri =404;
+}
+
 location = /healthz {
     access_log off;
     return 200 "ok\n";
@@ -54,6 +85,14 @@ location /backend/ {
     proxy_set_header X-Forwarded-Proto $scheme;
     proxy_read_timeout 3600s;
     proxy_send_timeout 3600s;
+
+    # Only when nginx itself fails the request (see the map in the server
+    # config): JSON for the app and the relay, the page for a browser tab.
+    # The status code is kept. Errors from the backend are not touched.
+    error_page 502 /_errors/page/502.$amr_error_ext;
+    error_page 503 /_errors/page/503.$amr_error_ext;
+    error_page 504 /_errors/page/504.$amr_error_ext;
+    error_page 413 /_errors/page/413.json;
 }
 
 # Per-site extras, mounted from the host. Not for rosbridge: a direct

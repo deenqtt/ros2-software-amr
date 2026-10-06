@@ -4,6 +4,18 @@
 # are in locations.inc.template, shared with tls.conf.template (HTTPS, chosen
 # with deploy/docker-compose.tls.yml).
 
+# No nginx version in the Server header or on any error page.
+server_tokens off;
+
+# Errors nginx itself produces under /backend/ (backend down, timed out, upload
+# too large): a page someone opened in the browser gets the AMR error page; the
+# app's own requests (fetch sends Accept: */*) and the ROS relay WebSocket get
+# JSON {"detail": ...}, the shape every API error already has.
+map $http_accept $amr_error_ext {
+    "~*text/html"  html;
+    default        json;
+}
+
 map $http_upgrade $connection_upgrade {
     default upgrade;
     ''      close;

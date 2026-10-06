@@ -1,0 +1,241 @@
+/* Showcase chrome only. The error pages themselves live in pages/. */
+
+body {
+  background: rgb(var(--surface-soft));
+}
+
+.sc-header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 24px;
+  padding: 12px 24px;
+  border-bottom: 1px solid rgb(var(--hairline));
+  background: rgb(var(--canvas));
+}
+
+.sc-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.sc-h1 {
+  margin: 0;
+  color: rgb(var(--ink));
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0;
+  line-height: 1.27;
+}
+
+.sc-sub {
+  margin: 0;
+  color: rgb(var(--muted));
+  font-size: 12px;
+}
+
+.sc-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+}
+
+.sc-group {
+  display: inline-flex;
+  padding: 2px;
+  border: 1px solid rgb(var(--hairline));
+  border-radius: var(--radius-control);
+  background: rgb(var(--surface-strong));
+}
+
+.sc-group button {
+  height: 30px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: rgb(var(--body));
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.sc-group button:hover {
+  color: rgb(var(--ink));
+}
+
+.sc-group button[aria-selected='true'],
+.sc-group button[aria-checked='true'] {
+  background: rgb(var(--canvas));
+  color: rgb(var(--ink));
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.08);
+}
+
+.sc-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: rgb(var(--muted));
+  font-size: 12px;
+}
+
+.sc-field select {
+  height: 34px;
+  padding: 0 8px;
+  border: 1px solid rgb(var(--hairline));
+  border-radius: var(--radius-control);
+  background: rgb(var(--canvas));
+  color: rgb(var(--ink));
+  font: inherit;
+  font-size: 13px;
+}
+
+.sc-main {
+  padding: 24px;
+}
+
+.sc-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 16px;
+  margin-bottom: 12px;
+}
+
+.sc-meta {
+  margin: 0;
+  color: rgb(var(--body));
+  font-size: 13px;
+}
+
+.sc-meta b {
+  color: rgb(var(--ink));
+}
+
+.sc-open {
+  color: rgb(var(--primary));
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+  border-radius: 4px;
+}
+
+.sc-open:hover {
+  text-decoration: underline;
+}
+
+.sc-stage {
+  display: flex;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.sc-device {
+  position: relative;
+  flex: none;
+  overflow: hidden;
+  border: 1px solid rgb(var(--hairline));
+  border-radius: var(--radius-surface);
+  background: rgb(var(--canvas));
+  box-shadow: 0 4px 12px rgb(0 0 0 / 0.04);
+}
+
+.sc-device iframe {
+  display: block;
+  border: 0;
+  transform-origin: 0 0;
+}
+
+.sc-notes {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 8px 24px;
+  max-width: 60rem;
+  margin: 24px auto 0;
+  padding: 16px 20px;
+  border: 1px solid rgb(var(--hairline));
+  border-radius: var(--radius-surface);
+  background: rgb(var(--canvas));
+  font-size: 13px;
+}
+
+.sc-notes dt {
+  color: rgb(var(--muted));
+}
+
+.sc-notes dd {
+  margin: 0;
+  color: rgb(var(--ink));
+}
+
+.sc-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 380px), 1fr));
+  gap: 20px;
+}
+
+.sc-card {
+  display: block;
+  padding: 0;
+  border: 1px solid rgb(var(--hairline));
+  border-radius: var(--radius-surface);
+  background: rgb(var(--canvas));
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.sc-card:hover {
+  border-color: rgb(var(--primary));
+}
+
+.sc-thumb {
+  position: relative;
+  overflow: hidden;
+  border-bottom: 1px solid rgb(var(--hairline));
+  pointer-events: none;
+}
+
+.sc-thumb iframe {
+  display: block;
+  border: 0;
+  transform-origin: 0 0;
+}
+
+.sc-cap {
+  display: block;
+  padding: 10px 14px;
+  font-size: 13px;
+}
+
+.sc-cap b {
+  color: rgb(var(--ink));
+  font-variant-numeric: tabular-nums;
+  margin-right: 8px;
+}
+
+@media (max-width: 640px) {
+  .sc-header,
+  .sc-main {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+  .sc-notes {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+  .sc-notes dd {
+    margin-bottom: 8px;
+  }
+}
