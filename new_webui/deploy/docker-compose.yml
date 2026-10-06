@@ -43,6 +43,8 @@ services:
     ports:
       - "${AMR_HTTP_PORT:-80}:8080"
     volumes:
-      # Optional: one .conf per site extra, e.g. robots.conf (see
-      # robots.conf.example). An empty directory is fine.
+      # Optional: per-site nginx extras only, one .conf each. An empty
+      # directory is fine. Do NOT proxy robots' rosbridge here: those /robot/<n>
+      # proxies were removed for security (browsers reach robots through the
+      # backend at /backend/api/robots/<id>/ros). See robots.conf.example.
       - ./nginx:/etc/nginx/amr.d:ro

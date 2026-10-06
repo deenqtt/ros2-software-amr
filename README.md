@@ -285,14 +285,15 @@ flowchart LR
 
     B["Browser operator"] -- "HTTP(S), login" --> NG
     AG -- "HTTP poll ±10 s<br/>tugas & laporan" --> NG
-    B -. "WebSocket (live)<br/>peta · laser · pose · goal" .-> RB
+    B -- "WebSocket relay (live)<br/>peta · laser · pose · goal" --> NG
+    API -. "ws :9090 (hanya server)" .-> RB
 ```
 
 | Jalur | Isi |
 |---|---|
 | **Browser → nginx → Backend** (REST, cookie sesi) | Semua data operator: robot, peta, station, zone, mission, run, akun |
-| **Agent → Backend** (HTTP, robot yang menarik) | Peta & mode yang diminta, station, zone, run; laporan step / tiba / selesai |
-| **Browser ↔ Robot** (rosbridge) | Hanya data *live*: peta, laser, pose, costmap, rute, serta *Set pose* / *Go here* |
+| **Agent → Backend** (HTTP, robot yang menarik, dengan token agent per robot) | Peta & mode yang diminta, station, zone, run; laporan step / tiba / selesai |
+| **Browser → Backend → Robot** (relay WebSocket `/backend/api/robots/<id>/ros`) | Hanya data *live*: peta, laser, pose, costmap, rute, serta *Set pose* / *Go here*. Browser tidak pernah terhubung ke rosbridge; backend memeriksa login, `Origin`, dan role (viewer: telemetri + perintah stop; operator: goal, pose awal, teleop, mulai mapping, simpan peta), lalu meneruskan ke `bridge_url` robot |
 | **Agent ↔ Kiosk** (ROS lokal di robot) | Fase pengantaran untuk layar, tombol konfirmasi — tetap jalan tanpa jaringan |
 
 Robot yang **menarik** data (bukan server yang mendorong), sehingga robot tetap bekerja walau
@@ -388,7 +389,7 @@ dengan ID yang ditampilkan.
 | `AMR_ENV` | `development` | `production` menolak start bila CORS tidak aman |
 | `AMR_SESSION_IDLE_MINUTES` | `720` | Sesi berakhir setelah sekian menit tanpa aktivitas |
 | `AMR_COOKIE_SECURE` | `false` | `true` hanya bila situs memakai HTTPS |
-| `AMR_AGENT_AUTH` | `optional` | `required` menolak agent tanpa token (token agent belum ada) |
+| `AMR_AGENT_AUTH` | `required` | Agent wajib membawa token per robot (Robot → Details → Agent token). `optional` hanya untuk development; production menolak start bila `optional` |
 | `AMR_AUDIT_RETENTION_DAYS` | `365` | Catatan Activity yang lebih lama dihapus saat start |
 | `AMR_BOOTSTRAP_USER` / `AMR_BOOTSTRAP_PASSWORD` | — | Super admin pertama, hanya dipakai saat database belum punya akun |
 
@@ -584,17 +585,21 @@ Buka `http://<ip-server>/`, login dengan akun di atas, lalu buat password sendir
 | Status / log | `docker compose ps` · `docker compose logs -f backend` |
 | Update versi | ubah `AMR_VERSION` → `docker compose pull && docker compose up -d` |
 | Backup | salin folder `data/` dan `maps/` |
-| Proxy rosbridge lewat server (opsional) | `new_webui/deploy/robots.conf.example` → `nginx/robots.conf`, lalu `docker compose restart web` |
+| Ekstra nginx per situs (opsional) | file `.conf` di `nginx/`, lalu `docker compose restart web`. Jangan proxy rosbridge di sini: proxy `/robot/<n>` sudah dihapus karena celah keamanan; hapus bila masih ada di `nginx/robots.conf` |
 
 ### ② Daftarkan robot
 
-Di Web UI: **Robot** → **Add robot** → isi nama dan alamat rosbridge (`ws://<ip-robot>:9090`).
-Buka robotnya → **Details** untuk melihat **robot id** yang dipakai di langkah ④.
+Di Web UI: **Robot** → **Add robot** → isi nama dan alamat rosbridge (`ws://<ip-robot>:9090`;
+alamat ini hanya dipakai backend, bukan browser).
+Buka robotnya → **Details** untuk melihat **robot id** yang dipakai di langkah ④, lalu buat
+**Agent token** (hanya admin; tampil **sekali**, bisa diputar ulang atau dicabut) — dipakai di langkah ④.
 
 ### ③ Stack robot (tim robot)
 
 ROS 2 (Humble/Jazzy), Nav2, workspace robot yang sudah di-build (berisi `custom_interfaces`), dan
-rosbridge di port 9090. Langkah ④ hanya **mengecek** ini dan berhenti dengan daftar yang kurang —
+rosbridge di port 9090. **Firewall port 9090 itu** agar hanya server yang bisa mengaksesnya
+(mis. `sudo ufw allow from <ip-server> to any port 9090 proto tcp` lalu `sudo ufw deny 9090/tcp`) —
+rosbridge tidak punya login, jadi siapa pun yang bisa menjangkau port itu bisa menggerakkan robot. Langkah ④ hanya **mengecek** ini dan berhenti dengan daftar yang kurang —
 tidak pernah meng-install atau mengubah stack robot.
 
 ### ④ Robot Agent + Kiosk (setiap robot)
@@ -607,6 +612,7 @@ menjalankan [`install_robot.sh`](amr_agent/deploy/install_robot.sh) di sana:
 ./amr_agent/deploy/push_to_robot.sh <user>@<ip-robot> \
     --robot-id <robot id dari langkah ②> \
     --backend http://<ip-server>/backend \
+    --agent-token <token dari langkah ②> \
     --name AMR-02
 
 # cek saja dulu apa yang kurang, tanpa mengubah apa pun
@@ -619,6 +625,7 @@ menjalankan [`install_robot.sh`](amr_agent/deploy/install_robot.sh) di sana:
 | Opsi | Keterangan |
 |---|---|
 | `--robot-id`, `--backend` | Wajib saat pertama kali (bila tidak diisi, ditanyakan) |
+| `--agent-token` | Token agent dari Web UI; disimpan sebagai `AMR_AGENT_TOKEN` di `/etc/amr/robot.env` (ditanyakan bila tidak diisi). Tanpa token backend menolak agent |
 | `--name` | Nama di status bar kiosk |
 | `--ros-ws PATH` | Workspace robot, default `~/ros2_gprp_amr_ws` |
 | `--domain N` | `ROS_DOMAIN_ID`, default `10` |
@@ -669,6 +676,7 @@ Panduan lengkap — port, perilaku saat jaringan putus, instalasi tanpa Docker �
 
 - ✅ Web UI, login & role, audit, backend, Robot Agent, notifikasi mission, zone ke Nav2, tampilan HP, dan agent tahan server mati sudah berjalan dan teruji.
 - 🧪 Kiosk PySide6 dan penantian konfirmasi di agent sudah teruji tanpa robot (unit test + mode `--mock`); belum dicoba di simulasi/robot.
-- 🔒 Robot agent belum memakai token (`AMR_AGENT_AUTH=optional`) dan rosbridge belum memakai login — jalankan robot di jaringan tertutup/VPN.
+- 🔒 Browser tidak lagi terhubung langsung ke rosbridge (lewat relay backend dengan pemeriksaan role) dan agent memakai token per robot. rosbridge sendiri tetap tanpa login: firewall port 9090 robot agar hanya server yang bisa mengaksesnya.
+- ⬆️ **Upgrade situs yang sudah berjalan:** ubah `AMR_AGENT_AUTH=optional` menjadi `required` di `.env`, hapus proxy `/robot/<n>`, update server, lalu buat token tiap robot dan pasang (`AMR_AGENT_TOKEN`) — robot tanpa token ditolak. Lihat [runbook](docs/runbooks/PRODUCTION_DEPLOYMENT.md).
 - 🚦 Robot belum saling berkoordinasi (tidak ada pengaturan lalu lintas antar robot); penugasan mission masih manual.
 - 🐢 Pada jaringan lambat, posisi robot di UI bisa tertinggal; perbaikan sudah dianalisa dan direncanakan.

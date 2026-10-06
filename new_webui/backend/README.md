@@ -112,15 +112,25 @@ its router, from `app/auth.py`; nothing checks a role inside a handler.
   super admin). Agent progress reports are not: the run already records them.
 - Runs record who pressed Run (`started_by`).
 
-**Robot agents** do not sign in yet. While `AMR_AGENT_AUTH=optional` (the default),
-the endpoints an agent uses answer without credentials — reads, `PUT /robots/{id}/mode`
-and `/map`, `PATCH /runs/{id}`, `POST /maps` — and anything else is refused. That
-is a known gap until agents carry a token; `required` closes it and stops agents.
+**Robot agents** authenticate with a per-robot bearer token. An admin generates,
+rotates or revokes it (`POST` / `DELETE /api/robots/{id}/agent-token`, or Robot →
+Details → Agent token in the UI); it is shown once and only its hash is stored. The
+robot keeps it as `AMR_AGENT_TOKEN`. An agent token is bound to its robot: `PUT /robots/{id}/mode` and `/map`,
+`GET /robots/{id}/run` and `PATCH /runs/{id}` are refused for any other robot, and
+a map it uploads (`POST /maps`) is recorded as made by its own robot. It can read
+what a viewer can read (robots, maps, stations, zones, missions, runs); it cannot
+reach people-only endpoints (accounts, activity, editing, starting runs).
+`AMR_AGENT_AUTH` defaults to `required`. `optional` also lets a request with no
+cookie and no `Authorization` header act as an unbound legacy agent; it is for local
+development only and production refuses to start with it.
 
-**rosbridge is still unauthenticated.** Signing in to this API protects this API.
-The browser talks to each robot's rosbridge directly, and anyone who can reach that
-port can still publish to it; until it is proxied, keep robots on a network the
-plant controls.
+**Browsers no longer talk to rosbridge.** They open the WebSocket relay
+`/api/robots/{id}/ros` (same origin, session cookie, `Origin` checked). The backend
+connects to the robot's registered `bridge_url` and forwards only allow-listed
+telemetry and role-checked commands: a viewer gets telemetry and stop-class commands
+(zero teleop, cancel goal, `/robot_mode` stop); an operator also goals, initial pose,
+teleop, start mapping and save map. rosbridge itself is still unauthenticated, so
+firewall each robot's port 9090 to the server only.
 
 ## What is deliberately different from the old backend
 
@@ -168,5 +178,6 @@ Maps, missions, stations, keepout zones and alarms. The old backend still owns t
 its code is in [`../../backend/`](../../backend/) and is the reference for the ROS
 contract those endpoints have to keep.
 
-**Agent credentials and rosbridge.** People sign in (see above); robot agents and
-rosbridge do not yet. Both are next.
+**rosbridge authentication.** People sign in and agents carry tokens (see above);
+rosbridge itself has no login, so it relies on a firewall that lets only the server
+reach port 9090.

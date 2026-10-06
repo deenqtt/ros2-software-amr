@@ -15,10 +15,10 @@ them, how to install each side, and what keeps working when the link is down.
  │ nginx                                    │
  │  /            → frontend dist/ (static)  │
  │  /backend/    → FastAPI 127.0.0.1:3002   │──── SQLite amr.db + map files
- │  /robot/<n>   → ws://<jetson>:9090 (opt.)│
+ │  /backend/api/robots/<id>/ros  (WS relay)│
  └──────────────────────────────────────────┘
-        ▲ HTTP poll every 10 s (robot → server)
-        │
+        │ ws://<jetson>:9090   ▲ HTTP poll every 10 s + bearer token
+        ▼ (relay, server → robot)│ (robot → server)
  ┌──────────────── Jetson (each robot) ─────┐
  │ robot_agent  (amr_agent/, systemd)       │  ~/map_cache/   cached maps
  │ Nav2 / SLAM  (started by the agent)      │  ~/amr_agent/state/  offline memory
@@ -26,20 +26,45 @@ them, how to install each side, and what keeps working when the link is down.
  └──────────────────────────────────────────┘
 ```
 
-The server never calls a robot. Robots poll the server, so a robot behind NAT
-or on a roaming wifi client still works. The browser does talk to each robot's
-rosbridge (live map, laser, goals, teleop) — directly, or through nginx.
+Browsers talk to the server only. Live data (map, laser, pose) and commands
+(goals, teleop) go over a WebSocket to `/backend/api/robots/<id>/ros`, on the
+same origin and with the session cookie. The backend checks the sign-in and the
+`Origin`, connects to the robot's registered `bridge_url` (`ws://<jetson>:9090`)
+and forwards only allow-listed telemetry and role-checked commands:
+
+- **viewer**: telemetry, and stop-class commands only (zero teleop, cancel
+  goal, `/robot_mode` stop);
+- **operator** and above: also goals, initial pose, teleop, start mapping, save
+  map.
+
+Missions, maps and registry still work the other way round: robots **poll** the
+server over HTTP and send their reports, each with its own **agent token**, so a
+robot behind NAT or on a roaming wifi client still works for those. The live
+view needs the server to reach the robot's 9090.
+
+rosbridge has no authentication of its own, so nothing but the server may
+reach it (see Ports). There is no `/robot/<n>` nginx proxy any more: it handed
+rosbridge to anyone who could load the page.
 
 ## Ports
 
 | From | To | Port | What |
 |---|---|---|---|
-| Browser | Server | 80/443 | UI and `/backend/` API (nginx) |
-| Robot (agent) | Server | 80/443 (`/backend`) or 3002 | registry, maps, stations, runs |
-| Browser | Robot | 9090 | rosbridge, **unless** proxied through nginx `/robot/<n>` |
+| Browser | Server | 80/443 | UI, `/backend/` API and the `/backend/api/robots/<id>/ros` WebSocket (nginx) |
+| Robot (agent) | Server | 80/443 (`/backend`) or 3002 | registry, maps, stations, runs (HTTP, bearer token) |
+| Server | Robot | 9090 | rosbridge, for the relay only |
 
-Nothing needs to reach the robot except rosbridge, and with the nginx proxy not
-even that from the operators' network — only from the server.
+Browsers never need to reach a robot, and must not be able to: **firewall each
+robot's port 9090 so that only the server can connect.** This is a manual step
+on every robot, for example:
+
+```bash
+sudo ufw allow from <server-ip> to any port 9090 proto tcp
+sudo ufw deny 9090/tcp
+```
+
+Nothing else needs to reach the robot. If the server cannot reach a robot's
+9090 the live view for that robot stays empty; missions still run.
 
 ## Server with Docker (recommended)
 
@@ -60,6 +85,7 @@ sudo mkdir -p /opt/amr && sudo chown "$USER" /opt/amr && cd /opt/amr
 curl -fsSLO https://raw.githubusercontent.com/deenqtt/ros2-software-amr/main/new_webui/deploy/docker-compose.yml
 curl -fsSL -o .env https://raw.githubusercontent.com/deenqtt/ros2-software-amr/main/new_webui/deploy/.env.example
 nano .env          # AMR_VERSION, AMR_CORS_ORIGINS, first admin
+                   # keep AMR_AGENT_AUTH=required (production refuses "optional")
 mkdir -p data maps nginx && sudo chown 10001:10001 data maps
 docker compose up -d
 ```
@@ -71,10 +97,12 @@ docker compose up -d
 - **Update:** set `AMR_VERSION`, then `docker compose pull && docker compose up -d`.
 - **Back up** `/opt/amr/data` and `/opt/amr/maps`; everything else is in the image.
 - **Robots** point at `http://<server>/backend`
-  (`run_agent_gprp.sh <robot_id> http://<server>/backend`).
-- **rosbridge through the server** (optional): copy
-  `new_webui/deploy/robots.conf.example` to `/opt/amr/nginx/robots.conf`, one
-  block per robot, then `docker compose restart web`.
+  (`run_agent_gprp.sh <robot_id> http://<server>/backend`) and carry their own
+  agent token (see "Agent tokens").
+- **No rosbridge proxy.** The old `robots.conf` `/robot/<n>` blocks were removed
+  for security; `nginx/` is now only for other per-site extras. If an existing
+  `/opt/amr/nginx/robots.conf` still has such a block, delete it and run
+  `docker compose restart web`.
 - **Raspberry Pi:** keep `/opt/amr` on an SSD or USB drive rather than the SD
   card; SQLite writes on every report and sign-in, and SD cards wear out.
 
@@ -119,10 +147,55 @@ docker compose up -d
    rsync -a dist/ /opt/amr/web/dist/
    ```
 
-3. **nginx**: start from `new_webui/deploy/nginx.conf.example`. One
-   `/robot/<name>` block per robot if browsers should not reach Jetsons
-   directly; the robot's `bridge_url` in the registry is then
-   `ws(s)://amr.example.local/robot/<name>`.
+3. **nginx**: start from `new_webui/deploy/nginx.conf.example`. Its
+   `/backend/` block must upgrade WebSockets (it does) because it carries the
+   robots' ROS relay. Do not add `/robot/<name>` blocks to rosbridge: remove
+   any left from an older config. The robot's `bridge_url` in the registry is
+   its direct address, `ws://<jetson>:9090`, which only the backend uses.
+
+## Agent tokens
+
+Each robot agent authenticates to the backend with its own bearer token, bound
+to that robot (`AMR_AGENT_AUTH=required`, the default). With `required`, an
+agent without a valid token is refused.
+
+1. Register the robot in the UI (Robot → Add robot; `bridge_url`
+   `ws://<jetson>:9090`).
+2. As an admin: Robot → Details → **Agent token** → generate. The token is
+   shown **once**; only its hash is stored. (API: `POST /api/robots/{id}/agent-token`.)
+3. Put it on the robot: `--agent-token <token>` on `push_to_robot.sh` /
+   `install_robot.sh` (prompted for if omitted), or `AMR_AGENT_TOKEN=` in
+   `/etc/amr/robot.env` followed by `sudo systemctl restart amr-agent`.
+4. **Rotate** by generating again (the old token stops working at once) and
+   updating the robot. **Revoke** with the same dialog, or
+   `DELETE /api/robots/{id}/agent-token`: that robot is refused until given a
+   new one.
+
+`/etc/amr/robot.env` also holds `AMR_MAX_LINEAR` / `AMR_MAX_ANGULAR` (default
+0.5 m/s, 1.5 rad/s): the agent clamps teleop to them and stops on NaN/Inf.
+`/robot_mode nav|<path>` only accepts a `.yaml` inside the map cache or the
+default map directory.
+
+`AMR_AGENT_AUTH=optional` (anything without credentials acts as an unbound
+agent) is for local development only; the backend refuses to start with it when
+`AMR_ENV=production`.
+
+## Upgrading an existing site
+
+Order matters; an agent without a token stops working as soon as the new
+backend is running.
+
+1. Back up `data/amr.db` and `data/maps/`.
+2. Edit the server's `.env`: `AMR_AGENT_AUTH=required` (remove `optional`).
+3. Remove any `/robot/<n>` rosbridge proxy (`nginx/robots.conf` or your nginx
+   site) and set each robot's `bridge_url` to `ws://<jetson>:9090`.
+4. Update the server (`AMR_VERSION`, `docker compose pull && docker compose up -d`;
+   the new migration runs on start-up).
+5. For each robot: generate its agent token in the UI and install it (steps
+   above). Do this while the robots are idle if you can: until the token is in
+   place the server refuses that robot.
+6. Firewall 9090 on each robot so only the server can reach it, then check the
+   live view from a browser.
 
 ## Robot (Jetson)
 
@@ -202,21 +275,27 @@ missions, and anything in the browser that goes through the server.
 
 ## Not done yet
 
-- **Robot agents are not authenticated yet** (`AMR_AGENT_AUTH=optional`), and
-  rosbridge has no authentication at all. Keep robots on a trusted network or
-  VPN.
+- **rosbridge itself still has no authentication.** Browsers no longer reach
+  it, but anything that can open a robot's port 9090 can drive it: the firewall
+  rule (only the server) is what protects it, and it is a manual step on every
+  robot.
 - The kiosk's waiting at `confirm` steps (`mission_via=nav`) has been tested
   without a robot only; see `amr_agent/kiosk/README.md`.
 
 ## Checklist
 
-- [ ] Backend `.env`: `AMR_ENV=production`, explicit `AMR_CORS_ORIGINS`
+- [ ] Backend `.env`: `AMR_ENV=production`, explicit `AMR_CORS_ORIGINS`,
+      `AMR_AGENT_AUTH=required`
 - [ ] Frontend built with `.env.production`
-- [ ] nginx serves `/` and proxies `/backend/` (and `/robot/<n>` if used)
-- [ ] Each robot: robot stack ready (robot team), rosbridge on 9090
+- [ ] nginx serves `/` and proxies `/backend/` with WebSocket upgrade; no
+      `/robot/<n>` blocks left
+- [ ] Each robot: robot stack ready (robot team), rosbridge on 9090, firewalled
+      so only the server can reach it
 - [ ] Each robot: `push_to_robot.sh` run; `amr-agent` and `amr-kiosk` active;
       kiosk staff PIN noted
-- [ ] Each robot registered in the UI with the right `bridge_url`, map assigned
+- [ ] Each robot registered in the UI with the right `bridge_url`
+      (`ws://<jetson>:9090`), map assigned
+- [ ] Each robot has its agent token (`AMR_AGENT_TOKEN`); the robot shows online
 - [ ] Pull the server's network once with a robot mid-mission: it should finish
       the mission, and the run should show done when the network is back
 - [ ] Back-ups of `data/amr.db` and `data/maps/`

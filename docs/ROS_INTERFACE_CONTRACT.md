@@ -5,6 +5,12 @@
 **ROS baseline:** ROS 2 Jazzy in the Docker/Noble setup  
 **Last audited:** 2026-09-17
 
+> **Legacy app.** This contract describes the old `web-ui/` application, whose
+> browser connected straight to rosbridge. The current `new_webui` never does: the
+> browser talks only to the backend relay (`/api/robots/{id}/ros`), which allows a
+> fixed set of topics and role-checked commands — see
+> `new_webui/backend/app/ros_policy.py` and `docs/runbooks/PRODUCTION_DEPLOYMENT.md`.
+
 This document records the interfaces exposed or consumed by the current AMR
 simulation. Names and types are preserved as the application currently expects
 them. The Jazzy migration should preserve these contracts where practical and
