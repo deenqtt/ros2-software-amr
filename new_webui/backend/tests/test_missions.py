@@ -74,6 +74,12 @@ def robot(client, warehouse):
     return client.get(f"/api/robots/{created['id']}").json()
 
 
+@pytest.fixture
+def agent(client, agent_for, robot):
+    """The robot's own agent: the only caller that reports progress or ends a run."""
+    return agent_for(client, robot["id"])
+
+
 def route(warehouse, stations, name: str = "Shuttle", **overrides) -> dict:
     return {
         "map_id": warehouse["id"],
@@ -335,13 +341,13 @@ def test_a_busy_robot_is_refused_by_name(client, warehouse, stations, robot):
     assert response.json()["detail"]["mission"] == "Shuttle"
 
 
-def test_a_finished_run_frees_the_robot(client, warehouse, stations, robot):
+def test_a_finished_run_frees_the_robot(client, warehouse, stations, robot, agent):
     mission = client.post("/api/missions", json=route(warehouse, stations)).json()
     first = client.post(
         "/api/runs", json={"mission_id": mission["id"], "robot_id": robot["id"]}
     ).json()
 
-    client.patch(f"/api/runs/{first['id']}", json={"state": "done"})
+    agent.patch(f"/api/runs/{first['id']}", json={"state": "done"})
 
     assert (
         client.post(
@@ -351,7 +357,7 @@ def test_a_finished_run_frees_the_robot(client, warehouse, stations, robot):
     )
 
 
-def test_a_terminal_run_is_stamped_with_an_end_time(client, warehouse, stations, robot):
+def test_a_terminal_run_is_stamped_with_an_end_time(client, warehouse, stations, robot, agent):
     """A finished run with no end time looks like one still going."""
     mission = client.post("/api/missions", json=route(warehouse, stations)).json()
     run = client.post(
@@ -359,12 +365,14 @@ def test_a_terminal_run_is_stamped_with_an_end_time(client, warehouse, stations,
     ).json()
     assert run["ended_at"] is None
 
-    finished = client.patch(f"/api/runs/{run['id']}", json={"state": "failed"}).json()
+    finished = agent.patch(f"/api/runs/{run['id']}", json={"state": "failed"}).json()
 
     assert finished["ended_at"] is not None
 
 
-def test_an_arrival_is_recorded_and_stamped_by_the_server(client, warehouse, stations, robot):
+def test_an_arrival_is_recorded_and_stamped_by_the_server(
+    client, warehouse, stations, robot, agent
+):
     """`step_index` is where the robot is going; an arrival is reported on its own."""
     mission = client.post("/api/missions", json=route(warehouse, stations)).json()
     run = client.post(
@@ -373,7 +381,7 @@ def test_an_arrival_is_recorded_and_stamped_by_the_server(client, warehouse, sta
     assert run["reached_index"] is None
     assert run["reached_at"] is None
 
-    reached = client.patch(
+    reached = agent.patch(
         f"/api/runs/{run['id']}", json={"reached_lap": 1, "reached_index": 0}
     ).json()
 
@@ -385,7 +393,7 @@ def test_an_arrival_is_recorded_and_stamped_by_the_server(client, warehouse, sta
     assert reached["ended_at"] is None
 
 
-def test_a_canceled_run_cannot_be_overwritten(client, warehouse, stations, robot):
+def test_a_canceled_run_cannot_be_overwritten(client, warehouse, stations, robot, agent):
     """
     The agent finishing its lap used to write `done` over a run the operator
     had canceled, so history said an abandoned route had been completed.
@@ -396,21 +404,21 @@ def test_a_canceled_run_cannot_be_overwritten(client, warehouse, stations, robot
     ).json()
     client.patch(f"/api/runs/{run['id']}", json={"state": "canceled"})
 
-    response = client.patch(f"/api/runs/{run['id']}", json={"state": "done"})
+    response = agent.patch(f"/api/runs/{run['id']}", json={"state": "done"})
 
     assert response.status_code == 409
     assert response.json()["detail"]["state"] == "canceled"
     assert client.get(f"/api/runs/{run['id']}").json()["state"] == "canceled"
 
 
-def test_an_ended_run_takes_no_more_progress(client, warehouse, stations, robot):
+def test_an_ended_run_takes_no_more_progress(client, warehouse, stations, robot, agent):
     mission = client.post("/api/missions", json=route(warehouse, stations)).json()
     run = client.post(
         "/api/runs", json={"mission_id": mission["id"], "robot_id": robot["id"]}
     ).json()
-    client.patch(f"/api/runs/{run['id']}", json={"state": "done"})
+    agent.patch(f"/api/runs/{run['id']}", json={"state": "done"})
 
-    response = client.patch(
+    response = agent.patch(
         f"/api/runs/{run['id']}", json={"reached_lap": 1, "reached_index": 1}
     )
 
@@ -439,7 +447,9 @@ def test_stopping_is_not_terminal(client, warehouse, stations, robot):
     )
 
 
-def test_progress_is_recorded_without_disturbing_the_rest(client, warehouse, stations, robot):
+def test_progress_is_recorded_without_disturbing_the_rest(
+    client, warehouse, stations, robot, agent
+):
     mission = client.post("/api/missions", json=route(warehouse, stations)).json()
     run = client.post(
         "/api/runs",
@@ -451,7 +461,7 @@ def test_progress_is_recorded_without_disturbing_the_rest(client, warehouse, sta
         },
     ).json()
 
-    moved = client.patch(f"/api/runs/{run['id']}", json={"lap": 2, "step_index": 1}).json()
+    moved = agent.patch(f"/api/runs/{run['id']}", json={"lap": 2, "step_index": 1}).json()
 
     assert (moved["lap"], moved["step_index"]) == (2, 1)
     assert moved["laps_target"] == 3
@@ -486,13 +496,13 @@ def test_an_empty_route_cannot_be_dispatched(client, warehouse, robot):
     assert response.status_code == 422
 
 
-def test_deleting_a_route_keeps_the_record_of_what_ran(client, warehouse, stations, robot):
+def test_deleting_a_route_keeps_the_record_of_what_ran(client, warehouse, stations, robot, agent):
     """What a robot did is a record of the floor, not of the route."""
     mission = client.post("/api/missions", json=route(warehouse, stations)).json()
     run = client.post(
         "/api/runs", json={"mission_id": mission["id"], "robot_id": robot["id"]}
     ).json()
-    client.patch(f"/api/runs/{run['id']}", json={"state": "done"})
+    agent.patch(f"/api/runs/{run['id']}", json={"state": "done"})
 
     client.delete(f"/api/missions/{mission['id']}")
 
@@ -501,12 +511,12 @@ def test_deleting_a_route_keeps_the_record_of_what_ran(client, warehouse, statio
     assert kept["mission_name"] == "Shuttle"
 
 
-def test_runs_are_listed_newest_first(client, warehouse, stations, robot):
+def test_runs_are_listed_newest_first(client, warehouse, stations, robot, agent):
     mission = client.post("/api/missions", json=route(warehouse, stations)).json()
     first = client.post(
         "/api/runs", json={"mission_id": mission["id"], "robot_id": robot["id"]}
     ).json()
-    client.patch(f"/api/runs/{first['id']}", json={"state": "done"})
+    agent.patch(f"/api/runs/{first['id']}", json={"state": "done"})
     second = client.post(
         "/api/runs", json={"mission_id": mission["id"], "robot_id": robot["id"]}
     ).json()
@@ -538,13 +548,13 @@ def test_the_plan_inlines_the_steps(client, warehouse, stations, robot):
     assert (plan["lap"], plan["step_index"], plan["state"]) == (1, 0, "running")
 
 
-def test_the_plan_survives_an_agent_restart(client, warehouse, stations, robot):
+def test_the_plan_survives_an_agent_restart(client, warehouse, stations, robot, agent):
     """Mid-route progress is on the server, so a restarted agent can resume."""
     mission = client.post("/api/missions", json=route(warehouse, stations)).json()
     run = client.post(
         "/api/runs", json={"mission_id": mission["id"], "robot_id": robot["id"]}
     ).json()
-    client.patch(f"/api/runs/{run['id']}", json={"lap": 3, "step_index": 1})
+    agent.patch(f"/api/runs/{run['id']}", json={"lap": 3, "step_index": 1})
 
     plan = client.get(f"/api/robots/{robot['id']}/run").json()
 
@@ -562,15 +572,205 @@ def test_a_stopping_run_is_still_handed_over(client, warehouse, stations, robot)
     assert client.get(f"/api/robots/{robot['id']}/run").json()["state"] == "stopping"
 
 
-def test_a_finished_run_is_not_handed_over(client, warehouse, stations, robot):
+def test_a_finished_run_is_not_handed_over(client, warehouse, stations, robot, agent):
     mission = client.post("/api/missions", json=route(warehouse, stations)).json()
     run = client.post(
         "/api/runs", json={"mission_id": mission["id"], "robot_id": robot["id"]}
     ).json()
-    client.patch(f"/api/runs/{run['id']}", json={"state": "done"})
+    agent.patch(f"/api/runs/{run['id']}", json={"state": "done"})
 
     assert client.get(f"/api/robots/{robot['id']}/run").json() is None
 
 
 def test_the_plan_of_an_unknown_robot_is_404(client):
     assert client.get("/api/robots/ghost/run").status_code == 404
+
+
+# ── Who may move a run where (F-03) ───────────────────────────────────────────
+
+
+@pytest.fixture
+def live_run(client, warehouse, stations, robot) -> dict:
+    mission = client.post("/api/missions", json=route(warehouse, stations)).json()
+    return client.post(
+        "/api/runs", json={"mission_id": mission["id"], "robot_id": robot["id"]}
+    ).json()
+
+
+def force_state(connection, run_id: str, state: str) -> None:
+    """Behind the API's back: how a concurrent writer would leave the row."""
+    connection.execute("UPDATE mission_runs SET state = ? WHERE id = ?", (state, run_id))
+    connection.commit()
+
+
+def test_an_operator_can_stop_then_cancel(client_as, live_run):
+    """Stopping must stay easy: a second Stop click, then Cancel, all succeed."""
+    operator = client_as("operator")
+    url = f"/api/runs/{live_run['id']}"
+
+    assert operator.patch(url, json={"state": "stopping"}).status_code == 200
+    assert operator.patch(url, json={"state": "stopping"}).status_code == 200
+    canceled = operator.patch(url, json={"state": "canceled", "detail": "canceled by the operator"})
+
+    assert canceled.status_code == 200
+    assert canceled.json()["state"] == "canceled"
+    assert canceled.json()["ended_at"] is not None
+
+
+@pytest.mark.parametrize("state", ["running", "done", "failed"])
+def test_a_person_cannot_set_any_other_state(client_as, live_run, state):
+    operator = client_as("operator")
+
+    response = operator.patch(f"/api/runs/{live_run['id']}", json={"state": state})
+
+    assert response.status_code == 403
+
+
+@pytest.mark.parametrize(
+    "body",
+    [{"lap": 5}, {"step_index": 1}, {"reached_lap": 1, "reached_index": 0}, {"detail": "hi"}],
+)
+def test_a_person_cannot_write_progress(client, live_run, body):
+    """Even a super admin: lap and step are the robot's account of itself."""
+    response = client.patch(f"/api/runs/{live_run['id']}", json=body)
+
+    assert response.status_code == 403
+    assert client.get(f"/api/runs/{live_run['id']}").json()["lap"] == 1
+
+
+@pytest.mark.parametrize("state", ["running", "stopping"])
+def test_the_agent_cannot_set_a_live_state(agent, live_run, state):
+    response = agent.patch(f"/api/runs/{live_run['id']}", json={"state": state})
+
+    assert response.status_code == 403
+
+
+def test_the_agent_can_end_a_run_it_was_asked_to_stop(client, agent, live_run):
+    url = f"/api/runs/{live_run['id']}"
+    client.patch(url, json={"state": "stopping"})
+
+    assert agent.patch(url, json={"lap": 1, "step_index": 1}).status_code == 200
+    done = agent.patch(url, json={"state": "done"})
+
+    assert done.status_code == 200
+    assert done.json()["state"] == "done"
+
+
+def test_the_agent_can_cancel_when_the_robot_leaves_navigation(agent, live_run):
+    """robot_agent_node reports this when the robot is switched out of nav mode."""
+    response = agent.patch(
+        f"/api/runs/{live_run['id']}",
+        json={"state": "canceled", "detail": "robot left navigation mode"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["state"] == "canceled"
+
+
+def test_a_canceled_run_cannot_be_revived(client, agent, live_run):
+    url = f"/api/runs/{live_run['id']}"
+    client.patch(url, json={"state": "canceled"})
+
+    assert agent.patch(url, json={"state": "running"}).status_code == 403
+    assert agent.patch(url, json={"lap": 2}).status_code == 409
+    assert client.get(url).json()["state"] == "canceled"
+
+
+@pytest.mark.parametrize("terminal", ["done", "failed", "canceled"])
+def test_an_ended_run_is_immutable(client, agent, connection, live_run, terminal):
+    url = f"/api/runs/{live_run['id']}"
+    force_state(connection, live_run["id"], terminal)
+
+    for caller, body in [
+        (client, {"state": "stopping"}),
+        (client, {"state": "canceled"}),
+        (agent, {"state": "done"}),
+        (agent, {"state": "failed", "detail": "late"}),
+        (agent, {"state": "canceled"}),
+        (agent, {"step_index": 1}),
+        (agent, {}),
+    ]:
+        response = caller.patch(url, json=body)
+        assert response.status_code == 409, (body, response.text)
+        assert response.json()["detail"]["state"] == terminal
+
+    assert client.get(url).json()["state"] == terminal
+
+
+def test_a_write_that_loses_a_race_is_refused(agent, connection, live_run, monkeypatch):
+    """
+    The run is read as live, then canceled before the write lands. The state
+    check is in the UPDATE itself, so the late `done` cannot overwrite it.
+    """
+    from app.api import missions as missions_api
+
+    real_get_run = missions_api.repo.get_run
+    calls = {"n": 0}
+
+    def stale_then_real(conn, run_id):
+        row = real_get_run(conn, run_id)
+        calls["n"] += 1
+        if calls["n"] == 1:
+            # Hand the handler the live row, then cancel it underneath.
+            force_state(connection, run_id, "canceled")
+        return row
+
+    monkeypatch.setattr(missions_api.repo, "get_run", stale_then_real)
+
+    response = agent.patch(f"/api/runs/{live_run['id']}", json={"state": "done"})
+
+    assert response.status_code == 409
+    assert response.json()["detail"]["state"] == "canceled"
+    assert real_get_run(connection, live_run["id"])["state"] == "canceled"
+
+
+def test_a_long_detail_is_cut_not_refused(agent, live_run):
+    """The agent puts exception text here; a failure must not be lost to its length."""
+    response = agent.patch(
+        f"/api/runs/{live_run['id']}", json={"state": "failed", "detail": "x" * 5000}
+    )
+
+    assert response.status_code == 200
+    assert response.json()["detail"] == "x" * 500
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"lap": 1_000_001},
+        {"lap": 0},
+        {"reached_lap": 1_000_001},
+        {"step_index": 10_001},
+        {"step_index": -1},
+        {"reached_index": 10_001},
+        {"lap": None},
+        {"state": None},
+        {"state": "paused"},
+    ],
+)
+def test_out_of_range_progress_is_refused(agent, live_run, body):
+    response = agent.patch(f"/api/runs/{live_run['id']}", json=body)
+
+    assert response.status_code == 422
+
+
+def test_progress_at_the_rails_is_accepted(agent, live_run):
+    response = agent.patch(
+        f"/api/runs/{live_run['id']}", json={"lap": 1_000_000, "step_index": 10_000}
+    )
+
+    assert response.status_code == 200
+    assert (response.json()["lap"], response.json()["step_index"]) == (1_000_000, 10_000)
+
+
+def test_another_robots_agent_cannot_touch_the_run(client, agent_for, warehouse, live_run):
+    other = client.post(
+        "/api/robots", json={"name": "AMR-02", "bridge_url": "ws://10.0.0.2:8765"}
+    ).json()
+    stranger = agent_for(client, other["id"])
+    url = f"/api/runs/{live_run['id']}"
+
+    for body in [{"step_index": 1}, {"state": "done"}, {"state": "canceled"}]:
+        assert stranger.patch(url, json=body).status_code == 403
+
+    assert client.get(url).json()["state"] == "running"

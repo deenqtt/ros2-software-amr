@@ -29,6 +29,7 @@ _RUN_COLUMNS = """
 """
 
 LIVE_STATES = ("running", "stopping")
+TERMINAL_STATES = ("done", "failed", "canceled")
 
 
 class DuplicateMissionError(Exception):
@@ -228,15 +229,27 @@ def start_run(connection: sqlite3.Connection, payload: dict) -> sqlite3.Row:
     return started
 
 
-def update_run(connection: sqlite3.Connection, run_id: str, patch: dict) -> sqlite3.Row:
+def update_run(
+    connection: sqlite3.Connection,
+    run_id: str,
+    patch: dict,
+    from_states: tuple[str, ...] = LIVE_STATES,
+) -> sqlite3.Row | None:
     """
-    Record progress or a terminal state.
+    Record progress or a terminal state, if the run is still in `from_states`.
 
     Written by the agent, which owns lap and step: the browser used to hold them
     in tab memory, so a refresh lost the count while the robot kept driving.
+
+    The state check is part of the UPDATE itself, not a read before it: a cancel
+    and the agent's `done` arriving together must not both win. None when the
+    run was not in one of `from_states` (or is gone) — the caller decides what
+    that means.
     """
+    if not from_states:
+        return None
     fields = dict(patch)
-    if fields.get("state") in ("done", "failed", "canceled"):
+    if fields.get("state") in TERMINAL_STATES:
         # Stamped here rather than by the caller: a terminal run with no end
         # time is a run that looks like it is still going.
         fields.setdefault("ended_at", None)
@@ -251,11 +264,13 @@ def update_run(connection: sqlite3.Connection, run_id: str, patch: dict) -> sqli
         for column in fields
     )
     params = {key: value for key, value in fields.items() if key not in stamped}
-    connection.execute(
-        f"UPDATE mission_runs SET {assignments} WHERE id = :id",  # noqa: S608 — keys are columns
-        {**params, "id": run_id},
+    guards = {f"_from_{position}": state for position, state in enumerate(from_states)}
+    placeholders = ", ".join(f":{name}" for name in guards)
+    cursor = connection.execute(
+        f"UPDATE mission_runs SET {assignments} "  # noqa: S608 — keys are columns
+        f"WHERE id = :_run_id AND state IN ({placeholders})",
+        {**params, **guards, "_run_id": run_id},
     )
-    updated = get_run(connection, run_id)
-    if updated is None:  # pragma: no cover — checked by the caller
-        raise RuntimeError("run not found")
-    return updated
+    if cursor.rowcount == 0:
+        return None
+    return get_run(connection, run_id)

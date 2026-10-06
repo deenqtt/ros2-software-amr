@@ -233,6 +233,42 @@ def start_run(body: RunStart, operator: CurrentOperator, connection: Connection)
     return RunOut.model_validate(dict(row))
 
 
+#: Who may move a run where, and from which states. Anything not listed is
+#: refused. A run that has ended is in none of the "from" sets, so it stays
+#: ended: the agent finishing its lap used to write `done` over a run the
+#: operator had canceled, and history said an abandoned route was completed.
+#:
+#: People stop and cancel; nothing else. Stopping twice is not an error — a
+#: second click on Stop must never be the thing that fails. The agent reports
+#: progress (state None) and ends the run; it cancels too, when the robot leaves
+#: navigation mode under it. Nobody can put a run back to `running`.
+RUN_TRANSITIONS: dict[str, dict[str | None, tuple[str, ...]]] = {
+    "user": {
+        "stopping": repo.LIVE_STATES,
+        "canceled": repo.LIVE_STATES,
+    },
+    "agent": {
+        None: repo.LIVE_STATES,
+        "done": repo.LIVE_STATES,
+        "failed": repo.LIVE_STATES,
+        "canceled": repo.LIVE_STATES,
+    },
+}
+
+#: Fields beyond `state` each kind of caller may write.
+RUN_FIELDS: dict[str, frozenset[str]] = {
+    "user": frozenset({"detail"}),
+    "agent": frozenset({"lap", "step_index", "reached_lap", "reached_index", "detail"}),
+}
+
+
+def _run_ended(state: str) -> HTTPException:
+    return HTTPException(
+        status.HTTP_409_CONFLICT,
+        {"message": f"This run has already ended ({state})", "state": state},
+    )
+
+
 @runs_router.patch("/{run_id}", response_model=RunOut)
 def update_run(
     run_id: str,
@@ -248,33 +284,50 @@ def update_run(
     `stopping` rather than a terminal state is the "finish this lap" request:
     halting mid-lap can leave a robot holding a payload it has not delivered.
 
-    A run that has ended stays ended. The agent finishing its lap used to write
-    `done` over a run the operator had canceled, so history said the route was
-    completed when it had been abandoned.
+    What each caller may change is RUN_TRANSITIONS: 403 for a change this kind
+    of caller may never make, 409 for one the run's current state rules out.
     """
     current = repo.get_run(connection, run_id)
     if current is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Run not found")
     # An agent reports on its own robot's runs only.
     ensure_robot(principal, str(current["robot_id"]))
-    if current["state"] in ("done", "failed", "canceled"):
-        raise HTTPException(
-            status.HTTP_409_CONFLICT,
-            {
-                "message": f"This run has already ended ({current['state']})",
-                "state": current["state"],
-            },
-        )
 
     patch = body.model_dump(exclude_unset=True)
-    if principal.kind == "agent" and "state" not in patch:
+    kind = principal.kind
+    target = patch.get("state")
+
+    if kind == "agent" and target is None:
         # Lap and step reports arrive constantly; the audit trail skips those,
         # but still records an agent changing the run's state.
         request.state.audit_skip = True
+
+    extra = set(patch) - {"state"} - RUN_FIELDS[kind]
+    if extra:
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            f"Only the robot's agent reports run progress ({', '.join(sorted(extra))})",
+        )
+    allowed = RUN_TRANSITIONS[kind]
+    if target not in allowed:
+        message = (
+            "A run can only be stopped or canceled from here"
+            if kind == "user"
+            else f"The agent cannot set a run to '{target}'"
+        )
+        raise HTTPException(status.HTTP_403_FORBIDDEN, message)
+
+    if current["state"] not in allowed[target]:
+        raise _run_ended(str(current["state"]))
     if not patch:
-        row = repo.get_run(connection, run_id)
-        return RunOut.model_validate(dict(row))  # type: ignore[arg-type]
+        return RunOut.model_validate(dict(current))
 
     with transaction(connection):
-        row = repo.update_run(connection, run_id, patch)
+        row = repo.update_run(connection, run_id, patch, allowed[target])
+    if row is None:
+        # Lost a race: the state changed between the read above and the write.
+        latest = repo.get_run(connection, run_id)
+        if latest is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Run not found")
+        raise _run_ended(str(latest["state"]))
     return RunOut.model_validate(dict(row))

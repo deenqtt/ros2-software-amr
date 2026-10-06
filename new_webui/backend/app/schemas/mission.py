@@ -159,24 +159,55 @@ class RunStart(BaseModel):
         return self
 
 
+#: Rails on what a run report may claim. Far above any real shift (a lap a
+#: minute for two years; a route is capped at MAX_STEPS), low enough that a
+#: bogus report cannot write numbers the UI and the agent choke on.
+LAP_MAX = 1_000_000
+INDEX_MAX = 10_000
+#: Longer details are cut, not refused: the agent puts exception text here, and
+#: refusing a failure report over its length would lose the failure.
+DETAIL_MAX = 500
+
+Lap = Annotated[int, Field(ge=1, le=LAP_MAX)]
+StepIndex = Annotated[int, Field(ge=0, le=INDEX_MAX)]
+
+
 class RunProgress(BaseModel):
     """
-    Written by the robot's agent as it works through the route.
+    A change to a run: the agent's progress, or a person's stop or cancel.
 
-    The agent owns these, not the browser. A refresh used to lose the lap count
-    while the robot kept driving.
+    Who may send which field and which state is decided by the route handler
+    (see RUN_TRANSITIONS in app.api.missions); this model only bounds values.
+    The agent owns progress, not the browser. A refresh used to lose the lap
+    count while the robot kept driving.
     """
 
     model_config = ConfigDict(extra="forbid")
 
-    lap: Annotated[int, Field(ge=1)] | None = None
-    step_index: Annotated[int, Field(ge=0)] | None = None
+    lap: Lap | None = None
+    step_index: StepIndex | None = None
     #: An arrival, reported when Nav2 says the step succeeded. The server stamps
     #: the time, so the same step on the next lap is still a new arrival.
-    reached_lap: Annotated[int, Field(ge=1)] | None = None
-    reached_index: Annotated[int, Field(ge=0)] | None = None
+    reached_lap: Lap | None = None
+    reached_index: StepIndex | None = None
     state: RunState | None = None
     detail: str | None = None
+
+    @field_validator("detail")
+    @classmethod
+    def _cap_detail(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return value[:DETAIL_MAX]
+
+    @model_validator(mode="after")
+    def _no_explicit_nulls(self) -> RunProgress:
+        # Omitted keeps the stored value; an explicit null would write NULL into
+        # a counter or the state itself. Only `detail` may be cleared.
+        for name in self.model_fields_set - {"detail"}:
+            if getattr(self, name) is None:
+                raise ValueError(f"{name} cannot be null")
+        return self
 
 
 class RunPlan(BaseModel):
