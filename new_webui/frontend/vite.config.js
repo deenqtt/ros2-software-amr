@@ -8,8 +8,23 @@ import vue from '@vitejs/plugin-vue';
 // opened from another laptop (http://<this-ip>:3100) still reaches the API.
 const devBackend = loadEnv(process.env.NODE_ENV ?? 'development', process.cwd(), 'VITE_').VITE_DEV_BACKEND ||
     'http://localhost:3002';
+// roslib opens with `var ROSLIB = this.ROSLIB || {…}`. Bundled as CommonJS for
+// production, that `this` becomes the module's exports before they exist, so a
+// production build crashed the moment a robot connection was made ("Cannot
+// read properties of undefined (reading 'ROSLIB')"). The dev server's prebundle
+// does not, which is how it went unnoticed. The global object is what roslib
+// means there.
+const roslibGlobalThis = {
+    name: 'roslib-global-this',
+    enforce: 'pre',
+    transform(code, id) {
+        if (!id.replaceAll('\\', '/').endsWith('/node_modules/roslib/src/RosLib.js'))
+            return null;
+        return code.replace('this.ROSLIB', 'globalThis.ROSLIB');
+    },
+};
 export default defineConfig({
-    plugins: [vue()],
+    plugins: [vue(), roslibGlobalThis],
     resolve: {
         alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
     },

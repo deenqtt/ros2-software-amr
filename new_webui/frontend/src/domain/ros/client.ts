@@ -95,8 +95,13 @@ export class RosClient {
   constructor(private options: RosClientOptions) {
     this.names = rosNames(options.namespace ?? '')
     this.now = options.now ?? (() => Date.now())
-    this.setTimeoutFn = options.setTimeoutFn ?? setTimeout
-    this.clearTimeoutFn = options.clearTimeoutFn ?? clearTimeout
+    // Wrapped, not stored bare: called as `this.setTimeoutFn(…)` the browser's
+    // own setTimeout gets this client as `this` and throws "Illegal
+    // invocation", which killed every reconnect after the first attempt.
+    this.setTimeoutFn =
+      options.setTimeoutFn ??
+      (((handler: () => void, timeout?: number) => setTimeout(handler, timeout)) as typeof setTimeout)
+    this.clearTimeoutFn = options.clearTimeoutFn ?? ((handle) => clearTimeout(handle))
     this.random = options.random ?? Math.random
   }
 
