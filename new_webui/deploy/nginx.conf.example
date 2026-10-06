@@ -1,9 +1,19 @@
 # nginx for the AMR web UI on the server — one origin for the browser.
 #
 #   /            the built frontend (new_webui/frontend/dist), SPA fallback
-#   /backend/    the FastAPI backend on this machine, prefix stripped
-#   /robot/<n>   optional: a robot's rosbridge, so browsers need not reach the
-#                Jetson directly (registry bridge_url = wss://<host>/robot/<n>)
+#   /backend/    the FastAPI backend on this machine, prefix stripped — and,
+#                through it, every robot: the browser opens
+#                /backend/api/robots/<id>/ros and the backend relays that to the
+#                robot's rosbridge after checking the session and every frame.
+#
+# There is deliberately no /robot/<name> proxy to rosbridge any more. rosbridge
+# has no authentication: anything that can open its port can drive the robot,
+# whatever role its user has. Firewall each robot's rosbridge port (9090) so
+# only this server can reach it, e.g. on the robot:
+#   sudo ufw allow from <this-server-ip> to any port 9090 proto tcp
+#   sudo ufw deny 9090/tcp
+# and register the robot with its direct address (bridge_url ws://<jetson>:9090),
+# which the backend uses and browsers are never given.
 #
 # Copy to /etc/nginx/sites-available/amr, adjust server_name, paths and robot
 # addresses, then: ln -s ../sites-available/amr /etc/nginx/sites-enabled/ &&
@@ -44,25 +54,26 @@ server {
     # Trailing slash on proxy_pass strips /backend: /backend/api/runs reaches
     # the backend as /api/runs. Robots may use this too:
     #   run_agent_gprp.sh <robot_id> http://amr.example.local/backend
+    #
+    # Also carries the robots' ROS WebSockets (/backend/api/robots/<id>/ros), so
+    # it upgrades connections and keeps idle ones open for an hour. Host keeps
+    # the port: the backend compares it with the browser's Origin to refuse
+    # pages from other sites. X-Real-IP is what the audit trail records.
     location /backend/ {
         proxy_pass http://127.0.0.1:3002/;
-        proxy_set_header Host $host;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_read_timeout 60s;
-    }
-
-    # ── Robots (optional) ───────────────────────────────────────────────────
-    # One block per robot. Without these, each browser must be able to open
-    # ws://<jetson-ip>:9090 itself (same LAN or VPN).
-    location /robot/amr-02 {
-        proxy_pass http://192.168.10.21:9090;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection $connection_upgrade;
-        proxy_set_header Host $host;
-        # rosbridge connections live for hours; idle ones must not be cut.
-        proxy_read_timeout 1h;
-        proxy_send_timeout 1h;
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
     }
+
+    # ── Robots ──────────────────────────────────────────────────────────────
+    # No direct rosbridge proxies here. An old `location /robot/<name>` block
+    # that proxies to a robot's :9090 must be removed: it lets any browser drive
+    # the robot without signing in. See the note at the top of this file.
 }

@@ -20,7 +20,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app import audit
-from app.api import auth, health, maps, missions, robots, stations, users, zones
+from app.api import auth, health, maps, missions, robots, ros_proxy, stations, users, zones
 from app.config import Settings, get_settings
 from app.db import connect, migrate
 from app.repositories import audit as audit_repo
@@ -162,6 +162,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(users.router)
     app.include_router(users.audit_router)
     app.include_router(robots.router)
+    app.include_router(ros_proxy.router)
     app.include_router(maps.router)
     app.include_router(stations.router)
     app.include_router(missions.router)

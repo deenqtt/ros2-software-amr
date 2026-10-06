@@ -38,16 +38,28 @@ server {
 
     # Trailing slash strips /backend: /backend/api/runs reaches the backend as
     # /api/runs. Robots use this too: run_agent_gprp.sh <id> http://<host>/backend
+    #
+    # Browsers also reach the robots through here: /backend/api/robots/<id>/ros
+    # is a WebSocket the backend relays to that robot's rosbridge after checking
+    # the session and every frame. Hence the upgrade headers and the long
+    # timeouts (a robot page stays open for hours; the relay closes it itself
+    # when the session ends). $http_host keeps the port, which the backend
+    # compares against the Origin header to refuse other sites' pages.
     location /backend/ {
         proxy_pass ${AMR_BACKEND_URL}/;
-        proxy_set_header Host $host;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_read_timeout 60s;
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
     }
 
-    # Per-site extras, e.g. /robot/<name> proxies to each robot's rosbridge so
-    # browsers need not reach the Jetsons directly. Mounted from the host; see
-    # deploy/robots.conf.example.
+    # Per-site extras, mounted from the host. Not for rosbridge: a direct
+    # /robot/<name> proxy would bypass the backend's checks (see
+    # deploy/robots.conf.example).
     include /etc/nginx/amr.d/*.conf;
 }

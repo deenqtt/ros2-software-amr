@@ -15,6 +15,7 @@
  *   20 robots x full     ~ 1400 messages/second plus PNG encodes   not fine
  */
 
+import { config } from '@/app/config'
 import { RosClient, type ClientSnapshot } from '@/domain/ros/client'
 import type { Tier } from '@/domain/ros/health'
 import type { RobotConfig } from '@/domain/types'
@@ -22,10 +23,31 @@ import type { RobotConfig } from '@/domain/types'
 /** How often staleness is re-evaluated when no traffic is arriving. */
 const POLL_MS = 1000
 
+/**
+ * Where the browser opens a robot's ROS connection: the backend's relay, never
+ * the robot itself.
+ *
+ * rosbridge has no authentication, so a browser talking to it directly could
+ * do anything whatever its role. The backend checks the session and every
+ * frame, then forwards to the robot's registered bridge URL (see
+ * backend/app/api/ros_proxy.py). Resolved against the page, so the relative
+ * production base (/backend/api) works under any host name and over HTTPS.
+ */
+export function relayUrl(robotId: string, base: string = config.apiBaseUrl): string {
+  const url = new URL(
+    `${base}/robots/${encodeURIComponent(robotId)}/ros`,
+    globalThis.location?.href,
+  )
+  if (url.protocol === 'https:') url.protocol = 'wss:'
+  else if (url.protocol === 'http:') url.protocol = 'ws:'
+  return url.toString()
+}
+
 export type PoolListener = (robotId: string, snapshot: ClientSnapshot) => void
 
 interface Entry {
   client: RosClient
+  /** The registry's bridge URL, kept to notice a move; not what we connect to. */
   url: string
   namespace: string
   unsubscribe: () => void
@@ -67,7 +89,9 @@ export class RosPool {
         this.entries.delete(id)
         continue
       }
-      // A moved bridge is a different endpoint, not a reconfiguration.
+      // A moved bridge is a different endpoint, not a reconfiguration. The relay
+      // URL does not change, but the relay connects upstream only on open, so
+      // the client must reconnect to reach the new one.
       if (entry.url !== robot.bridgeUrl || entry.namespace !== robot.namespace) {
         entry.unsubscribe()
         entry.client.dispose()
@@ -84,7 +108,7 @@ export class RosPool {
   }
 
   private create(robot: RobotConfig): void {
-    const client = new RosClient({ url: robot.bridgeUrl, namespace: robot.namespace })
+    const client = new RosClient({ url: relayUrl(robot.id), namespace: robot.namespace })
     const unsubscribe = client.subscribeToSnapshots((snapshot) => {
       for (const listener of this.listeners) listener(robot.id, snapshot)
     })

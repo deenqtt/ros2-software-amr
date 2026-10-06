@@ -11,6 +11,8 @@ dependencies = [
     "pydantic-settings==2.11.0",
     "python-multipart==0.0.20",
     "pyyaml==6.0.2",
+    # The backend relays each browser's rosbridge socket to the robot (api/ros_proxy.py).
+    "websockets==17.1",
 ]
 
 [project.scripts]

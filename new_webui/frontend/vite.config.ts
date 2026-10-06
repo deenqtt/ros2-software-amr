@@ -39,6 +39,9 @@ export default defineConfig({
       '/backend': {
         target: devBackend,
         rewrite: (path) => path.replace(/^\/backend/, ''),
+        // The robot's ROS connection is a WebSocket relayed by the backend
+        // (/backend/api/robots/<id>/ros); without this the upgrade is dropped.
+        ws: true,
       },
     },
   },

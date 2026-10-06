@@ -1,15 +1,24 @@
-# Optional: proxy each robot's rosbridge through the web container, so browsers
-# need not reach the Jetsons directly. Copy to /opt/amr/nginx/robots.conf, one
-# block per robot, then `docker compose restart web`. The robot's bridge URL in
-# the registry is then ws://<server>/robot/<name> (wss:// behind HTTPS).
-
-location /robot/amr-02 {
-    proxy_pass http://192.168.10.21:9090;
-    proxy_http_version 1.1;
-    proxy_set_header Upgrade $http_upgrade;
-    proxy_set_header Connection $connection_upgrade;
-    proxy_set_header Host $host;
-    # rosbridge connections live for hours; idle ones must not be cut.
-    proxy_read_timeout 1h;
-    proxy_send_timeout 1h;
-}
+# DEPRECATED — do not proxy rosbridge through nginx.
+#
+# This file used to hold one `location /robot/<name>` block per robot, proxying
+# straight to the robot's rosbridge (:9090). rosbridge has no authentication,
+# so that let anyone who could load the page drive the robot whatever their
+# role, or with no account at all.
+#
+# Browsers now reach robots only through the backend, at
+# /backend/api/robots/<id>/ros: it checks the session, refuses what the
+# person's role does not allow, records commands in the audit trail, and relays
+# the rest to the robot's registered bridge_url. Nothing needs configuring here
+# for that; the /backend/ location already carries the WebSocket.
+#
+# What to do instead:
+#   1. Delete any /robot/<name> block from /opt/amr/nginx/robots.conf (or the
+#      whole file), then `docker compose restart web`.
+#   2. In the registry, set each robot's bridge URL to its direct address,
+#      ws://<jetson-ip>:9090. Only the backend uses it.
+#   3. Firewall rosbridge on each robot so only the server can reach it, e.g.
+#        sudo ufw allow from <server-ip> to any port 9090 proto tcp
+#        sudo ufw deny 9090/tcp
+#
+# This file may still hold other per-site nginx extras; it is included inside
+# the server block of the web container.

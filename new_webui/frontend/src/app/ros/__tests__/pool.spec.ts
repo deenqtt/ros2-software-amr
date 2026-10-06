@@ -37,7 +37,7 @@ vi.mock('@/domain/ros/client', () => ({
   }),
 }))
 
-import { RosPool } from '../pool'
+import { RosPool, relayUrl } from '../pool'
 import type { RobotConfig } from '@/domain/types'
 
 function robot(id: string, overrides: Partial<RobotConfig> = {}): RobotConfig {
@@ -95,7 +95,8 @@ describe('sync', () => {
     pool.sync([robot('r1', { bridgeUrl: 'ws://new:8765' })])
     expect(instances).toHaveLength(2)
     expect(instances[0]?.dispose).toHaveBeenCalled()
-    expect(instances[1]?.url).toBe('ws://new:8765')
+    // Still through the relay: the backend reads the new address on connect.
+    expect(instances[1]?.url).toBe(relayUrl('r1'))
   })
 
   it('rebuilds when only the namespace changes', () => {
@@ -110,6 +111,34 @@ describe('sync', () => {
     expect(instances[0]?.setOptionalTopics).toHaveBeenLastCalledWith(['costmap'])
     pool.sync([robot('r1', { bridgeUrl: 'ws://new:8765' })])
     expect(instances[1]?.setOptionalTopics).toHaveBeenCalledWith(['costmap'])
+  })
+})
+
+describe('relay', () => {
+  // rosbridge has no authentication; the browser must never be handed the
+  // robot's own address, only the backend relay that checks every frame.
+  it('connects through the backend relay, never to the robot directly', () => {
+    pool.sync([robot('r1', { bridgeUrl: 'ws://10.0.0.1:9090' })])
+    expect(instances[0]?.url).toBe(relayUrl('r1'))
+    expect(instances[0]?.url).not.toContain('10.0.0.1')
+    expect(instances[0]?.url).toMatch(/^wss?:\/\/[^/]+\/.*\/robots\/r1\/ros$/)
+  })
+
+  it('resolves a relative base against the page and switches to ws', () => {
+    expect(relayUrl('r1', '/backend/api')).toBe(`ws://${location.host}/backend/api/robots/r1/ros`)
+  })
+
+  it('uses wss under https', () => {
+    expect(relayUrl('r1', 'https://amr.example/backend/api')).toBe(
+      'wss://amr.example/backend/api/robots/r1/ros',
+    )
+    expect(relayUrl('r1', 'http://localhost:3002/api')).toBe(
+      'ws://localhost:3002/api/robots/r1/ros',
+    )
+  })
+
+  it('escapes the robot id', () => {
+    expect(relayUrl('a/b?c', 'http://h/api')).toBe('ws://h/api/robots/a%2Fb%3Fc/ros')
   })
 })
 
