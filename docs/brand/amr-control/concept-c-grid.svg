@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="AMR Control: Grid">
+  <rect x="1" y="1" width="126" height="126" rx="27" fill="#0A0B0D" stroke="#2E333B" stroke-width="2"/>
+  <g stroke="#FFFFFF" stroke-opacity="0.16" stroke-width="2">
+    <path d="M24 24H104V104H24Z" fill="none"/>
+    <path d="M44 24V104M64 24V104M84 24V104M24 44H104M24 64H104M24 84H104"/>
+  </g>
+  <g fill="#3A404A">
+    <rect x="24" y="24" width="20" height="20"/>
+    <rect x="44" y="24" width="20" height="20"/>
+    <rect x="84" y="44" width="20" height="20"/>
+    <rect x="84" y="64" width="20" height="20"/>
+    <rect x="24" y="84" width="20" height="20"/>
+  </g>
+  <path d="M54 74L92 52L92 96Z" fill="#0052FF" opacity="0.28"/>
+  <path d="M54 74L74 62" stroke="#2D6BFF" stroke-width="7" stroke-linecap="round"/>
+  <circle cx="54" cy="74" r="11" fill="#2D6BFF"/>
+</svg>
