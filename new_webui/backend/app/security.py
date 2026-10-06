@@ -26,8 +26,85 @@ _SALT_BYTES = 16
 # leave headroom rather than fail on an interpreter that counts differently.
 _MAXMEM = 64 * 1024 * 1024
 
-PASSWORD_MIN = 8
+# Ten characters: long enough that guessing through the sign-in throttle is
+# hopeless, short enough for a touchscreen in gloves. A short sentence is the
+# easy way past it. Applies to every password set from now on; one set under
+# the old minimum of eight still signs in, and is replaced at the next change.
+PASSWORD_MIN = 10
 PASSWORD_MAX = 128
+
+# The commonest passwords that are long enough to pass the minimum, the ones a
+# guesser tries first (from the published breach-corpus top lists), plus the
+# obvious ones for this product. Not a full breach check, which would need a
+# large list or a network lookup; just the handful no password should be.
+_COMMON_PASSWORDS = frozenset(
+    {
+        "1234567890",
+        "12345678910",
+        "123456789a",
+        "0123456789",
+        "0987654321",
+        "1111111111",
+        "1q2w3e4r5t",
+        "1qaz2wsx3edc",
+        "qwertyuiop",
+        "qwerty1234",
+        "qwerty12345",
+        "qwerty123456",
+        "asdfghjkl1",
+        "asdfghjkl;",
+        "zxcvbnm123",
+        "password12",
+        "password123",
+        "password1234",
+        "password!1",
+        "passw0rd123",
+        "p@ssw0rd123",
+        "iloveyou12",
+        "letmein123",
+        "welcome123",
+        "welcome1234",
+        "abc1234567",
+        "abcdefghij",
+        "abcd123456",
+        "admin12345",
+        "admin123456",
+        "administrator",
+        "superadmin",
+        "superadmin1",
+        "changeme123",
+        "change-me-at-first-sign-in",
+        "football123",
+        "sunshine123",
+        "princess123",
+        "trustno1234",
+        "operator123",
+        "robot12345",
+    }
+)
+
+
+def password_problem(password: str, username: str | None = None) -> str | None:
+    """
+    Why this password may not be set, in words for the person typing it, or None.
+
+    The one policy for every place a password is chosen: a new account, an admin
+    reset, a change of your own, the command-line admin and the bootstrap
+    account. Never applied at sign-in, so nobody is locked out by a rule that
+    arrived after their password did.
+    """
+    if len(password) < PASSWORD_MIN:
+        return f"Use at least {PASSWORD_MIN} characters"
+    if len(password) > PASSWORD_MAX:
+        return f"Use at most {PASSWORD_MAX} characters"
+    folded = password.casefold()
+    if username and folded.strip() == username.strip().casefold():
+        return "Choose a password that is not your username"
+    if len(set(folded)) == 1:
+        return "Choose a password that is not one character repeated"
+    if folded in _COMMON_PASSWORDS:
+        return "That password is one of the first a guesser tries; choose another"
+    return None
 
 
 def _b64(data: bytes) -> str:

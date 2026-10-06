@@ -33,15 +33,16 @@ def create_admin(settings: Settings, username: str, *, reset: bool) -> int:
     from app.db import connect, migrate, transaction
     from app.repositories import users as users_repo
     from app.schemas.user import USERNAME_PATTERN
-    from app.security import PASSWORD_MAX, PASSWORD_MIN, hash_password
+    from app.security import hash_password, password_problem
 
     if not USERNAME_PATTERN.match(username):
         print("Username: 3 to 32 letters, digits, dots, dashes or underscores.", file=sys.stderr)
         return 2
 
     password = getpass.getpass(f"Password for {username}: ")
-    if not PASSWORD_MIN <= len(password) <= PASSWORD_MAX:
-        print(f"Password must be {PASSWORD_MIN} to {PASSWORD_MAX} characters.", file=sys.stderr)
+    problem = password_problem(password, username)
+    if problem:
+        print(f"{problem}.", file=sys.stderr)
         return 2
     if getpass.getpass("Again: ") != password:
         print("The passwords do not match.", file=sys.stderr)

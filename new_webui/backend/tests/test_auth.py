@@ -257,6 +257,25 @@ def test_an_admin_creates_an_account_that_can_then_sign_in(client, anon_client):
     assert login(anon_client, "budi", "budi-pass-1").json()["role"] == "operator"
 
 
+@pytest.mark.parametrize("field", ["disabled", "role", "password"])
+def test_a_null_user_field_is_refused_not_ignored(client, field):
+    """``disabled: null`` used to become 0 and quietly re-enable the account."""
+    created = client.post(
+        "/api/users",
+        json={"username": "nullcheck", "role": "viewer", "password": "a-long-enough-pass"},
+    )
+    assert created.status_code == 201, created.text
+    user_id = created.json()["id"]
+    assert client.patch(f"/api/users/{user_id}", json={"disabled": True}).status_code == 200
+
+    response = client.patch(f"/api/users/{user_id}", json={field: None})
+
+    assert response.status_code == 422
+    users = {user["id"]: user for user in client.get("/api/users").json()}
+    assert users[user_id]["disabled"] is True
+    assert users[user_id]["role"] == "viewer"
+
+
 @pytest.mark.parametrize("username", ["ab", "has space", "x" * 33, "semi;colon"])
 def test_usernames_are_plain(client, username):
     response = client.post(

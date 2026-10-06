@@ -73,16 +73,20 @@ def bootstrap_account(connection, settings: Settings) -> None:
         return
 
     from app.schemas.user import USERNAME_PATTERN
-    from app.security import PASSWORD_MIN, hash_password
+    from app.security import hash_password, password_problem
 
     username = settings.bootstrap_user.strip()
     password = settings.bootstrap_password.get_secret_value()
-    if not USERNAME_PATTERN.match(username) or len(password) < PASSWORD_MIN:
+    if not USERNAME_PATTERN.match(username):
         log.error(
-            "AMR_BOOTSTRAP_USER / AMR_BOOTSTRAP_PASSWORD ignored: the username needs 3 to 32 "
-            "letters, digits, dots, dashes or underscores, and the password %d characters.",
-            PASSWORD_MIN,
+            "AMR_BOOTSTRAP_USER ignored: the username needs 3 to 32 letters, digits, "
+            "dots, dashes or underscores."
         )
+        return
+    problem = password_problem(password, username)
+    if problem:
+        # Same rules as any other new password; the message never echoes it.
+        log.error("AMR_BOOTSTRAP_PASSWORD ignored: %s.", problem)
         return
 
     users_repo.create_user(
@@ -115,7 +119,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             applied = migrate(connection)
             app.state.schema_versions_applied = applied
             audit_repo.prune(connection, resolved.audit_retention_days)
-            users_repo.prune_sessions(connection, resolved.session_idle_minutes)
+            users_repo.prune_sessions(
+                connection, resolved.session_idle_minutes, resolved.session_max_hours
+            )
             bootstrap_account(connection, resolved)
             if users_repo.count_active_super_admins(connection) == 0:
                 log.warning(
@@ -145,6 +151,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         version="0.1.0",
         summary="Fleet registry and persistence for the AMR control interface.",
         lifespan=lifespan,
+        # The API map is for developers; in production it only helps whoever
+        # is probing the server.
+        docs_url=None if resolved.is_production else "/docs",
+        redoc_url=None if resolved.is_production else "/redoc",
+        openapi_url=None if resolved.is_production else "/openapi.json",
     )
     app.state.settings = resolved
 

@@ -5,16 +5,29 @@ from __future__ import annotations
 import re
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from app.security import PASSWORD_MAX, PASSWORD_MIN
+from app.schemas.patch import reject_nulls
+from app.security import PASSWORD_MAX, PASSWORD_MIN, password_problem
 
 Role = Literal["viewer", "operator", "admin", "super_admin"]
 
 USERNAME_PATTERN = re.compile(r"^[A-Za-z0-9._-]{3,32}$")
 DISPLAY_NAME_MAX = 64
 
-Password = Annotated[str, Field(min_length=PASSWORD_MIN, max_length=PASSWORD_MAX)]
+
+def _password_policy(value: str) -> str:
+    problem = password_problem(value)
+    if problem:
+        raise ValueError(problem)
+    return value
+
+
+#: A password being set. "Not the username" needs the username too, so that
+#: part is checked by the endpoints, which know both and can name the field.
+Password = Annotated[
+    str, Field(min_length=PASSWORD_MIN, max_length=PASSWORD_MAX), AfterValidator(_password_policy)
+]
 
 
 def _validate_username(value: str) -> str:
@@ -107,6 +120,12 @@ class UserPatch(BaseModel):
     @classmethod
     def _display(cls, value: str | None) -> str | None:
         return _clean_display_name(value)
+
+    @model_validator(mode="after")
+    def _no_nulls(self) -> UserPatch:
+        # ``disabled: null`` used to become 0 and re-enable a disabled account.
+        reject_nulls(self, {"display_name"})
+        return self
 
 
 class AuditEntryOut(BaseModel):

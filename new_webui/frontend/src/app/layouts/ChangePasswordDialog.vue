@@ -14,7 +14,7 @@ import { FormField } from '@/shared/ui/label'
 import { Button } from '@/shared/ui/button'
 import { authApi, FieldError } from '@/shared/api/auth'
 
-const PASSWORD_MIN = 8
+const PASSWORD_MIN = 10
 
 const props = defineProps<{ open: boolean }>()
 const emit = defineEmits<{ 'update:open': [value: boolean] }>()

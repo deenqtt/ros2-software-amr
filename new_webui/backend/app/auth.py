@@ -69,8 +69,11 @@ def signed_in(request: Request, connection: Connection) -> Principal | None:
     token = request.cookies.get(SESSION_COOKIE)
     if token:
         token_hash = hash_token(token)
+        settings = request.app.state.settings
+        # Both limits, here and only here: the WebSocket relay and every route
+        # find the signed-in person through this function.
         row = users_repo.resolve_session(
-            connection, token_hash, request.app.state.settings.session_idle_minutes
+            connection, token_hash, settings.session_idle_minutes, settings.session_max_hours
         )
         if row is not None:
             principal = Principal(

@@ -25,7 +25,7 @@ export interface UserFormValues {
   password: string
 }
 
-const PASSWORD_MIN = 8
+const PASSWORD_MIN = 10
 const USERNAME = /^[A-Za-z0-9._-]{3,32}$/
 
 const props = withDefaults(

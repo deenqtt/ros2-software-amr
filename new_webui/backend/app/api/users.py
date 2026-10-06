@@ -29,7 +29,7 @@ from app.db import transaction
 from app.repositories import audit as audit_repo
 from app.repositories import users as repo
 from app.schemas.user import AuditEntryOut, AuditPageOut, UserCreate, UserOut, UserPatch
-from app.security import hash_password
+from app.security import hash_password, password_problem
 
 router = APIRouter(prefix="/api/users", tags=["users"], dependencies=[SuperAdmin])
 audit_router = APIRouter(prefix="/api/audit", tags=["audit"], dependencies=[SuperAdmin])
@@ -43,6 +43,20 @@ def _last_admin(error: repo.LastAdminError) -> HTTPException:
     return HTTPException(status.HTTP_409_CONFLICT, {"message": str(error)})
 
 
+def _check_password(password: str, username: str) -> None:
+    """
+    The part of the password policy that needs the username.
+
+    The rest (length, common passwords) is already enforced by the request
+    schema; this repeats it harmlessly and adds "not the username".
+    """
+    problem = password_problem(password, username)
+    if problem:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT, {"field": "password", "message": problem}
+        )
+
+
 @router.get("", response_model=list[UserOut])
 def list_users(connection: Connection) -> list[UserOut]:
     return [_to_out(row) for row in repo.list_users(connection)]
@@ -50,6 +64,7 @@ def list_users(connection: Connection) -> list[UserOut]:
 
 @router.post("", response_model=UserOut, status_code=status.HTTP_201_CREATED)
 def create_user(body: UserCreate, connection: Connection) -> UserOut:
+    _check_password(body.password, body.username)
     try:
         with transaction(connection):
             row = repo.create_user(
@@ -80,10 +95,13 @@ def update_user(
     reset is usually because the old password got out, and a disabled account
     with a live session would not really be disabled.
     """
-    if repo.get_user(connection, user_id) is None:
+    target = repo.get_user(connection, user_id)
+    if target is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
 
     patch = body.model_dump(exclude_unset=True)
+    if patch.get("password") is not None:
+        _check_password(patch["password"], target["username"])
     if user_id == admin.user_id and patch.get("disabled"):
         raise HTTPException(
             status.HTTP_409_CONFLICT, {"message": "You cannot disable your own account"}
@@ -96,10 +114,6 @@ def update_user(
         patch["must_change_password"] = 0 if user_id == admin.user_id else 1
     if "disabled" in patch:
         patch["disabled"] = int(bool(patch["disabled"]))
-    # Null is "no change" for these; only display_name can be cleared.
-    for key in ("role", "disabled", "password_hash", "must_change_password"):
-        if patch.get(key) is None:
-            patch.pop(key, None)
 
     try:
         with transaction(connection):
@@ -231,8 +245,14 @@ def _csv_safe(value: object) -> object:
     A username or path is typed by whoever sent the request — including a failed
     sign-in from anyone on the network. A cell starting with = + - @ runs as a
     formula when the CSV is opened in a spreadsheet, so it is prefixed with a
-    quote, the OWASP-recommended neutraliser.
+    quote, the OWASP-recommended neutraliser. Leading whitespace does not hide
+    it: spreadsheets skip spaces before the sign, so the first non-blank
+    character is what counts (a leading tab or CR is neutralised outright).
+    Negative numbers stored as numbers are not strings and stay untouched; a
+    string like "-5" is prefixed too, since it cannot be told from "-1+1".
     """
-    if isinstance(value, str) and value[:1] in ("=", "+", "-", "@", "\t", "\r"):
+    if isinstance(value, str) and (
+        value[:1] in ("\t", "\r") or value.lstrip()[:1] in ("=", "+", "-", "@")
+    ):
         return "'" + value
     return value

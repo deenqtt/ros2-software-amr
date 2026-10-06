@@ -49,6 +49,12 @@ class Settings(BaseSettings):
     # one shift, so nobody is signed out mid-shift and a screen left on
     # overnight is not still signed in at the next one.
     session_idle_minutes: int = Field(default=12 * 60, ge=5)
+    # And ends this long after sign-in however busy it is. The idle limit alone
+    # lets a screen that polls (a wall display, a control-room tab) stay signed
+    # in for ever, and a stolen cookie with it. 14 hours is a 12-hour shift plus
+    # two for handover and overtime: nobody is cut off mid-shift, and nothing
+    # signed in on one day shift is still signed in on the next.
+    session_max_hours: int = Field(default=14, ge=1, le=24 * 7)
     # Send the session cookie over HTTPS only. Leave off while the site is
     # served over plain HTTP (the nginx example is), or the browser drops the
     # cookie and every sign-in appears to fail.

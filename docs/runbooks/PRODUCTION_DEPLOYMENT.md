@@ -106,7 +106,7 @@ docker compose up -d
   to a free range.
 
 - **First super admin** comes from `AMR_BOOTSTRAP_USER` / `AMR_BOOTSTRAP_PASSWORD`
-  in that `.env`, only while the database has no accounts; it must choose its
+  in that `.env` (set a strong one-time password; empty creates no account), only while the database has no accounts; it must choose its
   own password at the first sign-in. Delete both lines afterwards. Never put
   them in the images or in GitHub: the images are public.
 - **Update:** set `AMR_VERSION`, then `docker compose pull && docker compose up -d`.

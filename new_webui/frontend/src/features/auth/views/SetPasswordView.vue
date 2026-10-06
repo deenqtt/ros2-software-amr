@@ -20,7 +20,7 @@ import { authApi, FieldError } from '@/shared/api/auth'
 import { displayName, ROLE_LABEL } from '@/domain/auth'
 import { cn } from '@/shared/lib/utils'
 
-const PASSWORD_MIN = 8
+const PASSWORD_MIN = 10
 
 const auth = useAuthStore()
 const route = useRoute()

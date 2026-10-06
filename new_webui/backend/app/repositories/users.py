@@ -155,11 +155,15 @@ def create_session(
 
 
 def resolve_session(
-    connection: sqlite3.Connection, token_hash: str, idle_minutes: int
+    connection: sqlite3.Connection,
+    token_hash: str,
+    idle_minutes: int,
+    max_hours: int | None = None,
 ) -> sqlite3.Row | None:
     """
-    The signed-in user for a token, or None if it is unknown, idle too long, or
-    the account has been disabled since.
+    The signed-in user for a token, or None if it is unknown, idle too long,
+    older than ``max_hours`` since sign-in however busy, or the account has
+    been disabled since.
 
     Touches the session at most once a minute: often enough for idle expiry to
     be accurate to the minute, rarely enough that a screen polling every second
@@ -173,8 +177,14 @@ def resolve_session(
         WHERE s.token_hash = ?
           AND u.disabled = 0
           AND s.last_seen_at >= datetime('now', ?)
+          AND (? IS NULL OR s.created_at >= datetime('now', ?))
         """,
-        (token_hash, f"-{int(idle_minutes)} minutes"),
+        (
+            token_hash,
+            f"-{int(idle_minutes)} minutes",
+            max_hours,
+            f"-{int(max_hours or 0)} hours",
+        ),
     ).fetchone()
     if row is not None and row["stale"]:
         connection.execute(
@@ -198,8 +208,12 @@ def delete_sessions_for(
     )
 
 
-def prune_sessions(connection: sqlite3.Connection, idle_minutes: int) -> None:
+def prune_sessions(
+    connection: sqlite3.Connection, idle_minutes: int, max_hours: int | None = None
+) -> None:
+    """Delete sessions that can no longer be used: idle too long, or too old."""
     connection.execute(
-        "DELETE FROM sessions WHERE last_seen_at < datetime('now', ?)",
-        (f"-{int(idle_minutes)} minutes",),
+        "DELETE FROM sessions WHERE last_seen_at < datetime('now', ?) "
+        "OR (? IS NOT NULL AND created_at < datetime('now', ?))",
+        (f"-{int(idle_minutes)} minutes", max_hours, f"-{int(max_hours or 0)} hours"),
     )
