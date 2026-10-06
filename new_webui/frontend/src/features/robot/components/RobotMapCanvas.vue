@@ -575,6 +575,24 @@ function finishPointer(event: PointerEvent) {
   paintOverlay()
 }
 
+/**
+ * The browser took the pointer away (a palm, a system gesture, a scroll it
+ * claimed) or capture was lost. That is not a release: no pose or goal is sent.
+ * A cancel that sent the half-drawn pose would command the robot from a touch
+ * the operator never finished.
+ */
+function cancelPointer(event: PointerEvent) {
+  if (event.pointerId !== activePointer) return
+  pickFrom = null
+  dragPose.value = null
+  panning.value = false
+  activePointer = null
+  if (wrapper.value?.hasPointerCapture?.(event.pointerId)) {
+    wrapper.value.releasePointerCapture(event.pointerId)
+  }
+  paintOverlay()
+}
+
 // ── Zoom ─────────────────────────────────────────────────────────────────────
 
 function zoomAt(factor: number, anchorX: number, anchorY: number) {
@@ -715,7 +733,8 @@ defineExpose({ resetView })
     @pointerdown="onPointerDown"
     @pointermove="onPointerMove"
     @pointerup="finishPointer"
-    @pointercancel="finishPointer"
+    @pointercancel="cancelPointer"
+    @lostpointercapture="cancelPointer"
     @wheel="onWheel"
     @contextmenu.prevent
   >

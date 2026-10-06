@@ -597,3 +597,54 @@ def test_replace_reindexes_the_geometry(client):
 
 def test_replace_of_an_unknown_map_is_404(client):
     assert replace(client, "nope", mixed_pgm()).status_code == 404
+
+
+# ---------------------------------------------------------------- upload caps
+
+
+def test_oversize_yaml_is_refused_with_413(client):
+    padding = b"# " + b"x" * (64 * 1024) + b"\n"
+    response = upload(client, yaml_bytes=MAP_YAML + padding)
+    assert response.status_code == 413
+    assert client.get("/api/maps").json() == []
+
+
+def test_yaml_exactly_at_the_cap_is_accepted(client):
+    padding = b"#" + b"x" * (64 * 1024 - len(MAP_YAML) - 2) + b"\n"
+    body = MAP_YAML + padding
+    assert len(body) == 64 * 1024
+    assert upload(client, yaml_bytes=body).status_code == 201
+
+
+def test_oversize_image_is_refused_with_413(client, monkeypatch):
+    # The real cap is 32 MiB; shrinking it keeps the test from moving that much.
+    monkeypatch.setattr("app.api.maps.MAX_IMAGE_BYTES", 1024)
+    response = upload(client, image=pgm(64, 64))
+    assert response.status_code == 413
+    assert client.get("/api/maps").json() == []
+
+
+def test_replace_also_caps_both_files(client, monkeypatch):
+    map_id = upload(client).json()["id"]
+    monkeypatch.setattr("app.api.maps.MAX_IMAGE_BYTES", 1024)
+    files = {
+        "yaml_file": ("map.yaml", MAP_YAML, "application/x-yaml"),
+        "image_file": ("warehouse.pgm", pgm(64, 64), "image/x-portable-graymap"),
+    }
+    assert client.put(f"/api/maps/{map_id}/image", files=files).status_code == 413
+    files["yaml_file"] = ("map.yaml", MAP_YAML + b"#" + b"x" * 70000, "application/x-yaml")
+    files["image_file"] = ("warehouse.pgm", pgm(), "image/x-portable-graymap")
+    assert client.put(f"/api/maps/{map_id}/image", files=files).status_code == 413
+
+
+def test_deeply_nested_yaml_is_422_not_a_crash(client):
+    nested = b"image: x.pgm\ndeep: " + b"[" * 20000 + b"]" * 20000 + b"\n"
+    assert len(nested) < 64 * 1024
+    response = upload(client, yaml_bytes=nested)
+    assert response.status_code == 422
+    assert "nested" in response.json()["detail"] or "YAML" in response.json()["detail"]
+
+
+def test_python_object_tags_are_not_executed(client):
+    evil = b"image: x.pgm\nboom: !!python/object/apply:os.system ['true']\n"
+    assert upload(client, yaml_bytes=evil).status_code == 422

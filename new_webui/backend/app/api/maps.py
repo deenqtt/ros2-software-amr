@@ -28,6 +28,8 @@ from app.api.deps import Connection
 from app.auth import Admin, AdminOrAgent, Principal, Reader
 from app.db import transaction
 from app.maps_files import (
+    MAX_IMAGE_BYTES,
+    MAX_YAML_BYTES,
     YAML_NAME,
     MapFormatError,
     map_directory,
@@ -49,6 +51,34 @@ router = APIRouter(prefix="/api/maps", tags=["maps"], dependencies=[Reader])
 
 def _to_out(row: sqlite3.Row) -> MapOut:
     return MapOut.model_validate(dict(row))
+
+
+_READ_CHUNK = 64 * 1024
+
+
+def _describe_size(limit: int) -> str:
+    return f"{limit // (1024 * 1024)} MiB" if limit >= 1024 * 1024 else f"{limit // 1024} KiB"
+
+
+async def _read_capped(upload: UploadFile, limit: int) -> bytes:
+    """
+    Read an upload, refusing with 413 as soon as it passes `limit`.
+
+    Reads in chunks and counts what actually arrives: Content-Length is the
+    client's claim and a multipart part has none of its own, so neither can be
+    trusted to bound memory.
+    """
+    chunks: list[bytes] = []
+    total = 0
+    while chunk := await upload.read(_READ_CHUNK):
+        total += len(chunk)
+        if total > limit:
+            raise HTTPException(
+                413,
+                f"{upload.filename or 'upload'} exceeds the {_describe_size(limit)} limit",
+            )
+        chunks.append(chunk)
+    return b"".join(chunks)
 
 
 def _maps_root(request: Request) -> Path:
@@ -93,13 +123,16 @@ async def create_map(
     """
     try:
         clean_name = validate_map_name(name)
-        yaml_bytes = await yaml_file.read()
-        image_bytes = await image_file.read()
+        yaml_bytes = await _read_capped(yaml_file, MAX_YAML_BYTES)
+        image_bytes = await _read_capped(image_file, MAX_IMAGE_BYTES)
         suffix = validate_image(image_file.filename or "", image_bytes)
         # PGM only: PNG would need an image library the backend does not carry.
         if suffix == ".pgm":
             validate_pgm_cells(image_bytes)
         document, metadata = parse_map_yaml(yaml_bytes)
+        # Serialised here, where a failure is still a 422, rather than after the
+        # database row exists.
+        stored_yaml = rewrite_image_reference(document, f"map{suffix}")
     except MapFormatError as error:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(error)) from error
 
@@ -148,7 +181,7 @@ async def create_map(
     try:
         directory.mkdir(parents=True, exist_ok=True)
         (directory / image_name).write_bytes(image_bytes)
-        (directory / YAML_NAME).write_bytes(rewrite_image_reference(document, image_name))
+        (directory / YAML_NAME).write_bytes(stored_yaml)
     except OSError as error:
         with transaction(connection):
             repo.delete_map(connection, row["id"])
@@ -267,12 +300,15 @@ async def replace_map_image(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Map not found")
 
     try:
-        yaml_bytes = await yaml_file.read()
-        image_bytes = await image_file.read()
+        yaml_bytes = await _read_capped(yaml_file, MAX_YAML_BYTES)
+        image_bytes = await _read_capped(image_file, MAX_IMAGE_BYTES)
         suffix = validate_image(image_file.filename or "", image_bytes)
         if suffix == ".pgm":
             validate_pgm_cells(image_bytes)
         document, metadata = parse_map_yaml(yaml_bytes)
+        # Serialised here, where a failure is still a 422, rather than after the
+        # database row exists.
+        stored_yaml = rewrite_image_reference(document, f"map{suffix}")
     except MapFormatError as error:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(error)) from error
 
@@ -300,7 +336,7 @@ async def replace_map_image(
     try:
         directory.mkdir(parents=True, exist_ok=True)
         (directory / image_name).write_bytes(image_bytes)
-        (directory / YAML_NAME).write_bytes(rewrite_image_reference(document, image_name))
+        (directory / YAML_NAME).write_bytes(stored_yaml)
         # A format change leaves the old file behind, still referenced by nothing.
         if previous_image != image_name:
             (directory / previous_image).unlink(missing_ok=True)

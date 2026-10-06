@@ -25,7 +25,14 @@ import yaml
 YAML_NAME = "map.yaml"
 
 ALLOWED_IMAGE_SUFFIXES = {".pgm", ".png"}
-MAX_IMAGE_BYTES = 64 * 1024 * 1024
+# Real map yamls are a few hundred bytes. The cap bounds what yaml.safe_load is
+# asked to chew on: a small file can still nest deeply enough to exhaust the
+# parser's stack.
+MAX_YAML_BYTES = 64 * 1024
+# 32 MiB is a 5600 x 5600 cell PGM: a 280 m square at 5 cm, far beyond any
+# warehouse this system maps, yet small enough that a few concurrent uploads
+# cannot exhaust memory.
+MAX_IMAGE_BYTES = 32 * 1024 * 1024
 
 
 class MapFormatError(ValueError):
@@ -165,10 +172,15 @@ def read_pgm_cells(data: bytes) -> bytes | None:
 
 def parse_map_yaml(raw: bytes) -> tuple[dict, MapMetadata]:
     """Parse a map yaml, returning the document and the fields we index."""
+    if len(raw) > MAX_YAML_BYTES:
+        raise MapFormatError(f"map yaml exceeds {MAX_YAML_BYTES // 1024} KiB")
     try:
         document = yaml.safe_load(raw)
     except yaml.YAMLError as error:
         raise MapFormatError(f"map yaml is not valid YAML: {error}") from error
+    except RecursionError as error:
+        # Deeply nested flow collections ("[[[[...") blow the parser's stack.
+        raise MapFormatError("map yaml is nested too deeply") from error
 
     if not isinstance(document, dict):
         raise MapFormatError("map yaml must be a mapping")
@@ -212,7 +224,10 @@ def rewrite_image_reference(document: dict, image_name: str) -> bytes:
     """
     rewritten = dict(document)
     rewritten["image"] = image_name
-    return yaml.safe_dump(rewritten, default_flow_style=False, sort_keys=False).encode()
+    try:
+        return yaml.safe_dump(rewritten, default_flow_style=False, sort_keys=False).encode()
+    except RecursionError as error:
+        raise MapFormatError("map yaml is nested too deeply") from error
 
 
 def validate_pgm_cells(data: bytes) -> None:

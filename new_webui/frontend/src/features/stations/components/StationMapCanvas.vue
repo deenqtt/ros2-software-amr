@@ -413,6 +413,8 @@ function paintMarkers() {
 
 const panning = ref(false)
 const dragging = ref<string | null>(null)
+/** Where the dragged station stood when the drag began, to put it back on cancel. */
+let dragOrigin: { id: string; x: number; y: number; moved: boolean } | null = null
 let activePointer: number | null = null
 let panFrom = { x: 0, y: 0, offsetX: 0, offsetY: 0, scale: 1 }
 
@@ -448,6 +450,7 @@ function onPointerDown(event: PointerEvent) {
   }
   if (hit) {
     dragging.value = hit.id
+    dragOrigin = { id: hit.id, x: hit.x, y: hit.y, moved: false }
     activePointer = event.pointerId
     emit('select', hit.id)
     wrapper.value?.setPointerCapture(event.pointerId)
@@ -491,6 +494,7 @@ function onPointerMove(event: PointerEvent) {
   if (dragging.value && event.pointerId === activePointer && at) {
     const world = toWorld(at.sx, at.sy)
     if (!world) return
+    if (dragOrigin) dragOrigin.moved = true
     emit('move', { id: dragging.value, x: world.x, y: world.y })
     return
   }
@@ -520,9 +524,34 @@ function finishPointer(event: PointerEvent) {
   placeFrom = null
   placePreview.value = null
   dragging.value = null
+  dragOrigin = null
   panning.value = false
   activePointer = null
   wrapper.value?.releasePointerCapture?.(event.pointerId)
+}
+
+/**
+ * The browser took the pointer away mid-gesture. That is not a drop: a station
+ * being dragged goes back where it started and a placement is abandoned, with
+ * nothing saved. The revert is a `move` to the original coordinates, which
+ * supersedes any move the page has queued and also corrects one that already
+ * went out while the pointer paused.
+ */
+function cancelPointer(event: PointerEvent) {
+  if (event.pointerId !== activePointer) return
+  if (dragging.value && dragOrigin?.moved) {
+    emit('move', { id: dragOrigin.id, x: dragOrigin.x, y: dragOrigin.y })
+  }
+  placeFrom = null
+  placePreview.value = null
+  dragging.value = null
+  dragOrigin = null
+  panning.value = false
+  activePointer = null
+  if (wrapper.value?.hasPointerCapture?.(event.pointerId)) {
+    wrapper.value.releasePointerCapture(event.pointerId)
+  }
+  paintMarkers()
 }
 
 function onPointerLeave() {
@@ -641,7 +670,8 @@ defineExpose({ resetView })
     @pointerdown="onPointerDown"
     @pointermove="onPointerMove"
     @pointerup="finishPointer"
-    @pointercancel="finishPointer"
+    @pointercancel="cancelPointer"
+    @lostpointercapture="cancelPointer"
     @pointerleave="onPointerLeave"
     @wheel="onWheel"
     @contextmenu.prevent
