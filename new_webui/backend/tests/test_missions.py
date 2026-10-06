@@ -774,3 +774,109 @@ def test_another_robots_agent_cannot_touch_the_run(client, agent_for, warehouse,
         assert stranger.patch(url, json=body).status_code == 403
 
     assert client.get(url).json()["state"] == "running"
+
+
+# ── Editing or deleting under a live run (F-14) ───────────────────────────────
+
+
+@pytest.mark.parametrize("state", ["running", "stopping"])
+def test_a_mission_with_a_live_run_cannot_be_deleted(client, connection, live_run, state):
+    force_state(connection, live_run["id"], state)
+
+    response = client.delete(f"/api/missions/{live_run['mission_id']}")
+
+    assert response.status_code == 409
+    assert "Stop the run first" in response.json()["detail"]["message"]
+    assert client.get(f"/api/missions/{live_run['mission_id']}").status_code == 200
+    assert client.get(f"/api/runs/{live_run['id']}").json()["mission_id"] == live_run["mission_id"]
+
+
+def test_a_mission_can_be_deleted_once_its_run_has_ended(client, live_run):
+    url = f"/api/runs/{live_run['id']}"
+    assert client.patch(url, json={"state": "canceled"}).status_code == 200
+
+    assert client.delete(f"/api/missions/{live_run['mission_id']}").status_code == 204
+
+
+def test_the_steps_of_a_running_mission_cannot_change(client, stations, live_run):
+    """step_index points into the list; renumbering it would retarget the robot."""
+    url = f"/api/missions/{live_run['mission_id']}"
+    before = client.get(url).json()
+
+    response = client.patch(
+        url,
+        json={"steps": [{"station_id": stations[1]["id"], "task": "drop"}]},
+    )
+
+    assert response.status_code == 409
+    assert "Stop the run first" in response.json()["detail"]["message"]
+    assert client.get(url).json()["steps"] == before["steps"]
+
+
+def test_a_running_mission_can_still_be_renamed(client, stations, live_run):
+    """The editor always sends the whole route; unchanged steps are not a change."""
+    url = f"/api/missions/{live_run['mission_id']}"
+    before = client.get(url).json()
+    unchanged = [
+        {"station_id": step["station_id"], "task": step["task"], "confirm": step["confirm"]}
+        for step in before["steps"]
+    ]
+
+    response = client.patch(url, json={"name": "Shuttle 2", "note": "x", "steps": unchanged})
+
+    assert response.status_code == 200
+    assert response.json()["name"] == "Shuttle 2"
+    # Not replaced at all: the step ids the agent was handed stay valid.
+    assert response.json()["steps"] == before["steps"]
+
+
+def test_steps_can_change_once_the_run_has_ended(client, stations, live_run):
+    client.patch(f"/api/runs/{live_run['id']}", json={"state": "canceled"})
+
+    response = client.patch(
+        f"/api/missions/{live_run['mission_id']}",
+        json={"steps": [{"station_id": stations[1]["id"], "task": "drop"}]},
+    )
+
+    assert response.status_code == 200
+    assert len(response.json()["steps"]) == 1
+
+
+@pytest.mark.parametrize("state", ["running", "stopping"])
+def test_a_robot_with_a_live_run_cannot_be_deleted(client, connection, robot, live_run, state):
+    force_state(connection, live_run["id"], state)
+
+    response = client.delete(f"/api/robots/{robot['id']}")
+
+    assert response.status_code == 409
+    assert "Stop the run first" in response.json()["detail"]["message"]
+    assert client.get(f"/api/runs/{live_run['id']}").json()["robot_id"] == robot["id"]
+
+
+def test_a_robot_with_a_live_run_can_still_be_stopped(client_as, client, robot, live_run):
+    """The refusal to delete must never get in the way of stopping."""
+    operator = client_as("operator")
+    url = f"/api/runs/{live_run['id']}"
+    assert client.delete(f"/api/robots/{robot['id']}").status_code == 409
+
+    assert operator.patch(url, json={"state": "canceled"}).status_code == 200
+    assert client.delete(f"/api/robots/{robot['id']}").status_code == 204
+
+
+@pytest.mark.parametrize("field", ["name", "steps"])
+def test_null_on_a_required_mission_field_is_422(client, warehouse, stations, field):
+    created = client.post("/api/missions", json=route(warehouse, stations)).json()
+
+    response = client.patch(f"/api/missions/{created['id']}", json={field: None})
+
+    assert response.status_code == 422
+    assert f"{field} cannot be null" in response.text
+
+
+def test_a_mission_note_still_clears_with_null(client, warehouse, stations):
+    created = client.post("/api/missions", json=route(warehouse, stations, note="hi")).json()
+
+    response = client.patch(f"/api/missions/{created['id']}", json={"note": None})
+
+    assert response.status_code == 200
+    assert response.json()["note"] is None

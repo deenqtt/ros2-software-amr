@@ -136,6 +136,18 @@ def test_patch_with_explicit_null_clears_the_field(client):
     assert updated["ros_domain_id"] is None
 
 
+@pytest.mark.parametrize("field", ["name", "bridge_url", "namespace", "accent"])
+def test_patch_with_null_on_a_required_field_is_422(client, robot_payload, field):
+    """Null clears only nullable columns; for the rest it is refused, not guessed at."""
+    created = client.post("/api/robots", json=robot_payload).json()
+
+    response = client.patch(f"/api/robots/{created['id']}", json={field: None})
+
+    assert response.status_code == 422
+    assert f"{field} cannot be null" in response.text
+    assert client.get(f"/api/robots/{created['id']}").json()[field] == created[field]
+
+
 def test_patch_touches_updated_at(client, robot_payload):
     created = client.post("/api/robots", json=robot_payload).json()
     updated = client.patch(f"/api/robots/{created['id']}", json={"serial": "SN-1"}).json()

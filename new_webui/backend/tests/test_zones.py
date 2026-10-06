@@ -256,3 +256,41 @@ def test_deleting_a_map_takes_its_zones_with_it(client, warehouse):
 
 def test_deleting_an_unknown_zone_is_404(client):
     assert client.delete("/api/zones/nope").status_code == 404
+
+
+# ── Explicit null on a NOT NULL field (F-09) ──────────────────────────────────
+
+
+def test_enabled_null_is_refused_not_read_as_off(client, warehouse):
+    """`enabled: null` used to be stored as 0 and switch a keep-out zone off."""
+    created = client.post("/api/zones", json=zone(warehouse)).json()
+
+    response = client.patch(f"/api/zones/{created['id']}", json={"enabled": None})
+
+    assert response.status_code == 422
+    assert "enabled cannot be null" in response.text
+    assert client.get(f"/api/zones/{created['id']}").json()["enabled"] is True
+
+
+@pytest.mark.parametrize("field", ["name", "kind", "polygon"])
+def test_null_on_a_required_field_is_422(client, warehouse, field):
+    created = client.post("/api/zones", json=zone(warehouse)).json()
+
+    response = client.patch(f"/api/zones/{created['id']}", json={field: None})
+
+    assert response.status_code == 422
+    assert f"{field} cannot be null" in response.text
+
+
+def test_nullable_zone_fields_still_clear_with_null(client, warehouse):
+    created = client.post(
+        "/api/zones", json=zone(warehouse, kind="speed", speed_limit=0.3, note="slow")
+    ).json()
+
+    response = client.patch(
+        f"/api/zones/{created['id']}",
+        json={"kind": "keepout", "speed_limit": None, "note": None},
+    )
+
+    assert response.status_code == 200
+    assert (response.json()["speed_limit"], response.json()["note"]) == (None, None)

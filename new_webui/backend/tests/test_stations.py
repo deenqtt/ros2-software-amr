@@ -273,3 +273,15 @@ def test_a_map_reports_how_many_stations_go_with_it(client, stored_map):
 
 def test_station_count_of_an_unknown_map_is_404(client):
     assert client.get("/api/maps/nope/stations/count").status_code == 404
+
+
+@pytest.mark.parametrize("field", ["name", "type", "x", "y", "yaw"])
+def test_null_on_a_required_field_is_422(client, stored_map, field):
+    """Only note and taught_by_robot_id can be empty; null elsewhere is refused."""
+    created = client.post("/api/stations", json=station(stored_map)).json()
+
+    response = client.patch(f"/api/stations/{created['id']}", json={field: None})
+
+    assert response.status_code == 422
+    assert f"{field} cannot be null" in response.text
+    assert client.get(f"/api/stations/{created['id']}").json()[field] == created[field]

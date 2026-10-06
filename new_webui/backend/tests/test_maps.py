@@ -9,6 +9,7 @@ pair could come apart.
 from __future__ import annotations
 
 import hashlib
+import os
 
 import pytest
 import yaml as pyyaml
@@ -648,3 +649,56 @@ def test_deeply_nested_yaml_is_422_not_a_crash(client):
 def test_python_object_tags_are_not_executed(client):
     evil = b"image: x.pgm\nboom: !!python/object/apply:os.system ['true']\n"
     assert upload(client, yaml_bytes=evil).status_code == 422
+
+
+# ---------------------------------------------------------------- atomic replace (F-13)
+
+
+def _leftovers(directory) -> list[str]:
+    return sorted(path.name for path in directory.iterdir() if path.name.startswith("."))
+
+
+def test_a_failed_database_update_leaves_the_old_map(client, settings, monkeypatch):
+    stored = upload(client).json()
+    directory = settings.maps_dir / stored["id"]
+
+    def broken(*_args, **_kwargs):
+        raise RuntimeError("database went away")
+
+    monkeypatch.setattr("app.api.maps.repo.replace_image", broken)
+    with pytest.raises(RuntimeError):
+        replace(client, stored["id"], mixed_pgm())
+
+    assert (directory / "map.pgm").read_bytes() == pgm()
+    assert client.get(f"/api/maps/{stored['id']}").json()["content_hash"] == stored["content_hash"]
+    assert _leftovers(directory) == []
+
+
+def test_a_failed_file_install_restores_the_old_pair_and_row(client, settings, monkeypatch):
+    """The image moves into place first; failing on the yaml must undo it."""
+    stored = upload(client).json()
+    directory = settings.maps_dir / stored["id"]
+    old_yaml = (directory / "map.yaml").read_bytes()
+    real_replace = os.replace
+
+    def flaky(source, target, *args, **kwargs):
+        if str(source).endswith(".tmp") and str(target).endswith("map.yaml"):
+            raise OSError("disk full")
+        return real_replace(source, target, *args, **kwargs)
+
+    monkeypatch.setattr("app.maps_files.os.replace", flaky)
+    response = replace(client, stored["id"], mixed_pgm())
+
+    assert response.status_code == 507
+    assert (directory / "map.pgm").read_bytes() == pgm()
+    assert (directory / "map.yaml").read_bytes() == old_yaml
+    assert client.get(f"/api/maps/{stored['id']}").json()["content_hash"] == stored["content_hash"]
+    assert _leftovers(directory) == []
+
+
+def test_a_successful_replace_leaves_no_temp_or_backup_files(client, settings):
+    stored = upload(client).json()
+
+    replace(client, stored["id"], mixed_pgm())
+
+    assert _leftovers(settings.maps_dir / stored["id"]) == []

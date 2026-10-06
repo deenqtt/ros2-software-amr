@@ -83,7 +83,7 @@ app/
 | POST | `/api/robots` | 201 on success, **409** on a duplicate name or bridge. |
 | GET | `/api/robots/{id}` | |
 | PATCH | `/api/robots/{id}` | Partial. Omitted ≠ null — see below. |
-| DELETE | `/api/robots/{id}` | 204. |
+| DELETE | `/api/robots/{id}` | 204. 409 while it has a running or stopping run. |
 
 ## Sign-in, roles and audit
 
@@ -146,7 +146,10 @@ a bad day.
 **PATCH, not PUT — omitted is not null.** Omitting a field leaves it alone; sending
 an explicit `null` clears it. The old API used PUT with a full model, so any field a
 client forgot to resend was reset to its default. That is how changing a destination's
-type silently wiped its orientation.
+type silently wiped its orientation. Only a column that can be empty may be cleared
+that way: `null` for a NOT NULL field (a zone's `enabled`, any `name`, a station's
+coordinates, a mission's `steps`) is a 422 naming the field, never a guess at what
+it should mean.
 
 **Unknown fields are rejected, not dropped.** Pydantic ignores unknown keys by
 default, which is why missions lost `station_id` and `dest_point` and docks lost their

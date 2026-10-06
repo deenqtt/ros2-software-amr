@@ -15,6 +15,7 @@ to that map. An engineer renaming a `.yaml` lost an operator's work.
 from __future__ import annotations
 
 import io
+import logging
 import shutil
 import sqlite3
 import zipfile
@@ -32,6 +33,7 @@ from app.maps_files import (
     MAX_YAML_BYTES,
     YAML_NAME,
     MapFormatError,
+    StagedFiles,
     map_directory,
     parse_map_yaml,
     read_pgm_size,
@@ -46,6 +48,7 @@ from app.repositories import robots as robots_repo
 from app.repositories import stations as stations_repo
 from app.schemas.map import MapOut, MapRenameIn
 
+log = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/maps", tags=["maps"], dependencies=[Reader])
 
 
@@ -186,8 +189,9 @@ async def create_map(
         with transaction(connection):
             repo.delete_map(connection, row["id"])
         shutil.rmtree(directory, ignore_errors=True)
+        log.error("Could not store map files: %s", error)
         raise HTTPException(
-            status.HTTP_507_INSUFFICIENT_STORAGE, f"Could not store map files: {error}"
+            status.HTTP_507_INSUFFICIENT_STORAGE, "Could not store map files on the server"
         ) from error
 
     return _to_out(row)
@@ -331,22 +335,40 @@ async def replace_map_image(
         "note": note,
     }
 
+    # Order matters, so a failure at any step leaves the old map intact and the
+    # row describing it: stage the new files under temp names, update the row,
+    # move the files into place, then commit. Anything raised before the commit
+    # rolls the row back and restores the previous files.
     directory = map_directory(_maps_root(request), map_id)
     previous_image = str(row["image_file"])
     try:
-        directory.mkdir(parents=True, exist_ok=True)
-        (directory / image_name).write_bytes(image_bytes)
-        (directory / YAML_NAME).write_bytes(stored_yaml)
-        # A format change leaves the old file behind, still referenced by nothing.
-        if previous_image != image_name:
-            (directory / previous_image).unlink(missing_ok=True)
+        staged = StagedFiles(directory, {image_name: image_bytes, YAML_NAME: stored_yaml})
     except OSError as error:
+        log.error("Could not store map files: %s", error)
         raise HTTPException(
-            status.HTTP_507_INSUFFICIENT_STORAGE, f"Could not store map files: {error}"
+            status.HTTP_507_INSUFFICIENT_STORAGE, "Could not store map files on the server"
         ) from error
 
-    with transaction(connection):
-        updated = repo.replace_image(connection, map_id, payload)
+    try:
+        with transaction(connection):
+            updated = repo.replace_image(connection, map_id, payload)
+            staged.install()
+    except OSError as error:
+        staged.rollback()
+        log.error("Could not store map files: %s", error)
+        raise HTTPException(
+            status.HTTP_507_INSUFFICIENT_STORAGE, "Could not store map files on the server"
+        ) from error
+    except BaseException:
+        staged.rollback()
+        raise
+    staged.commit()
+
+    # A format change leaves the old file behind, referenced by nothing now that
+    # the row and the yaml both name the new one. Removed only after the commit,
+    # so a failed replace still has it.
+    if previous_image != image_name:
+        (directory / previous_image).unlink(missing_ok=True)
 
     return _to_out(updated)
 

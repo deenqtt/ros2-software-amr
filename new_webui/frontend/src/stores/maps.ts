@@ -18,7 +18,7 @@ function describe(error: unknown): string {
   if (error instanceof ApiError) {
     if (error.isOffline) return `Backend unreachable at ${config.apiBaseUrl}`
     if (error.isNotFound) return 'That map no longer exists.'
-    return error.message || `Request failed (${error.status})`
+    return error.readable || `Request failed (${error.status})`
   }
   return error instanceof Error ? error.message : 'Something went wrong.'
 }

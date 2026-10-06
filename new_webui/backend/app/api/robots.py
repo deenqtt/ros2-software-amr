@@ -15,6 +15,7 @@ from typing import Annotated
 from fastapi import APIRouter, HTTPException, Response, status
 
 from app.api.deps import Connection
+from app.api.missions import run_in_progress
 from app.auth import (
     Admin,
     AdminOrAgent,
@@ -82,7 +83,8 @@ def update_robot(
     PATCH, not PUT.
 
     ``exclude_unset`` is what makes "omitted" mean "leave alone" while an
-    explicit ``null`` still clears the field. The old API used PUT with a full
+    explicit ``null`` still clears a nullable field (a null for a NOT NULL
+    one is a 422, see RobotUpdate). The old API used PUT with a full
     model, so any field the client forgot to resend was reset to its default —
     which is how changing a destination's type wiped its yaw.
     """
@@ -106,7 +108,17 @@ def delete_robot(
     robot_id: str,
     connection: Connection,
 ) -> Response:
+    """
+    Remove a robot from the registry.
+
+    Refused with 409 while it has a live run (running or stopping): the run's
+    robot would be cleared, leaving a run nobody can report on or stop from
+    here while the robot itself may still be driving it. Stop the run first.
+    """
     with transaction(connection):
+        live = missions_repo.active_run_for_robot(connection, robot_id)
+        if live is not None:
+            raise run_in_progress(live, "delete the robot")
         deleted = repo.delete_robot(connection, robot_id)
     if not deleted:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Robot not found")

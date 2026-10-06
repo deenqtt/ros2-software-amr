@@ -13,7 +13,9 @@ from __future__ import annotations
 from typing import Annotated, Literal
 from urllib.parse import urlparse
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from app.schemas.patch import reject_nulls
 
 NAME_MAX = 64
 ROS_DOMAIN_ID_MAX = 232
@@ -77,6 +79,10 @@ class RobotCreate(RobotBase):
     """Accent is assigned by the server, so the client does not send one."""
 
 
+#: The only robot columns a PATCH may clear with an explicit null.
+PATCH_NULLABLE = frozenset({"ros_domain_id", "camera_url", "serial"})
+
+
 class RobotUpdate(BaseModel):
     """
     Partial update. Every field is optional, and *omitted is not the same as
@@ -84,6 +90,10 @@ class RobotUpdate(BaseModel):
     it. The old API had no way to express that difference, so a PUT that did
     not mention a field silently reset it — which is how changing a
     destination's type wiped its orientation.
+
+    Only the nullable columns (ros_domain_id, camera_url, serial) can be cleared
+    that way. name, bridge_url, namespace and accent cannot be empty, so a null
+    for them is a 422 — send "" to clear the namespace.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -110,6 +120,11 @@ class RobotUpdate(BaseModel):
     @classmethod
     def _check_bridge(cls, value: str | None) -> str | None:
         return None if value is None else _validate_bridge_url(value)
+
+    @model_validator(mode="after")
+    def _no_null_on_required(self) -> RobotUpdate:
+        reject_nulls(self, PATCH_NULLABLE)
+        return self
 
 
 class RobotOut(BaseModel):

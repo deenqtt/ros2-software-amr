@@ -12,9 +12,14 @@ Everything that knows about that coupling lives here.
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import math
+import os
 import re
+import secrets
+import shutil
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -316,3 +321,95 @@ def map_directory(maps_root: Path, map_id: str) -> Path:
     impossible without having to invent unique filenames.
     """
     return maps_root / map_id
+
+
+class StagedFiles:
+    """
+    New contents for files in one directory, installed only on request.
+
+    Replacing a map in place used to write straight over the live files and
+    update the database row afterwards, so a failure in between left new bytes
+    under an old content hash — or half a new pair next to an old yaml. This
+    splits the replace into three steps a caller can order around its
+    transaction:
+
+    1. construction writes every file to a temp name in the *same* directory,
+       so the later rename never crosses a filesystem;
+    2. `install()` keeps a backup of each existing file (a hard link, so a
+       concurrent download never sees the name missing) and renames the temp
+       file into place with `os.replace`, which is atomic per file;
+    3. `commit()` drops the backups, or `rollback()` puts them back and removes
+       anything left over.
+
+    Construction cleans up after itself if any write fails.
+    """
+
+    def __init__(self, directory: Path, files: dict[str, bytes]) -> None:
+        self.directory = directory
+        self._temps: dict[str, Path] = {}
+        #: (final path, backup path or None when there was no previous file)
+        self._installed: list[tuple[Path, Path | None]] = []
+        try:
+            directory.mkdir(parents=True, exist_ok=True)
+            for name, data in files.items():
+                handle, raw = tempfile.mkstemp(prefix=f".{name}.", suffix=".tmp", dir=directory)
+                self._temps[name] = Path(raw)
+                with os.fdopen(handle, "wb") as stream:
+                    stream.write(data)
+                    stream.flush()
+                    os.fsync(stream.fileno())
+        except BaseException:
+            self._discard_temps()
+            raise
+
+    def _backup(self, final: Path) -> Path | None:
+        if not final.exists():
+            return None
+        backup = final.with_name(f".{final.name}.{secrets.token_hex(6)}.bak")
+        try:
+            os.link(final, backup)
+        except OSError:
+            # A filesystem without hard links: a copy still restores correctly,
+            # it just costs the bytes once more.
+            shutil.copy2(final, backup)
+        return backup
+
+    def install(self) -> None:
+        """Move every staged file into place. On failure, call `rollback()`."""
+        for name, temp in list(self._temps.items()):
+            final = self.directory / name
+            backup = self._backup(final)
+            try:
+                os.replace(temp, final)
+            except BaseException:
+                if backup is not None:
+                    backup.unlink(missing_ok=True)
+                raise
+            del self._temps[name]
+            self._installed.append((final, backup))
+
+    def rollback(self) -> None:
+        """Restore what was there before `install()`, and remove the temps."""
+        for final, backup in reversed(self._installed):
+            with contextlib.suppress(OSError):
+                if backup is None:
+                    final.unlink(missing_ok=True)
+                else:
+                    os.replace(backup, final)
+        self._installed.clear()
+        self._discard_temps()
+
+    def commit(self) -> None:
+        """Keep the installed files and drop the backups."""
+        for _final, backup in self._installed:
+            if backup is not None:
+                with contextlib.suppress(OSError):
+                    backup.unlink(missing_ok=True)
+        self._installed.clear()
+        self._discard_temps()
+
+    def _discard_temps(self) -> None:
+        for temp in self._temps.values():
+            with contextlib.suppress(OSError):
+                temp.unlink(missing_ok=True)
+        self._temps.clear()

@@ -12,7 +12,9 @@ from __future__ import annotations
 import math
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from app.schemas.patch import reject_nulls
 
 NAME_MAX = 64
 
@@ -71,6 +73,10 @@ class StationCreate(StationBase):
     taught_by_robot_id: str | None = None
 
 
+#: The only station columns a PATCH may clear with an explicit null.
+PATCH_NULLABLE = frozenset({"note", "taught_by_robot_id"})
+
+
 class StationPatch(BaseModel):
     """
     Partial update.
@@ -78,6 +84,9 @@ class StationPatch(BaseModel):
     Every key is optional and *omitted is not null*: leaving a key out keeps the
     stored value. That is what lets dragging a marker send x and y alone rather
     than a whole record that might carry a stale name.
+
+    Only `note` and `taught_by_robot_id` may be cleared with null; the rest are
+    NOT NULL columns, so a null there is refused rather than guessed at.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -104,6 +113,11 @@ class StationPatch(BaseModel):
     @classmethod
     def _check_finite(cls, value: float | None, info) -> float | None:
         return None if value is None else _finite(value, info.field_name)
+
+    @model_validator(mode="after")
+    def _no_null_on_required(self) -> StationPatch:
+        reject_nulls(self, PATCH_NULLABLE)
+        return self
 
 
 class StationOut(BaseModel):

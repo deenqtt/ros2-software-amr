@@ -63,6 +63,34 @@ def _check_steps(connection: sqlite3.Connection, map_id: str, steps: list[StepIn
             )
 
 
+def run_in_progress(run: sqlite3.Row, action: str) -> HTTPException:
+    """
+    The 409 for a change that would pull a route out from under a live run.
+
+    Shared with the robot endpoints. Only ever raised for edits and deletes —
+    stopping or canceling a run is never refused on this account.
+    """
+    return HTTPException(
+        status.HTTP_409_CONFLICT,
+        {
+            "message": (
+                f"'{run['mission_name']}' is running ({run['state']}). "
+                f"Stop the run first, then {action}."
+            ),
+            "run_id": run["id"],
+            "state": run["state"],
+        },
+    )
+
+
+def _same_steps(sent: list[dict], stored: list[sqlite3.Row]) -> bool:
+    """Whether a steps list says what is already stored, ignoring step ids."""
+    fields = ("station_id", "task", "confirm", "note")
+    return [tuple(step.get(key) for key in fields) for step in sent] == [
+        tuple(row[key] for key in fields) for row in stored
+    ]
+
+
 # ── Missions ──────────────────────────────────────────────────────────────────
 
 
@@ -119,6 +147,17 @@ def create_mission(body: MissionCreate, connection: Connection) -> MissionOut:
 
 @router.patch("/{mission_id}", response_model=MissionOut, dependencies=[Admin])
 def update_mission(mission_id: str, body: MissionPatch, connection: Connection) -> MissionOut:
+    """
+    Change a route's name, note or steps.
+
+    A changed `steps` list is refused with 409 while a run of this mission is
+    live (running or stopping): the agent follows the run by `step_index`, and
+    renumbering the steps under it would send the robot to a different station
+    than the one the run says it is heading for. The name and note may still be
+    edited — the run keeps its own copy of the name, and the robot never reads
+    the note. A `steps` list identical to the stored one is not a change, so the
+    editor, which always sends the whole route, can still rename mid-run.
+    """
     row = repo.get_mission(connection, mission_id)
     if row is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Mission not found")
@@ -127,9 +166,18 @@ def update_mission(mission_id: str, body: MissionPatch, connection: Connection) 
     steps = patch.pop("steps", None)
     if steps is not None:
         _check_steps(connection, str(row["map_id"]), [StepIn(**step) for step in steps])
+        if _same_steps(steps, repo.list_steps(connection, mission_id)):
+            # Nothing to replace; leaving the rows alone also keeps their ids.
+            steps = None
 
     try:
         with transaction(connection):
+            if steps is not None:
+                # Checked inside the transaction, so a run started a moment ago
+                # cannot slip between the check and the replace.
+                live = repo.active_run_for_mission(connection, mission_id)
+                if live is not None:
+                    raise run_in_progress(live, "change its steps")
             repo.update_mission(connection, mission_id, patch)
             if steps is not None:
                 repo.replace_steps(connection, mission_id, steps)
@@ -149,8 +197,14 @@ def delete_mission(mission_id: str, connection: Connection) -> Response:
     Runs of it survive with their mission_id cleared: what a robot did is a
     record of the floor, not of the route, and it must not disappear because
     somebody tidied up the route afterwards.
+
+    Refused with 409 while a run of it is live: the run would lose its mission
+    and the robot executing it would be left with no steps to follow.
     """
     with transaction(connection):
+        live = repo.active_run_for_mission(connection, mission_id)
+        if live is not None:
+            raise run_in_progress(live, "delete the mission")
         deleted = repo.delete_mission(connection, mission_id)
     if not deleted:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Mission not found")

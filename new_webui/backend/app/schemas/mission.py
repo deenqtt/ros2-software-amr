@@ -13,6 +13,8 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from app.schemas.patch import reject_nulls
+
 NAME_MAX = 64
 # A rail, not a rule. The previous UI capped routes at five steps with no reason
 # recorded; this is high enough never to be met by a real route and low enough
@@ -84,6 +86,9 @@ class MissionPatch(BaseModel):
     `steps` is all-or-nothing by design — the thing being edited is an order, and
     patching rows individually means shuffling ordinals past a unique index with
     every intermediate state having to be legal.
+
+    Only `note` may be cleared with null. A changed `steps` list is refused while
+    a run of the mission is live — see the endpoint.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -101,6 +106,11 @@ class MissionPatch(BaseModel):
         if not stripped:
             raise ValueError("name cannot be blank")
         return stripped
+
+    @model_validator(mode="after")
+    def _no_null_on_required(self) -> MissionPatch:
+        reject_nulls(self, {"note"})
+        return self
 
 
 class MissionOut(BaseModel):

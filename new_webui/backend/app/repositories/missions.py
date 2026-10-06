@@ -185,6 +185,17 @@ def active_run_for_robot(connection: sqlite3.Connection, robot_id: str) -> sqlit
     ).fetchone()
 
 
+def active_run_for_mission(connection: sqlite3.Connection, mission_id: str) -> sqlite3.Row | None:
+    """A live run of this mission on any robot, or None."""
+    placeholders = ", ".join("?" for _ in LIVE_STATES)
+    return connection.execute(
+        f"SELECT {_RUN_COLUMNS} FROM mission_runs "  # noqa: S608 — fixed literals
+        f"WHERE mission_id = ? AND state IN ({placeholders}) "
+        "ORDER BY started_at, rowid LIMIT 1",
+        (mission_id, *LIVE_STATES),
+    ).fetchone()
+
+
 def get_run(connection: sqlite3.Connection, run_id: str) -> sqlite3.Row | None:
     return connection.execute(
         f"SELECT {_RUN_COLUMNS} FROM mission_runs WHERE id = ?",  # noqa: S608 — fixed literal

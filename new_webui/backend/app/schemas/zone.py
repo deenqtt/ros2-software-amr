@@ -19,6 +19,8 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from app.schemas.patch import reject_nulls
+
 NAME_MAX = 64
 
 #: keepout and avoid are the same Nav2 filter; only the mask value differs.
@@ -95,6 +97,10 @@ class ZoneCreate(ZoneBase):
     map_id: str
 
 
+#: The only zone columns a PATCH may clear with an explicit null.
+PATCH_NULLABLE = frozenset({"speed_limit", "avoid_cost", "note"})
+
+
 class ZonePatch(BaseModel):
     """
     Partial update. Omitted is not null: a key left out keeps the stored value.
@@ -102,6 +108,10 @@ class ZonePatch(BaseModel):
     Changing `kind` means the settings that go with it change too, so a patch
     that touches any of kind, speed_limit or avoid_cost is validated as a whole
     against the stored row — see the endpoint.
+
+    Only the nullable columns (speed_limit, avoid_cost, note) may be sent as
+    null. `enabled: null` used to be stored as 0 and switch a keep-out zone off
+    without anybody asking for that.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -128,6 +138,11 @@ class ZonePatch(BaseModel):
     @classmethod
     def _validate_polygon(cls, value: list[Point] | None) -> list[Point] | None:
         return None if value is None else _check_polygon(value)
+
+    @model_validator(mode="after")
+    def _no_null_on_required(self) -> ZonePatch:
+        reject_nulls(self, PATCH_NULLABLE)
+        return self
 
 
 class ZoneOut(BaseModel):

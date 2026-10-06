@@ -36,6 +36,29 @@ export class ApiError extends Error {
     return this.status === 401
   }
 
+  /**
+   * The message to show a person. For most statuses `message` is the raw body
+   * (callers parse structured conflicts from it); this pulls out the sentence:
+   * {"detail": "..."}, {"detail": {"message": ...}}, or the first validation
+   * error of a 422. Anything else is returned as it came.
+   */
+  get readable(): string {
+    try {
+      const detail = (JSON.parse(this.message) as { detail?: unknown }).detail
+      if (typeof detail === 'string') return detail
+      if (Array.isArray(detail) && detail.length) {
+        const first = detail[0] as { msg?: unknown }
+        if (typeof first?.msg === 'string') return first.msg
+      }
+      if (detail && typeof detail === 'object' && 'message' in detail) {
+        return String((detail as { message: unknown }).message)
+      }
+    } catch {
+      // Not JSON: the message is already words.
+    }
+    return this.message
+  }
+
   /** Signed in, but the role does not allow it. */
   get isForbidden(): boolean {
     return this.status === 403
