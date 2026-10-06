@@ -39,6 +39,15 @@ map $scheme $amr_hsts {
     default "";
 }
 
+# Used by amr-security-headers.conf: ws:/wss: for this site's own host in
+# connect-src. Only a plain host[:port] is copied into the header; anything
+# else (a crafted Host) leaves just 'self'.
+map $http_host $amr_ws_self {
+    "~^[A-Za-z0-9.-]+(:[0-9]+)?$"  "ws://$http_host wss://$http_host";
+    "~^\[[0-9A-Fa-f:.]+\](:[0-9]+)?$" "ws://$http_host wss://$http_host";
+    default "";
+}
+
 server {
     listen 80;
     server_name amr.example.local;
