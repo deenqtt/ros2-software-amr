@@ -104,6 +104,11 @@ def close_code(action: Callable[[], object]) -> int:
     return caught.value.code
 
 
+def expect_ready(ws) -> None:
+    """The relay's first frame once the robot's rosbridge has answered."""
+    assert ws.receive_json() == json.loads(ros_proxy.READY_FRAME)
+
+
 # ── handshake ────────────────────────────────────────────────────────────────
 
 
@@ -131,6 +136,7 @@ def test_same_host_origin_is_accepted(client_as, robot: FakeRobot, robot_id: str
     viewer = client_as("viewer")
     headers = {"origin": "http://testserver"}
     with viewer.websocket_connect(f"/api/robots/{robot_id}/ros", headers=headers) as ws:
+        expect_ready(ws)
         ws.send_text(json.dumps({"op": "subscribe", "topic": "/map"}))
         assert ws.receive_json()["op"] == "echo"
 
@@ -169,9 +175,24 @@ def test_unreachable_robot_is_closed_1011(
         assert close_code(ws.receive_text) == 1011
 
 
+def test_ready_is_sent_only_once_the_robot_answers(
+    client_as, robot: FakeRobot, robot_id: str
+) -> None:
+    """The browser's socket opens before the robot is reached; "ready" is the
+    only sign the robot answered, and nothing from the robot precedes it."""
+    robot.greeting.append(json.dumps({"op": "publish", "topic": "/robot_status", "msg": {}}))
+    viewer = client_as("viewer")
+    with viewer.websocket_connect(f"/api/robots/{robot_id}/ros", headers=ORIGIN) as ws:
+        first = ws.receive_json()
+        assert first == {"op": "status", "level": "info", "msg": ros_proxy.READY_MESSAGE}
+        assert "id" not in first  # roslib passes id-less status frames on as `status`
+        assert ws.receive_json()["topic"] == "/robot_status"
+
+
 def test_connects_to_the_registered_bridge(client_as, robot: FakeRobot, robot_id: str) -> None:
     viewer = client_as("viewer")
     with viewer.websocket_connect(f"/api/robots/{robot_id}/ros", headers=ORIGIN) as ws:
+        expect_ready(ws)
         ws.send_text(json.dumps({"op": "subscribe", "topic": "/robot_status"}))
         ws.receive_json()
     assert robot.urls == ["ws://192.168.1.50:8765"]
@@ -185,6 +206,7 @@ def test_operator_goal_is_forwarded_and_audited(
 ) -> None:
     operator = client_as("operator", "olivia")
     with operator.websocket_connect(f"/api/robots/{robot_id}/ros", headers=ORIGIN) as ws:
+        expect_ready(ws)
         ws.send_text(json.dumps(GOAL))
         echoed = ws.receive_json()
     assert echoed == {"op": "echo", "frame": GOAL}
@@ -201,6 +223,7 @@ def test_viewer_goal_is_refused_not_forwarded_and_audited(
 ) -> None:
     viewer = client_as("viewer", "victor")
     with viewer.websocket_connect(f"/api/robots/{robot_id}/ros", headers=ORIGIN) as ws:
+        expect_ready(ws)
         ws.send_text(json.dumps(GOAL))
         refusal = ws.receive_json()
         # A frame sent afterwards still flows: the connection survives a refusal.
@@ -228,6 +251,7 @@ def test_refused_service_call_gets_a_failed_service_response(
         "args": {"robot_mode": "map"},
     }
     with viewer.websocket_connect(f"/api/robots/{robot_id}/ros", headers=ORIGIN) as ws:
+        expect_ready(ws)
         ws.send_text(json.dumps(frame))
         response = ws.receive_json()
     assert response == {
@@ -250,6 +274,7 @@ def test_viewer_may_stop(client_as, robot: FakeRobot, robot_id: str) -> None:
         "args": {"robot_mode": "stop"},
     }
     with viewer.websocket_connect(f"/api/robots/{robot_id}/ros", headers=ORIGIN) as ws:
+        expect_ready(ws)
         ws.send_text(json.dumps(frame))
         assert ws.receive_json()["op"] == "echo"
     assert robot.received == [frame]
@@ -270,6 +295,7 @@ def test_viewer_drive_is_refused_but_zero_twist_passes(
         )
 
     with viewer.websocket_connect(f"/api/robots/{robot_id}/ros", headers=ORIGIN) as ws:
+        expect_ready(ws)
         ws.send_text(teleop(0.5))
         assert ws.receive_json()["op"] == "status"
         ws.send_text(teleop(0))
@@ -282,6 +308,7 @@ def test_viewer_drive_is_refused_but_zero_twist_passes(
 def test_garbage_is_refused(client_as, robot: FakeRobot, robot_id: str) -> None:
     operator = client_as("operator")
     with operator.websocket_connect(f"/api/robots/{robot_id}/ros", headers=ORIGIN) as ws:
+        expect_ready(ws)
         ws.send_text("{not json")
         assert ws.receive_json()["msg"].startswith("forbidden:")
         ws.send_bytes(b"\x81\x00")
@@ -301,6 +328,7 @@ def test_large_frames_from_the_robot_are_relayed(
     robot.greeting = [big]
     viewer = client_as("viewer")
     with viewer.websocket_connect(f"/api/robots/{robot_id}/ros", headers=ORIGIN) as ws:
+        expect_ready(ws)
         assert ws.receive_text() == big
 
 
@@ -312,6 +340,7 @@ def test_signed_out_mid_stream_is_closed_on_next_command(
 ) -> None:
     operator = client_as("operator")
     with operator.websocket_connect(f"/api/robots/{robot_id}/ros", headers=ORIGIN) as ws:
+        expect_ready(ws)
         ws.send_text(json.dumps(GOAL))
         assert ws.receive_json()["op"] == "echo"
 
@@ -332,6 +361,7 @@ def test_demoted_mid_stream_is_refused_on_next_command(
 ) -> None:
     operator = client_as("operator")
     with operator.websocket_connect(f"/api/robots/{robot_id}/ros", headers=ORIGIN) as ws:
+        expect_ready(ws)
         conn = connect(settings.db_path)
         try:
             conn.execute("UPDATE users SET role = 'viewer' WHERE id = ?", (operator.user["id"],))
@@ -359,6 +389,7 @@ def test_silent_socket_is_closed_when_signed_out(
     monkeypatch.setattr(ros_proxy, "RESOLVE_EVERY_S", 0.0)
     viewer = client_as("viewer")
     with viewer.websocket_connect(f"/api/robots/{robot_id}/ros", headers=ORIGIN) as ws:
+        expect_ready(ws)
         _sign_out(settings, viewer)
         assert close_code(ws.receive_text) == 4401
     assert robot.received == []
@@ -371,6 +402,7 @@ def test_silent_socket_is_closed_when_password_must_change(
     monkeypatch.setattr(ros_proxy, "RESOLVE_EVERY_S", 0.0)
     viewer = client_as("viewer")
     with viewer.websocket_connect(f"/api/robots/{robot_id}/ros", headers=ORIGIN) as ws:
+        expect_ready(ws)
         conn = connect(settings.db_path)
         try:
             conn.execute(
@@ -396,6 +428,7 @@ def test_teleop_after_sign_out_is_cut_once_the_session_is_stale(
         }
     )
     with operator.websocket_connect(f"/api/robots/{robot_id}/ros", headers=ORIGIN) as ws:
+        expect_ready(ws)
         ws.send_text(drive)
         assert ws.receive_json()["op"] == "echo"
         _sign_out(settings, operator)
@@ -421,6 +454,7 @@ def test_teleop_between_checks_does_not_touch_the_session(
     operator = client_as("operator")
     zero = {"linear": {"x": 0, "y": 0, "z": 0}, "angular": {"x": 0, "y": 0, "z": 0}}
     with operator.websocket_connect(f"/api/robots/{robot_id}/ros", headers=ORIGIN) as ws:
+        expect_ready(ws)
         for _ in range(20):
             ws.send_text(json.dumps({"op": "publish", "topic": "/teleop/cmd_vel", "msg": zero}))
             ws.receive_json()
@@ -438,6 +472,7 @@ def test_forwards_the_checked_frame_not_the_original_text(
         ' "msg": {"linear": {"x": 9}}, "msg": {"linear": {"x": 0}} }'
     )
     with viewer.websocket_connect(f"/api/robots/{robot_id}/ros", headers=ORIGIN) as ws:
+        expect_ready(ws)
         ws.send_text(text)
         assert ws.receive_json()["op"] == "echo"
     assert robot.raw == ['{"op":"publish","topic":"/teleop/cmd_vel","msg":{"linear":{"x":0}}}']
@@ -449,6 +484,7 @@ def test_huge_numbers_are_refused_and_the_relay_survives(
     operator = client_as("operator")
     huge = "1" + "0" * 400
     with operator.websocket_connect(f"/api/robots/{robot_id}/ros", headers=ORIGIN) as ws:
+        expect_ready(ws)
         ws.send_text(
             '{"op":"publish","topic":"/teleop/cmd_vel","msg":{"linear":{"x":' + huge + "}}}"
         )
@@ -478,6 +514,7 @@ def test_refusals_with_different_reasons_are_each_audited_once(
         )
 
     with viewer.websocket_connect(f"/api/robots/{robot_id}/ros", headers=ORIGIN) as ws:
+        expect_ready(ws)
         for value in ("nav", "map", "nav", "map", "nav"):
             ws.send_text(mode(value))
             assert ws.receive_json()["result"] is False
@@ -506,6 +543,7 @@ def test_same_host_origin_scheme(
     url = f"{base}/api/robots/{robot_id}/ros"
     if accepted:
         with viewer.websocket_connect(url, headers={"origin": origin}) as ws:
+            expect_ready(ws)
             ws.send_text(json.dumps({"op": "subscribe", "topic": "/map"}))
             assert ws.receive_json()["op"] == "echo"
     else:

@@ -11,8 +11,10 @@ const live = vi.hoisted(() => new Set<string>())
 
 vi.mock('roslib', () => {
   class Ros {
-    on(event: string, cb: () => void) {
+    on(event: string, cb: (message?: unknown) => void) {
       if (event === 'connection') queueMicrotask(cb)
+      // The backend relay's "robot answered" frame (see RELAY_READY).
+      if (event === 'status') queueMicrotask(() => cb({ op: 'status', msg: 'amr-relay: ready' }))
     }
     close() {}
     callOnConnection() {}

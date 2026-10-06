@@ -60,6 +60,14 @@ SESSION_CHECK_S = 10.0
 #: so a script hammering a forbidden service cannot fill the audit table.
 DENIED_AUDIT_EVERY_S = 10.0
 
+#: Sent to the browser once the robot's rosbridge has actually answered. The
+#: browser's socket opens as soon as this relay accepts it, which says nothing
+#: about the robot; the page counts the robot as online only after this frame.
+#: A rosbridge status message without an id, so roslib passes it on as a
+#: plain `status` event.
+READY_MESSAGE = "amr-relay: ready"
+READY_FRAME = json.dumps({"op": "status", "level": "info", "msg": READY_MESSAGE})
+
 CLOSE_UNAUTHENTICATED = 4401
 CLOSE_FORBIDDEN = 4403
 CLOSE_NOT_FOUND = 4404
@@ -193,6 +201,10 @@ async def ros_bridge(websocket: WebSocket, robot_id: str) -> None:
 
         relay = _Relay(websocket, upstream, session, robot_id, robot["namespace"] or "")
         try:
+            try:
+                await websocket.send_text(READY_FRAME)
+            except (WebSocketDisconnect, RuntimeError):
+                return  # the browser left while the robot was being reached
             await relay.run()
         finally:
             with contextlib.suppress(Exception):

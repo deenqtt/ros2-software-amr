@@ -14,9 +14,11 @@ const topics = vi.hoisted(() => [] as Array<{ name: string; handler: (m: unknown
 vi.mock('roslib', () => {
   class Ros {
     private handlers: Record<string, () => void> = {}
-    on(event: string, cb: () => void) {
+    on(event: string, cb: (message?: unknown) => void) {
       this.handlers[event] = cb
       if (event === 'connection') queueMicrotask(cb)
+      // The backend relay's "robot answered" frame (see RELAY_READY).
+      if (event === 'status') queueMicrotask(() => cb({ op: 'status', msg: 'amr-relay: ready' }))
     }
     close() {}
     callOnConnection() {}

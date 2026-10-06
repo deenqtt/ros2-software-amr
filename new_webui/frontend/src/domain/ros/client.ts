@@ -67,6 +67,34 @@ const PUBLISH_TYPES: Partial<Record<string, string>> = {
   missionPayload: 'std_msgs/msg/String',
 }
 
+/**
+ * The backend relay's "the robot answered" frame (app/api/ros_proxy.py).
+ *
+ * The browser's socket opens the moment the relay accepts it, before the relay
+ * has reached the robot, so an open socket proves nothing about the robot.
+ * Counting it as online made an unreachable robot flicker Online → Connecting
+ * forever. The robot is online only once this arrives.
+ */
+export const RELAY_READY = 'amr-relay: ready'
+
+/** Socket open but no "ready": the relay should answer within ~5 s either way. */
+export const READY_TIMEOUT_MS = 10_000
+
+/**
+ * Why the relay closed the socket. 1011: it could not reach the robot. The
+ * 44xx codes are about the person, not the robot; retrying cannot fix them, so
+ * the client stops until the page asks again (the next connect()).
+ */
+const CLOSE_REASONS: Record<number, { message: string; retry: boolean }> = {
+  1011: {
+    message: "Robot unreachable. Check its bridge address and that rosbridge is running on it.",
+    retry: true,
+  },
+  4401: { message: 'Signed out. Sign in again to see this robot.', retry: false },
+  4403: { message: 'Your account may not open this robot right now.', retry: false },
+  4404: { message: 'This robot is no longer registered.', retry: false },
+}
+
 export class RosClient {
   private ros: Ros | null = null
   private records = new Map<string, TopicRecord>()
@@ -82,6 +110,7 @@ export class RosClient {
   private optional = new Set<string>()
   private lastError: string | null = null
   private retryHandle: ReturnType<typeof setTimeout> | null = null
+  private readyHandle: ReturnType<typeof setTimeout> | null = null
   private disposed = false
 
   readonly tf = new TfBuffer()
@@ -171,43 +200,95 @@ export class RosClient {
     }
     if (this.connecting) return
 
+    // lastError is kept: while retrying, the reason the last attempt failed is
+    // what the page should show. It clears when the robot answers.
     this.connecting = true
-    this.lastError = null
     this.emit()
 
     const ros = new ROSLIB.Ros({ url: this.options.url })
     this.ros = ros
 
+    // Every handler first checks that `ros` is still the current socket. A
+    // replaced or disconnected socket's events arrive late (its close comes
+    // after the next socket opened); acting on them would tear down the live
+    // session, and with it the ability to send a stop.
+
+    // The socket to the relay is open; the robot is not reached yet. Stay
+    // "connecting" until the relay says it is, or give up and retry.
     ros.on('connection', () => {
+      if (this.ros !== ros) return
+      this.clearReadyTimer()
+      this.readyHandle = this.setTimeoutFn(() => {
+        this.readyHandle = null
+        if (this.ros !== ros) return
+        // Retry now rather than wait for this socket's close, which a
+        // half-dead connection can take a long time to deliver.
+        this.ros = null
+        ros.close()
+        this.lastError = 'No answer from the robot.'
+        this.closed(undefined)
+      }, READY_TIMEOUT_MS)
+    })
+
+    ros.on('status', (message: unknown) => {
+      if (this.ros !== ros) return
+      if ((message as { msg?: unknown } | null)?.msg !== RELAY_READY || this.socketOpen) return
+      this.clearReadyTimer()
       this.socketOpen = true
       this.connecting = false
+      // Only now: an attempt that never reached the robot must not reset the
+      // backoff, or an unreachable robot is retried every second forever.
       this.attempt = 0
+      this.lastError = null
       this.applyTier(this.tier ?? tier)
       this.emit()
     })
 
     ros.on('error', (error: unknown) => {
+      if (this.ros !== ros) return
       // roslibjs reports errors as an Event with no useful message; a generic
       // string beats printing "[object Event]" at an operator.
       this.lastError = error instanceof Error ? error.message : 'WebSocket error'
       this.emit()
     })
 
-    ros.on('close', () => {
-      this.socketOpen = false
-      this.connecting = false
-      this.teardownSubscriptions()
-      this.publishers.clear()
-      // Stale transforms from a dead session must never be reused: they would
-      // put the robot marker somewhere it is not.
-      this.tf.clear()
-      this.emit()
-      this.scheduleRetry()
+    ros.on('close', (event: unknown) => {
+      if (this.ros !== ros) return
+      this.ros = null
+      this.closed((event as { code?: number } | null)?.code)
     })
+  }
+
+  /** The current socket is gone: clean up, say why, and retry if that can help. */
+  private closed(code: number | undefined): void {
+    const wasOnline = this.socketOpen
+    this.clearReadyTimer()
+    this.socketOpen = false
+    this.connecting = false
+    this.teardownSubscriptions()
+    this.publishers.clear()
+    // Stale transforms from a dead session must never be reused: they would
+    // put the robot marker somewhere it is not.
+    this.tf.clear()
+    const reason = code === undefined ? undefined : CLOSE_REASONS[code]
+    if (reason) {
+      // 1011 after the robot had answered is a lost link, not a wrong address.
+      this.lastError = code === 1011 && wasOnline ? 'Lost the connection to the robot.' : reason.message
+    }
+    this.emit()
+    if (!reason || reason.retry) this.scheduleRetry()
+  }
+
+  private clearReadyTimer(): void {
+    if (this.readyHandle !== null) {
+      this.clearTimeoutFn(this.readyHandle)
+      this.readyHandle = null
+    }
   }
 
   private scheduleRetry(): void {
     if (this.disposed || this.tier === null) return
+    if (this.retryHandle !== null) this.clearTimeoutFn(this.retryHandle)
     this.attempt += 1
     const delay = backoffDelay(this.attempt, {}, this.random)
     this.connecting = true
@@ -222,6 +303,7 @@ export class RosClient {
   /** Stop monitoring. Cancels retries; the socket does not come back by itself. */
   disconnect(): void {
     this.tier = null
+    this.clearReadyTimer()
     if (this.retryHandle !== null) {
       this.clearTimeoutFn(this.retryHandle)
       this.retryHandle = null
