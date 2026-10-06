@@ -1,6 +1,6 @@
 """
 The kiosk's icons: drawn for this screen on a 24 px grid, 1.5 stroke, round
-ends. The same set as kiosk-mockup/, kept as path data so one icon can be any
+ends. The same set as docs/design/kiosk-mockup/, kept as path data so one icon can be any
 colour (see IconProvider in kiosk_app.py). No emoji: they render differently
 on every OS and cannot take a colour.
 """

@@ -5,7 +5,7 @@
 # Map uploads are a PGM plus its YAML; a large warehouse map is tens of MB.
 client_max_body_size 33m;  # map image cap is 32 MiB (app/maps_files.py)
 
-# Error pages (nginx/errors/, see docs/nginx-error-mockup/ for the design).
+# Error pages (nginx/errors/, see docs/design/nginx-error-mockup/ for the design).
 # Only for responses nginx makes itself: a missing file, a refused address,
 # the backend down or too slow. proxy_intercept_errors stays off, so anything
 # the backend answers, error or not, reaches the browser exactly as sent.

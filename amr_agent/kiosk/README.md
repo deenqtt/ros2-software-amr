@@ -4,7 +4,7 @@ The screen on the robot: the face, where it is going, "Pesanan Anda sudah
 tiba" with one big button, charging, and faults. Python + Qt Quick (PySide6),
 running on the robot next to `robot_agent_node.py` and reading ROS locally, so
 it keeps working when wifi or the server is down. The design is
-`kiosk-mockup/`; this is the real thing.
+`docs/design/kiosk-mockup/`; this is the real thing.
 
 ## Run it
 

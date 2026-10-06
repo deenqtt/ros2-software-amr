@@ -332,9 +332,12 @@ ros2-software-amr/
 │   ├── deploy/               install_robot.sh, push_to_robot.sh, service systemd
 │   ├── requirements.txt      paket pip (PySide6 untuk kiosk)
 │   └── run_agent_gprp.sh     peluncur agent (+ --kiosk)
-├── kiosk-mockup/          desain awal layar robot (HTML/CSS/JS statis)
-├── docs/                  panduan PDF, runbook produksi, kontrak ROS, screenshot
-└── DESIGN.md              design system yang diikuti Web UI
+└── docs/                  dokumentasi
+    ├── brand/             logo AMR Control (SVG) dan logo GSPE
+    ├── design/            DESIGN.md (design system Web UI), mockup kiosk & halaman error nginx
+    ├── manual/            sumber panduan PDF
+    ├── runbooks/          deploy produksi
+    └── images/            screenshot Web UI dan kiosk
 ```
 
 ---
@@ -494,7 +497,7 @@ python3 amr_agent/kiosk/kiosk_app.py --mock --window     # coba tanpa ROS: tombo
 ```
 
 Detail opsi, topic, dan suara: [`amr_agent/kiosk/README.md`](amr_agent/kiosk/README.md).
-Desain awalnya (HTML statis) ada di [`kiosk-mockup/`](kiosk-mockup/).
+Desain awalnya (HTML statis) ada di [`docs/design/kiosk-mockup/`](docs/design/kiosk-mockup/).
 
 ---
 
@@ -680,7 +683,8 @@ Panduan lengkap — port, perilaku saat jaringan putus, instalasi tanpa Docker �
 | 🚀 [`docs/runbooks/PRODUCTION_DEPLOYMENT.md`](docs/runbooks/PRODUCTION_DEPLOYMENT.md) | Deployment server (Docker) + robot |
 | 🖥️ [`amr_agent/kiosk/README.md`](amr_agent/kiosk/README.md) | Kiosk: menjalankan, opsi, topic, suara |
 | 🔌 [`docs/ROS_INTERFACE_CONTRACT.md`](docs/ROS_INTERFACE_CONTRACT.md) | Topic, service dan action antara Web UI dan robot |
-| 🎨 [`DESIGN.md`](DESIGN.md) | Design system Web UI |
+| 🎨 [`docs/design/DESIGN.md`](docs/design/DESIGN.md) | Design system Web UI |
+| 🔷 [`docs/brand/`](docs/brand/) | Logo AMR Control dan GSPE |
 | 📘 [`docs/Panduan_AMR_Web_UI.pdf`](docs/Panduan_AMR_Web_UI.pdf) | Panduan pengguna (versi sebelum login, role, dan kiosk PySide6) |
 
 ---

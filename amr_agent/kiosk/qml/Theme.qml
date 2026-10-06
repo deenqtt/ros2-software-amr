@@ -1,7 +1,7 @@
 pragma Singleton
 import QtQuick
 
-// Colours and timings, from kiosk-mockup/styles.css. Severity colours follow
+// Colours and timings, from docs/design/kiosk-mockup/styles.css. Severity colours follow
 // the usual industrial convention: red danger, amber caution, blue information.
 QtObject {
     readonly property color bg: "#070b14"

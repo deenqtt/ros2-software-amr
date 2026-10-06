@@ -6,7 +6,7 @@ ROS: every state is faked so the screens can be judged before any wiring.
 ## Open it
 
 ```bash
-xdg-open kiosk-mockup/index.html      # or just double-click index.html
+xdg-open docs/design/kiosk-mockup/index.html      # or just double-click index.html
 ```
 
 For the robot's look, press F11 (fullscreen). On a real robot it would run as:
