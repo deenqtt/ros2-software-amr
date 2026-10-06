@@ -15,6 +15,10 @@
 # Options:
 #   --robot-id ID       the id the web UI shows for this robot
 #   --backend URL       http://<server>/backend
+#   --agent-token TOKEN credential for the backend (web UI: Robot -> Details ->
+#                       Agent token). Prompted for if missing; may be left empty
+#                       (the backend will then refuse the agent). Visible in
+#                       `ps` while this runs: prefer the prompt.
 #   --name NAME         name on the kiosk's status bar (default: AMR)
 #   --ros-ws PATH       ROS workspace with custom_interfaces
 #                       (default: ~/ros2_gprp_amr_ws)
@@ -31,6 +35,7 @@ ENV_FILE=/etc/amr/robot.env
 
 ROBOT_ID=""
 BACKEND=""
+AGENT_TOKEN=""
 NAME="AMR"
 ROS_WS="$HOME/ros2_gprp_amr_ws"
 DOMAIN=10
@@ -41,12 +46,13 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         --robot-id) ROBOT_ID="$2"; shift 2 ;;
         --backend) BACKEND="$2"; shift 2 ;;
+        --agent-token) AGENT_TOKEN="$2"; shift 2 ;;
         --name) NAME="$2"; shift 2 ;;
         --ros-ws) ROS_WS="$2"; shift 2 ;;
         --domain) DOMAIN="$2"; shift 2 ;;
         --no-kiosk) KIOSK=0; shift ;;
         --check) CHECK=1; shift ;;
-        -h|--help) sed -n '2,27p' "$0"; exit 0 ;;
+        -h|--help) sed -n '2,29p' "$0"; exit 0 ;;
         *) echo "unknown option: $1 (see --help)" >&2; exit 64 ;;
     esac
 done
@@ -183,10 +189,34 @@ fi
 # ── 4. Settings ─────────────────────────────────────────────────────────────
 step "4. Settings ($ENV_FILE)"
 if sudo test -f "$ENV_FILE"; then
-    ok "kept the existing $ENV_FILE"
+    if [[ -n "$AGENT_TOKEN" ]]; then
+        # Rewrite just the token line, through the environment and stdin so it
+        # is on no command line. Mode and owner are set again: tee keeps the
+        # file's own, but this makes the intent explicit.
+        # Created private from the first byte: the token must never sit in a
+        # world-readable file, even for the moment before the chmod below.
+        sudo install -m 600 -o root -g root /dev/null "$ENV_FILE.new"
+        sudo cat "$ENV_FILE" \
+            | AMR_TOKEN_VALUE="$AGENT_TOKEN" awk '
+                /^AMR_AGENT_TOKEN=/ { print "AMR_AGENT_TOKEN=" ENVIRON["AMR_TOKEN_VALUE"]; seen = 1; next }
+                { print }
+                END { if (!seen) print "AMR_AGENT_TOKEN=" ENVIRON["AMR_TOKEN_VALUE"] }' \
+            | sudo tee "$ENV_FILE.new" >/dev/null
+        sudo chown "root:$RUN_USER" "$ENV_FILE.new"
+        sudo chmod 640 "$ENV_FILE.new"
+        sudo mv "$ENV_FILE.new" "$ENV_FILE"
+        ok "kept the existing $ENV_FILE, updated agent token"
+    else
+        ok "kept the existing $ENV_FILE"
+    fi
 else
     [[ -n "$ROBOT_ID" ]] || read -rp "  Robot id (from the web UI): " ROBOT_ID
     [[ -n "$BACKEND" ]] || read -rp "  Backend URL (http://<server>/backend): " BACKEND
+    if [[ -z "$AGENT_TOKEN" ]]; then
+        read -rsp "  Agent token (web UI: Robot -> Details; Enter to skip): " AGENT_TOKEN
+        echo
+    fi
+    [[ -n "$AGENT_TOKEN" ]] || todo "no agent token: the backend will refuse this agent until AMR_AGENT_TOKEN is set in $ENV_FILE"
     # Not `tr </dev/urandom | head`: under pipefail its SIGPIPE ends the script.
     PIN="$(shuf -i 1000-9999 -n 1)"
     sudo mkdir -p /etc/amr
@@ -197,8 +227,12 @@ else
         -e "s#^ROS_DOMAIN_ID=.*#ROS_DOMAIN_ID=$DOMAIN#" \
         -e "s#^AMR_KIOSK_NAME=.*#AMR_KIOSK_NAME=$NAME#" \
         -e "s#^AMR_KIOSK_PIN=.*#AMR_KIOSK_PIN=$PIN#" \
-        "$AGENT/deploy/robot.env.example" | sudo tee "$ENV_FILE" >/dev/null
-    # The PIN is in here: readable by the robot's user, not by everyone.
+        "$AGENT/deploy/robot.env.example" \
+        | AMR_TOKEN_VALUE="$AGENT_TOKEN" awk '/^AMR_AGENT_TOKEN=/ { print "AMR_AGENT_TOKEN=" ENVIRON["AMR_TOKEN_VALUE"]; next } { print }' \
+        | sudo tee "$ENV_FILE" >/dev/null
+    # The PIN and the agent token are in here. The services run as the robot's
+    # user, so the file stays 640 root:<user> (not 600 root-only, which would
+    # lock the service out): readable by that user, not by everyone.
     sudo chown "root:$RUN_USER" "$ENV_FILE"
     sudo chmod 640 "$ENV_FILE"
     ok "wrote $ENV_FILE — kiosk staff PIN: $PIN"

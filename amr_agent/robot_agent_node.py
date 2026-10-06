@@ -162,6 +162,7 @@ from delivery import (
     kiosk_status,
 )
 from backend_client import BackendClient, BackendError
+from guards import resolve_map_path, sanitize_twist, validate_limit
 from custom_interfaces.action import MissionPlan
 from custom_interfaces.srv import RobotMode, StationConfig
 
@@ -291,6 +292,8 @@ OCCUPIED_THRESH = 0.65
 
 # Teleop relay.
 TELEOP_IN_TOPIC = "/teleop/cmd_vel"
+# At most one clamp/reject warning per this many seconds.
+TELEOP_WARN_PERIOD_S = 5.0
 CMD_VEL_TOPIC = "/cmd_vel"
 # Republish rate. Faster than the browser sends, so network jitter does not
 # show up as stutter in the wheels.
@@ -420,10 +423,23 @@ class RobotAgent(Node):
         # whose own launch does not include it — this repository's navigation
         # launch does, so it stays empty there. A path to the script.
         self.declare_parameter("zone_mask_script", "")
+        # Hard ceilings on teleop speed, enforced here because anyone on
+        # rosbridge can publish /teleop/cmd_vel; the UI's presets are not a
+        # boundary. m/s and rad/s.
+        self.declare_parameter("max_teleop_linear", 0.5)
+        self.declare_parameter("max_teleop_angular", 1.5)
 
         self._managed = bool(self.get_parameter("managed_mode").value)
         self._use_sim_time_arg = bool(self.get_parameter("use_sim_time_arg").value)
         self._current_map = str(self.get_parameter("default_map").value)
+        # Invalid limits stop the agent at startup (ValueError) rather than
+        # silently running with no ceiling.
+        self._max_teleop_linear = validate_limit(
+            "max_teleop_linear", self.get_parameter("max_teleop_linear").value
+        )
+        self._max_teleop_angular = validate_limit(
+            "max_teleop_angular", self.get_parameter("max_teleop_angular").value
+        )
 
         backend_url = str(self.get_parameter("backend_url").value).strip()
         self._robot_id = str(self.get_parameter("robot_id").value).strip()
@@ -516,6 +532,7 @@ class RobotAgent(Node):
         self._teleop_at: float = 0.0
         self._teleop_stops_sent = 0
         self._teleop_active = False
+        self._teleop_warned_at = -TELEOP_WARN_PERIOD_S
 
         self._cb = ReentrantCallbackGroup()
         self._lock = threading.Lock()
@@ -679,12 +696,26 @@ class RobotAgent(Node):
 
             if mode == MODE_NAV:
                 target_map = inline_map or self._current_map
-                if not os.path.isfile(target_map):
+                # Only a map yaml under the map cache or the default map's
+                # directory: /robot_mode is reachable over rosbridge, and a bare
+                # isfile() would let any readable file become the Nav2 map.
+                allowed_roots = [
+                    str(self._cache_dir),
+                    os.path.dirname(str(self.get_parameter("default_map").value)),
+                ]
+                resolved = resolve_map_path(target_map, allowed_roots)
+                if resolved is None:
                     # Refuse early. Nav2 started without a readable map comes up
                     # and then fails in a way that looks like a robot fault.
-                    response.result = f"REJECTED: map not found on robot: {target_map}"
+                    self.get_logger().warning(
+                        f"[robot_agent] rejected map path {target_map!r}"
+                    )
+                    response.result = (
+                        "REJECTED: map must be an existing .yaml file inside the "
+                        f"robot's map directories: {target_map}"
+                    )
                     return response
-                self._current_map = target_map
+                self._current_map = resolved
 
             self._worker = threading.Thread(
                 target=self._switch, args=(mode,), daemon=True
@@ -731,8 +762,26 @@ class RobotAgent(Node):
             # Refuse quietly rather than queueing: acting on it later, after a
             # mode change, would move the robot on a stale instruction.
             return
+        # Rebuild from sanitized numbers: never relay the incoming message.
+        safe = sanitize_twist(
+            msg.linear.x, msg.linear.y, msg.linear.z,
+            msg.angular.x, msg.angular.y, msg.angular.z,
+            self._max_teleop_linear, self._max_teleop_angular,
+        )
+        if safe.rejected or safe.clamped:
+            now = time.monotonic()
+            if now - self._teleop_warned_at >= TELEOP_WARN_PERIOD_S:
+                self._teleop_warned_at = now
+                what = "non-finite command replaced by a stop" if safe.rejected else (
+                    f"command clamped to {self._max_teleop_linear} m/s, "
+                    f"{self._max_teleop_angular} rad/s"
+                )
+                self.get_logger().warning(f"[robot_agent] teleop: {what}")
+        command = Twist()
+        command.linear.x = safe.linear_x
+        command.angular.z = safe.angular_z
         with self._teleop_lock:
-            self._teleop_cmd = msg
+            self._teleop_cmd = command
             self._teleop_at = time.monotonic()
             self._teleop_stops_sent = 0
 
@@ -1333,8 +1382,10 @@ class RobotAgent(Node):
             # Nav2 started on the wrong map does not fail — it localises against
             # a floor plan the robot is not standing in, which is far worse than
             # not starting.
-            wanted = self._cache_dir / str(assigned_map)
-            current = Path(self._current_map)
+            # Both sides as real paths: a manual /robot_mode stores the
+            # resolved path, and map_cache_dir may itself be a symlink.
+            wanted = Path(os.path.realpath(self._cache_dir / str(assigned_map)))
+            current = Path(os.path.realpath(self._current_map))
             if not current.is_file() or wanted not in current.parents:
                 self._set_state(
                     MODE_UNKNOWN,

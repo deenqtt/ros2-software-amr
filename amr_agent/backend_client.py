@@ -13,13 +13,18 @@ retried, the block is silent and permanent.
 from __future__ import annotations
 
 import json
+import logging
 import mimetypes
+import os
 import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
 from dataclasses import dataclass
 
+log = logging.getLogger(__name__)
+
+TOKEN_ENV = "AMR_AGENT_TOKEN"
 DEFAULT_TIMEOUT_S = 15.0
 UPLOAD_TIMEOUT_S = 120.0
 
@@ -88,6 +93,12 @@ class BackendClient:
     def __init__(self, base_url: str, robot_id: str = "") -> None:
         self.base_url = base_url.rstrip("/")
         self.robot_id = robot_id
+        # From the environment only, never a ROS parameter: parameters are
+        # readable by every node on the graph, and `ps` shows the command line.
+        self._token = os.environ.get(TOKEN_ENV, "").strip()
+        self._auth_refused = False
+        if not self._token:
+            log.warning("%s is not set; requests go out without credentials", TOKEN_ENV)
 
     # ── plumbing ──────────────────────────────────────────────────────────────
 
@@ -104,11 +115,20 @@ class BackendClient:
         request = urllib.request.Request(url, data=body, method=method)  # noqa: S310 — http(s) only, url built from config
         if content_type:
             request.add_header("Content-Type", content_type)
+        if self._token:
+            request.add_header("Authorization", f"Bearer {self._token}")
 
         try:
             with urllib.request.urlopen(request, timeout=timeout) as response:  # noqa: S310
+                if self._auth_refused:
+                    self._auth_refused = False
+                    log.info("backend accepted agent credentials again")
                 return response.read(), {k.lower(): v for k, v in response.headers.items()}
         except urllib.error.HTTPError as error:
+            if error.code in (401, 403) and not self._auth_refused:
+                # Once per state change, not once per sync.
+                self._auth_refused = True
+                log.error("backend refused agent credentials — check %s", TOKEN_ENV)
             detail = error.read().decode("utf-8", "replace")[:500]
             raise BackendError(f"{method} {path} -> {error.code}: {detail}", error.code) from error
         except urllib.error.URLError as error:
