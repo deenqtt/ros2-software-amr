@@ -34,4 +34,13 @@ HEALTHCHECK --interval=15s --timeout=3s --start-period=10s --retries=3 \
     CMD python -c "import urllib.request,sys;\
 sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:3002/ready',timeout=2).status==200 else 1)"
 
-CMD ["uvicorn", "app.asgi:app", "--host", "0.0.0.0", "--port", "3002"]
+# Client addresses. Behind the web container every request arrives from it, so
+# uvicorn takes the client's address from X-Forwarded-For — but only when the
+# request comes from an address in FORWARDED_ALLOW_IPS (read by uvicorn itself).
+# From anywhere else the header is ignored, so nobody can choose the address
+# the audit trail records or the sign-in throttle counts. deploy/
+# docker-compose.yml sets it to the web container's fixed address; this
+# default trusts nothing but the container itself.
+ENV FORWARDED_ALLOW_IPS=127.0.0.1
+
+CMD ["uvicorn", "app.asgi:app", "--host", "0.0.0.0", "--port", "3002", "--proxy-headers"]

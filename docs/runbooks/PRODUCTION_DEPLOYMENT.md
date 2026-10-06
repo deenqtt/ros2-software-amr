@@ -84,11 +84,26 @@ from every push to main. Run a release tag in production.
 sudo mkdir -p /opt/amr && sudo chown "$USER" /opt/amr && cd /opt/amr
 curl -fsSLO https://raw.githubusercontent.com/deenqtt/ros2-software-amr/main/new_webui/deploy/docker-compose.yml
 curl -fsSL -o .env https://raw.githubusercontent.com/deenqtt/ros2-software-amr/main/new_webui/deploy/.env.example
-nano .env          # AMR_VERSION, AMR_CORS_ORIGINS, first admin
+nano .env          # AMR_VERSION, AMR_CORS_ORIGINS, first admin, HTTP or HTTPS
                    # keep AMR_AGENT_AUTH=required (production refuses "optional")
 mkdir -p data maps nginx && sudo chown 10001:10001 data maps
 docker compose up -d
 ```
+
+- **HTTP or HTTPS** is a choice in `.env` (see "HTTPS" below). With
+  `AMR_ENV=production` the backend refuses to start over plain HTTP
+  (`AMR_COOKIE_SECURE=false`) unless `AMR_ALLOW_INSECURE_HTTP=true` says so
+  explicitly; the example `.env` starts that way, for a closed test network.
+  Then the session cookie and every password cross the network unencrypted,
+  and the backend says so in its log at every start.
+- **Client addresses.** The two containers share a network with a fixed
+  subnet (`AMR_NET_SUBNET`, default `172.30.57.0/24`); the web container has a
+  fixed address (`AMR_WEB_ADDR`, default `172.30.57.10`), and the backend
+  takes the client's address from `X-Forwarded-For` only from that address
+  (`FORWARDED_ALLOW_IPS`). That address is what the audit trail records and
+  the sign-in throttle counts. If the subnet overlaps a network already on the
+  machine, `docker compose up` fails with "Pool overlaps": set both variables
+  to a free range.
 
 - **First super admin** comes from `AMR_BOOTSTRAP_USER` / `AMR_BOOTSTRAP_PASSWORD`
   in that `.env`, only while the database has no accounts; it must choose its
@@ -96,7 +111,7 @@ docker compose up -d
   them in the images or in GitHub: the images are public.
 - **Update:** set `AMR_VERSION`, then `docker compose pull && docker compose up -d`.
 - **Back up** `/opt/amr/data` and `/opt/amr/maps`; everything else is in the image.
-- **Robots** point at `http://<server>/backend`
+- **Robots** point at `http://<server>/backend`, or `https://` with HTTPS on
   (`run_agent_gprp.sh <robot_id> http://<server>/backend`) and carry their own
   agent token (see "Agent tokens").
 - **No rosbridge proxy.** The old `robots.conf` `/robot/<n>` blocks were removed
@@ -147,11 +162,79 @@ docker compose up -d
    rsync -a dist/ /opt/amr/web/dist/
    ```
 
-3. **nginx**: start from `new_webui/deploy/nginx.conf.example`. Its
-   `/backend/` block must upgrade WebSockets (it does) because it carries the
-   robots' ROS relay. Do not add `/robot/<name>` blocks to rosbridge: remove
+3. **nginx**: start from `new_webui/deploy/nginx-tls.conf.example` (HTTPS;
+   `nginx.conf.example` is the plain-HTTP variant, which needs
+   `AMR_ALLOW_INSECURE_HTTP=true` in production). Copy
+   `new_webui/frontend/nginx/security-headers.conf` to
+   `/etc/nginx/snippets/amr-security-headers.conf`; both examples include it.
+   Their `/backend/` block must upgrade WebSockets (it does) because it carries
+   the robots' ROS relay, and must **set** `X-Forwarded-For $remote_addr`
+   rather than append to it. The backend believes that header only from
+   127.0.0.1 (uvicorn's `FORWARDED_ALLOW_IPS` default), so keep nginx on the
+   same machine or set that variable in the service to nginx's address. Do not add `/robot/<name>` blocks to rosbridge: remove
    any left from an older config. The robot's `bridge_url` in the registry is
    its direct address, `ws://<jetson>:9090`, which only the backend uses.
+
+## HTTPS
+
+Over plain HTTP the session cookie and every password cross the network
+readable by anyone on it, so production refuses it unless
+`AMR_ALLOW_INSECURE_HTTP=true` is set. With HTTPS:
+
+- port 80 only redirects (308) to HTTPS;
+- `Strict-Transport-Security: max-age=31536000` is sent, over HTTPS only;
+- the session cookie is `Secure` (`AMR_COOKIE_SECURE=true`);
+- every response carries the security headers in
+  `new_webui/frontend/nginx/security-headers.conf` (CSP, `X-Frame-Options`,
+  `nosniff`, `Referrer-Policy`, `Permissions-Policy`), on HTTP as well.
+
+**Certificate.** Any certificate the operators' browsers and the robots trust,
+for the name (or IP address) the UI is opened with:
+
+- a certificate from the plant's internal CA (preferred on a closed network);
+- Let's Encrypt, if the server has a public DNS name;
+- for a test, a self-signed one (browsers warn; robots must be told to trust it):
+
+  ```bash
+  mkdir -p certs
+  openssl req -x509 -newkey rsa:3072 -nodes -days 825 \
+      -subj "/CN=amr.example.local" \
+      -addext "subjectAltName=DNS:amr.example.local,IP:192.168.10.5" \
+      -keyout certs/privkey.pem -out certs/fullchain.pem
+  ```
+
+`fullchain.pem` is the certificate followed by any intermediates. When the
+certificate is renewed, replace the files and run `docker compose restart web`
+(or `systemctl reload nginx`).
+
+**Docker:** in `/opt/amr/.env` switch from choice A to choice B (see
+`.env.example`):
+
+```bash
+COMPOSE_FILE=docker-compose.yml:docker-compose.tls.yml
+AMR_HTTPS_PORT=443
+AMR_CORS_ORIGINS=https://amr.example.local,https://192.168.10.5
+# and delete AMR_COOKIE_SECURE=false / AMR_ALLOW_INSECURE_HTTP=true
+```
+
+Also download `docker-compose.tls.yml` next to `docker-compose.yml`. Put the
+files in `/opt/amr/certs/`; the web container's nginx runs as uid 101, so:
+`sudo chown root:101 certs/privkey.pem && sudo chmod 640 certs/privkey.pem`.
+Then `docker compose up -d`. The TLS file sets `AMR_COOKIE_SECURE=true` and
+publishes `AMR_HTTPS_PORT` (443). Terminate TLS in the web container, not in
+another proxy in front of it: such a proxy would hide every client's address
+behind its own.
+
+**Without Docker:** `new_webui/deploy/nginx-tls.conf.example`, with the files
+in `/etc/ssl/amr/`, and `AMR_COOKIE_SECURE=true` plus `https://` origins in the
+backend's `.env`.
+
+**Robots** then use `https://<server>/backend`. They do not follow the
+redirect for their reports (a redirected POST fails), so change `--backend`
+(`AMR_BACKEND_URL` in `/etc/amr/robot.env`) and make each robot trust the
+certificate: copy the CA (or the self-signed certificate) to
+`/usr/local/share/ca-certificates/amr.crt` and run
+`sudo update-ca-certificates`, then `sudo systemctl restart amr-agent`.
 
 ## Agent tokens
 
@@ -196,6 +279,18 @@ backend is running.
    place the server refuses that robot.
 6. Firewall 9090 on each robot so only the server can reach it, then check the
    live view from a browser.
+
+### Upgrading to the release that refuses plain HTTP
+
+An existing `.env` with `AMR_ENV=production` and `AMR_COOKIE_SECURE=false`
+stops the backend from starting ("AMR_COOKIE_SECURE=false in production").
+Before updating, either add `AMR_ALLOW_INSECURE_HTTP=true` (stays on HTTP, as
+before) or set up HTTPS as above. With Docker, also expect `docker compose up
+-d` to recreate both containers on the new `net` network (fixed subnet); the
+old `amr_default` network is left unused and can be removed with
+`docker network rm amr_default`. With nginx on the host, change
+`X-Forwarded-For $proxy_add_x_forwarded_for` to `X-Forwarded-For $remote_addr`
+in the `/backend/` block and add the security-headers include.
 
 ## Robot (Jetson)
 
@@ -286,9 +381,13 @@ missions, and anything in the browser that goes through the server.
 
 - [ ] Backend `.env`: `AMR_ENV=production`, explicit `AMR_CORS_ORIGINS`,
       `AMR_AGENT_AUTH=required`
+- [ ] HTTPS on (`AMR_COOKIE_SECURE=true`, certificate trusted by browsers and
+      robots), or plain HTTP chosen knowingly with `AMR_ALLOW_INSECURE_HTTP=true`
+- [ ] Response headers present: `curl -sI https://<server>/` shows
+      `Content-Security-Policy` and `Strict-Transport-Security`
 - [ ] Frontend built with `.env.production`
-- [ ] nginx serves `/` and proxies `/backend/` with WebSocket upgrade; no
-      `/robot/<n>` blocks left
+- [ ] nginx serves `/` and proxies `/backend/` with WebSocket upgrade and
+      `X-Forwarded-For $remote_addr`; no `/robot/<n>` blocks left
 - [ ] Each robot: robot stack ready (robot team), rosbridge on 9090, firewalled
       so only the server can reach it
 - [ ] Each robot: `push_to_robot.sh` run; `amr-agent` and `amr-kiosk` active;

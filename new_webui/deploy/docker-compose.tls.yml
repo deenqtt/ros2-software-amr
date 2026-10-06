@@ -1,0 +1,25 @@
+# HTTPS for the AMR web UI, served by the web container itself. Used on top of
+# docker-compose.yml; enable it in .env with
+#
+#   COMPOSE_FILE=docker-compose.yml:docker-compose.tls.yml
+#
+# then put the certificate in ./certs (fullchain.pem + privkey.pem, the key
+# readable by uid 101) and `docker compose up -d`. Port 80 then only redirects
+# to HTTPS; Strict-Transport-Security is sent over HTTPS only.
+# Certificate setup: docs/runbooks/PRODUCTION_DEPLOYMENT.md, "HTTPS".
+
+services:
+  backend:
+    environment:
+      # The cookie travels over HTTPS only. AMR_CORS_ORIGINS in .env must list
+      # the https:// origins.
+      AMR_COOKIE_SECURE: "true"
+
+  web:
+    environment:
+      NGINX_ENVSUBST_TEMPLATE_DIR: /etc/nginx/templates-tls
+      AMR_HTTPS_PORT: ${AMR_HTTPS_PORT:-443}
+    ports:
+      - "${AMR_HTTPS_PORT:-443}:8443"
+    volumes:
+      - ./certs:/etc/nginx/certs:ro

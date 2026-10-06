@@ -1,0 +1,62 @@
+# The site itself, shared by default.conf.template (HTTP) and tls.conf.template
+# (HTTPS). Rendered by the nginx image at start-up like the others:
+# ${AMR_BACKEND_URL} comes from the environment. Included inside a server block.
+
+# Map uploads are a PGM plus its YAML; a large warehouse map is tens of MB.
+client_max_body_size 33m;  # map image cap is 32 MiB (app/maps_files.py)
+
+location = /healthz {
+    access_log off;
+    return 200 "ok\n";
+}
+
+# Client-side routes (/robot/…/nav, /missions, …) all serve the app.
+# index.html itself is never cached, so a new release is picked up on the
+# next load. Has its own add_header, so the security headers are repeated here
+# (a location with any add_header inherits none from the server).
+location / {
+    try_files $uri $uri/ /index.html;
+    add_header Cache-Control "no-cache";
+    include /etc/nginx/amr/security-headers.conf;
+}
+
+# Hashed assets never change under the same name; cache them hard.
+location /assets/ {
+    expires 30d;
+    add_header Cache-Control "public, immutable";
+    include /etc/nginx/amr/security-headers.conf;
+    try_files $uri =404;
+}
+
+# Trailing slash strips /backend: /backend/api/runs reaches the backend as
+# /api/runs. Robots use this too: run_agent_gprp.sh <id> http(s)://<host>/backend
+#
+# Browsers also reach the robots through here: /backend/api/robots/<id>/ros
+# is a WebSocket the backend relays to that robot's rosbridge after checking
+# the session and every frame. Hence the upgrade headers and the long
+# timeouts (a robot page stays open for hours; the relay closes it itself
+# when the session ends). $http_host keeps the port, which the backend
+# compares against the Origin header to refuse other sites' pages.
+#
+# Client address: X-Forwarded-For is SET to the address this connection came
+# from, never appended to. Appending ($proxy_add_x_forwarded_for) would pass
+# on whatever the client wrote there itself. The backend's uvicorn believes
+# the header only from this container's address (FORWARDED_ALLOW_IPS in
+# docker-compose.yml), so it records who actually connected.
+location /backend/ {
+    proxy_pass ${AMR_BACKEND_URL}/;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection $connection_upgrade;
+    proxy_set_header Host $http_host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_read_timeout 3600s;
+    proxy_send_timeout 3600s;
+}
+
+# Per-site extras, mounted from the host. Not for rosbridge: a direct
+# /robot/<name> proxy would bypass the backend's checks (see
+# deploy/robots.conf.example).
+include /etc/nginx/amr.d/*.conf;

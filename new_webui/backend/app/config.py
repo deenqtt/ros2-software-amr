@@ -53,6 +53,11 @@ class Settings(BaseSettings):
     # served over plain HTTP (the nginx example is), or the browser drops the
     # cookie and every sign-in appears to fail.
     cookie_secure: bool = False
+    # Production refuses to start with cookie_secure off: over plain HTTP the
+    # session cookie and every password cross the network readable by anyone
+    # on it. Set this to true to accept that knowingly — a closed test network,
+    # or until a certificate is in place. Never needed once TLS is on.
+    allow_insecure_http: bool = False
     # How a robot agent is let in. `required`: only with its own bearer token
     # (minted per robot by an admin: POST /api/robots/{id}/agent-token).
     # `optional`: additionally, a request with no credentials at all is taken
@@ -95,6 +100,14 @@ class Settings(BaseSettings):
             raise ValueError(
                 "AMR_AGENT_AUTH=optional lets anything without credentials act as a robot "
                 "agent; it is refused in production. Give each agent a token instead."
+            )
+        if self.is_production and not self.cookie_secure and not self.allow_insecure_http:
+            raise ValueError(
+                "AMR_COOKIE_SECURE=false in production: the session cookie and passwords "
+                "would cross the network in clear text. Serve the site over HTTPS (see "
+                "new_webui/deploy/nginx-tls.conf.example) and set AMR_COOKIE_SECURE=true, "
+                "or, to run over plain HTTP anyway (a closed test network), set "
+                "AMR_ALLOW_INSECURE_HTTP=true."
             )
         if not self.cors_origins:
             raise ValueError(

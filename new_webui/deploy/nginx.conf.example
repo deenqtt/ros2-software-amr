@@ -21,10 +21,22 @@
 #
 # Build the frontend with .env.production (see .env.production.example) so it
 # calls /backend/api — relative, so the same build works under any host name.
+#
+# This is plain HTTP: the backend then needs AMR_ALLOW_INSECURE_HTTP=true in
+# production. For HTTPS use nginx-tls.conf.example instead.
+#
+# Security headers: copy new_webui/frontend/nginx/security-headers.conf to
+# /etc/nginx/snippets/amr-security-headers.conf.
 
 map $http_upgrade $connection_upgrade {
     default upgrade;
     ''      close;
+}
+
+# Used by amr-security-headers.conf: HSTS over HTTPS only (empty = not sent).
+map $scheme $amr_hsts {
+    https   "max-age=31536000";
+    default "";
 }
 
 server {
@@ -35,7 +47,11 @@ server {
     index index.html;
 
     # Map uploads are a PGM plus its YAML; a large warehouse map is tens of MB.
-    client_max_body_size 64m;
+    client_max_body_size 33m;  # map image cap is 32 MiB (app/maps_files.py)
+
+    # Repeated in every location with an add_header of its own: such a
+    # location inherits none of the server's.
+    include /etc/nginx/snippets/amr-security-headers.conf;
 
     # ── Frontend ────────────────────────────────────────────────────────────
     location / {
@@ -47,6 +63,7 @@ server {
     location /assets/ {
         expires 30d;
         add_header Cache-Control "public, immutable";
+        include /etc/nginx/snippets/amr-security-headers.conf;
         try_files $uri =404;
     }
 
@@ -58,7 +75,13 @@ server {
     # Also carries the robots' ROS WebSockets (/backend/api/robots/<id>/ros), so
     # it upgrades connections and keeps idle ones open for an hour. Host keeps
     # the port: the backend compares it with the browser's Origin to refuse
-    # pages from other sites. X-Real-IP is what the audit trail records.
+    # pages from other sites.
+    #
+    # X-Forwarded-For is SET to the connecting address, not appended to: an
+    # appended header carries whatever the client wrote there. The backend's
+    # uvicorn believes it only from 127.0.0.1 (FORWARDED_ALLOW_IPS default),
+    # which is this nginx; that address is what the audit trail records and
+    # the sign-in throttle counts.
     location /backend/ {
         proxy_pass http://127.0.0.1:3002/;
         proxy_http_version 1.1;
@@ -66,7 +89,7 @@ server {
         proxy_set_header Connection $connection_upgrade;
         proxy_set_header Host $http_host;
         proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-For $remote_addr;
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_read_timeout 3600s;
         proxy_send_timeout 3600s;

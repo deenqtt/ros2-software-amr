@@ -389,6 +389,7 @@ dengan ID yang ditampilkan.
 | `AMR_ENV` | `development` | `production` menolak start bila CORS tidak aman |
 | `AMR_SESSION_IDLE_MINUTES` | `720` | Sesi berakhir setelah sekian menit tanpa aktivitas |
 | `AMR_COOKIE_SECURE` | `false` | `true` hanya bila situs memakai HTTPS |
+| `AMR_ALLOW_INSECURE_HTTP` | `false` | Production menolak start bila `AMR_COOKIE_SECURE=false`, kecuali ini `true` (HTTP polos dipilih secara sadar, mis. jaringan uji tertutup) |
 | `AMR_AGENT_AUTH` | `required` | Agent wajib membawa token per robot (Robot → Details → Agent token). `optional` hanya untuk development; production menolak start bila `optional` |
 | `AMR_AUDIT_RETENTION_DAYS` | `365` | Catatan Activity yang lebih lama dihapus saat start |
 | `AMR_BOOTSTRAP_USER` / `AMR_BOOTSTRAP_PASSWORD` | — | Super admin pertama, hanya dipakai saat database belum punya akun |
@@ -576,7 +577,19 @@ Isi `.env` yang wajib diubah:
 | `AMR_HTTP_PORT` | Port Web UI (default `80`) |
 | `AMR_CORS_ORIGINS` | Semua alamat yang dipakai membuka UI, mis. `http://192.168.2.84,http://amr.local` |
 | `AMR_BOOTSTRAP_USER` / `AMR_BOOTSTRAP_PASSWORD` | Super admin pertama — hapus kedua baris setelah login pertama |
-| `AMR_COOKIE_SECURE` | `true` hanya bila diakses lewat HTTPS |
+| `AMR_COOKIE_SECURE` / `AMR_ALLOW_INSECURE_HTTP` | Pilihan A (HTTP polos): `false` / `true` — tanpa `AMR_ALLOW_INSECURE_HTTP=true` backend production menolak start. Pilihan B (HTTPS): lihat di bawah |
+
+**HTTPS (disarankan):** taruh sertifikat di `/opt/amr/certs/` (`fullchain.pem`, `privkey.pem`; key
+harus terbaca uid 101), unduh juga `docker-compose.tls.yml`, lalu di `.env` set
+`COMPOSE_FILE=docker-compose.yml:docker-compose.tls.yml`, origin `https://…` di `AMR_CORS_ORIGINS`,
+dan hapus dua baris pilihan A. Port 80 lalu hanya redirect ke HTTPS, cookie jadi `Secure`, HSTS
+dikirim. Robot memakai `https://<ip-server>/backend` dan harus mempercayai sertifikatnya. Langkah
+lengkap (termasuk membuat sertifikat): [PRODUCTION_DEPLOYMENT.md → HTTPS](docs/runbooks/PRODUCTION_DEPLOYMENT.md#https).
+
+Container `web` punya alamat tetap (`AMR_WEB_ADDR`, default `172.30.57.10`, subnet `AMR_NET_SUBNET`
+`172.30.57.0/24`); backend hanya mempercayai `X-Forwarded-For` dari alamat itu, sehingga Activity
+dan pembatas login mencatat IP klien yang sebenarnya. Bila subnet bentrok ("Pool overlaps"), ubah
+keduanya.
 
 Buka `http://<ip-server>/`, login dengan akun di atas, lalu buat password sendiri.
 

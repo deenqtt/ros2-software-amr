@@ -12,6 +12,10 @@
 #
 # Update: set AMR_VERSION in .env, then `docker compose pull && docker compose up -d`.
 # Everything that must survive an update is in ./data and ./maps — back them up.
+#
+# HTTPS: add docker-compose.tls.yml (COMPOSE_FILE in .env, see .env.example)
+# and put the certificate in ./certs. Without it the site is plain HTTP, which
+# the backend refuses in production unless AMR_ALLOW_INSECURE_HTTP=true.
 
 name: amr
 
@@ -26,9 +30,16 @@ services:
       AMR_MAPS_DIR: /maps
       AMR_HOST: 0.0.0.0
       AMR_PORT: "3002"
+      # Read by uvicorn: take the client's address from X-Forwarded-For only
+      # on requests from the web container. Anything else that reaches the
+      # backend cannot choose the address the audit trail records or the
+      # sign-in throttle counts. Must equal the web container's ipv4_address.
+      FORWARDED_ALLOW_IPS: ${AMR_WEB_ADDR:-172.30.57.10}
     volumes:
       - ./data:/data
       - ./maps:/maps
+    networks:
+      - net
     # Not published: only the web container talks to it, on the compose
     # network. Robots reach it through the web container at /backend.
 
@@ -48,3 +59,16 @@ services:
       # proxies were removed for security (browsers reach robots through the
       # backend at /backend/api/robots/<id>/ros). See robots.conf.example.
       - ./nginx:/etc/nginx/amr.d:ro
+    networks:
+      net:
+        # Fixed, so the backend can trust this one address (FORWARDED_ALLOW_IPS).
+        ipv4_address: ${AMR_WEB_ADDR:-172.30.57.10}
+
+networks:
+  net:
+    # A fixed subnet, for the fixed address above. Change AMR_NET_SUBNET and
+    # AMR_WEB_ADDR together (the address must lie in the subnet) if this one
+    # overlaps a network already on the machine.
+    ipam:
+      config:
+        - subnet: ${AMR_NET_SUBNET:-172.30.57.0/24}

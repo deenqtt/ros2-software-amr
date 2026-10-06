@@ -67,3 +67,37 @@ def test_a_non_finite_number_is_rejected_not_a_server_error(client):
 
     assert response.status_code == 422
     assert response.json()["detail"]
+
+
+def _production(**overrides) -> Settings:
+    values = {
+        "_env_file": None,
+        "env": "production",
+        "cors_origins": ["https://amr.example.local"],
+        "agent_auth": "required",
+    }
+    values.update(overrides)
+    return Settings(**values)
+
+
+def test_production_refuses_an_insecure_cookie():
+    """Plain HTTP in production sends the session cookie and passwords in clear."""
+    with pytest.raises(ValueError, match="AMR_ALLOW_INSECURE_HTTP=true"):
+        _production(cookie_secure=False).validate_for_runtime()
+
+
+def test_production_runs_over_https():
+    _production(cookie_secure=True).validate_for_runtime()
+
+
+def test_production_over_plain_http_must_be_chosen_explicitly():
+    _production(cookie_secure=False, allow_insecure_http=True).validate_for_runtime()
+
+
+def test_insecure_http_is_read_from_the_environment(monkeypatch):
+    monkeypatch.setenv("AMR_ALLOW_INSECURE_HTTP", "true")
+    assert _production().allow_insecure_http is True
+
+
+def test_development_does_not_need_https():
+    Settings(_env_file=None, env="development").validate_for_runtime()

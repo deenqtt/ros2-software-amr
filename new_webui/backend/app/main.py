@@ -130,6 +130,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "AMR_AGENT_AUTH=optional: robot agents are let in without credentials, "
                 "and so is anything else that calls the agent's endpoints."
             )
+        if resolved.is_production and not resolved.cookie_secure:
+            # Only reachable with AMR_ALLOW_INSECURE_HTTP=true; validate_for_runtime
+            # refuses it otherwise. Said at every start so it is not forgotten.
+            log.warning(
+                "AMR_ALLOW_INSECURE_HTTP=true: serving production over plain HTTP. Session "
+                "cookies and passwords cross the network unencrypted; enable TLS and set "
+                "AMR_COOKIE_SECURE=true."
+            )
         yield
 
     app = FastAPI(

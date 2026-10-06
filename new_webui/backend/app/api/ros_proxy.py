@@ -91,11 +91,11 @@ def _origin_ok(websocket: WebSocket) -> bool:
     very host (Host header, port included) over http or https.
 
     The scheme is compared only when the backend knows it is serving TLS (scope
-    scheme ``wss``): then the page must be https. When it sees ``ws`` it cannot
-    tell plain HTTP from TLS ended at a proxy, because uvicorn trusts
-    X-Forwarded-Proto only from 127.0.0.1 — true for the host-installed nginx
-    (which therefore gets the full check) but not for the Docker web container.
-    Requiring http there would refuse every HTTPS site; accepting either gives
+    scheme ``wss``): then the page must be https. That is the case when TLS ends
+    at a proxy uvicorn trusts (FORWARDED_ALLOW_IPS: 127.0.0.1 for a host nginx,
+    the web container's address in Docker) and it says so in X-Forwarded-Proto.
+    When it sees ``ws`` it cannot tell plain HTTP from an untrusted proxy;
+    requiring http there would refuse such sites, and accepting either gives
     nothing to anyone who cannot already serve pages on this exact host name.
     """
     origin = websocket.headers.get("origin")
@@ -335,7 +335,7 @@ class _Relay:
                     "path": path,
                     "status": 200 if decision.allow else 403,
                     "detail": None if decision.allow else decision.reason,
-                    "ip": client_ip(self.websocket),  # type: ignore[arg-type]
+                    "ip": client_ip(self.websocket),
                 },
             )
         except sqlite3.Error:

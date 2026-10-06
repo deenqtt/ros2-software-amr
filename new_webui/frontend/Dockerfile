@@ -26,7 +26,9 @@ RUN npm run build
 FROM nginxinc/nginx-unprivileged:1.27-alpine
 
 # Where /backend/ is proxied to. The compose service name by default.
-ENV AMR_BACKEND_URL=http://backend:3002
+# AMR_HTTPS_PORT: the public HTTPS port, for the HTTP→HTTPS redirect (TLS only).
+ENV AMR_BACKEND_URL=http://backend:3002 \
+    AMR_HTTPS_PORT=443
 
 # Mounted per site for extra locations (robots). Exists empty so the include
 # in the template matches nothing rather than failing.
@@ -34,7 +36,15 @@ USER root
 RUN mkdir -p /etc/nginx/amr.d
 USER nginx
 
-COPY nginx/default.conf.template /etc/nginx/templates/default.conf.template
+# Two sets of templates, both rendered into /etc/nginx/conf.d at start-up:
+#   /etc/nginx/templates      plain HTTP on 8080 (the default)
+#   /etc/nginx/templates-tls  HTTPS on 8443, 8080 redirects to it; chosen with
+#                             NGINX_ENVSUBST_TEMPLATE_DIR (deploy/docker-compose.tls.yml)
+# Both share locations.inc.template, and the security headers.
+COPY nginx/default.conf.template nginx/locations.inc.template /etc/nginx/templates/
+COPY nginx/tls.conf.template /etc/nginx/templates-tls/default.conf.template
+COPY nginx/locations.inc.template /etc/nginx/templates-tls/
+COPY nginx/security-headers.conf /etc/nginx/amr/security-headers.conf
 COPY --from=build /src/dist /usr/share/nginx/html
 
 EXPOSE 8080

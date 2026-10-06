@@ -13,6 +13,7 @@ import logging
 import sqlite3
 
 from fastapi import FastAPI, Request
+from starlette.requests import HTTPConnection
 from starlette.responses import Response
 
 from app.auth import Principal
@@ -28,14 +29,19 @@ _MUTATING = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 _SELF_RECORDING = frozenset({"/api/auth/login", "/api/auth/logout"})
 
 
-def client_ip(request: Request) -> str | None:
-    # Behind nginx every request arrives from 127.0.0.1; the example config
-    # forwards the real address. Only trusted when the backend listens on
-    # loopback, i.e. nothing but nginx can have set it.
-    forwarded = request.headers.get("x-real-ip")
-    if forwarded and request.client and request.client.host in ("127.0.0.1", "::1"):
-        return forwarded
-    return request.client.host if request.client else None
+def client_ip(conn: HTTPConnection) -> str | None:
+    """
+    The address of whoever sent this request or opened this WebSocket.
+
+    Only ever the connection's own peer address. Behind a proxy that is the
+    proxy's address unless uvicorn has replaced it: uvicorn's proxy-headers
+    support takes X-Forwarded-For, but only from a peer listed in
+    FORWARDED_ALLOW_IPS (127.0.0.1 by default; the web container's address in
+    deploy/docker-compose.yml). Reading X-Forwarded-For or X-Real-IP here
+    instead would let any client choose the address that the audit trail
+    records and the sign-in throttle counts against — so this never does.
+    """
+    return conn.client.host if conn.client else None
 
 
 def record(

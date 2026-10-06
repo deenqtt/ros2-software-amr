@@ -1,0 +1,115 @@
+# nginx for the AMR web UI on the server, over HTTPS — the host-installed
+# (non-Docker) setup. Same layout as nginx.conf.example:
+#
+#   /            the built frontend (new_webui/frontend/dist), SPA fallback
+#   /backend/    the FastAPI backend on 127.0.0.1:3002, prefix stripped, and
+#                the robots' ROS relay WebSocket /backend/api/robots/<id>/ros
+#
+# With Docker, do not put this in front of the web container: the container
+# serves HTTPS itself (deploy/docker-compose.tls.yml), and a proxy in front of
+# it would hide every client's address behind its own.
+#
+# Install:
+#   1. Certificate and key (see docs/runbooks/PRODUCTION_DEPLOYMENT.md, "HTTPS"):
+#        /etc/ssl/amr/fullchain.pem   /etc/ssl/amr/privkey.pem (mode 600, root)
+#   2. cp new_webui/frontend/nginx/security-headers.conf \
+#         /etc/nginx/snippets/amr-security-headers.conf
+#   3. Copy this file to /etc/nginx/sites-available/amr, set server_name and
+#      paths, remove any older amr site, then
+#        ln -s ../sites-available/amr /etc/nginx/sites-enabled/ &&
+#        nginx -t && systemctl reload nginx
+#   4. Backend .env: AMR_COOKIE_SECURE=true and https:// origins in
+#      AMR_CORS_ORIGINS. Robots: https://amr.example.local/backend, and they
+#      must trust the certificate (an internal CA installed on the robot).
+#
+# No /robot/<name> proxy to rosbridge here, ever: rosbridge has no
+# authentication. See nginx.conf.example.
+
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    ''      close;
+}
+
+# Used by amr-security-headers.conf: HSTS over HTTPS only (empty = not sent).
+map $scheme $amr_hsts {
+    https   "max-age=31536000";
+    default "";
+}
+
+# Port 80 only redirects. 308 keeps the method and body (a 301 turns a POST
+# into a GET). No HSTS here: browsers ignore it over plain HTTP.
+server {
+    listen 80;
+    listen [::]:80;
+    server_name amr.example.local;
+
+    location / {
+        return 308 https://$host$request_uri;
+    }
+}
+
+server {
+    # `listen ... ssl http2` works on every nginx from 1.9.5; 1.25.1+ prefers a
+    # separate `http2 on;` and only warns about this form.
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name amr.example.local;
+
+    ssl_certificate     /etc/ssl/amr/fullchain.pem;
+    ssl_certificate_key /etc/ssl/amr/privkey.pem;
+    ssl_protocols       TLSv1.2 TLSv1.3;
+    ssl_prefer_server_ciphers off;
+    ssl_session_cache   shared:amr_tls:10m;
+    ssl_session_timeout 1d;
+    ssl_session_tickets off;
+
+    root /opt/amr/web/dist;
+    index index.html;
+
+    # Map uploads are a PGM plus its YAML; a large warehouse map is tens of MB.
+    client_max_body_size 33m;  # map image cap is 32 MiB (app/maps_files.py)
+
+    # Security headers, Strict-Transport-Security included ($scheme is https).
+    # Repeated in every location with an add_header of its own: such a
+    # location inherits none of the server's.
+    include /etc/nginx/snippets/amr-security-headers.conf;
+
+    # ── Frontend ────────────────────────────────────────────────────────────
+    location / {
+        # Client-side routes (/robot/…/nav, /missions, …) all serve the app.
+        # index.html is never cached, so a new release is picked up at once.
+        try_files $uri $uri/ /index.html;
+        add_header Cache-Control "no-cache";
+        include /etc/nginx/snippets/amr-security-headers.conf;
+    }
+
+    # Hashed assets never change under the same name; cache them hard.
+    location /assets/ {
+        expires 30d;
+        add_header Cache-Control "public, immutable";
+        include /etc/nginx/snippets/amr-security-headers.conf;
+        try_files $uri =404;
+    }
+
+    # ── Backend ─────────────────────────────────────────────────────────────
+    # Trailing slash strips /backend. Upgrades WebSockets for the ROS relay and
+    # keeps idle ones open for an hour. Host keeps the port: the backend
+    # compares it with the browser's Origin. X-Forwarded-Proto https lets the
+    # backend (which trusts it from 127.0.0.1) require an https Origin.
+    #
+    # X-Forwarded-For is SET to the connecting address, never appended to; the
+    # backend's uvicorn believes it only from 127.0.0.1 (FORWARDED_ALLOW_IPS
+    # default), i.e. from this nginx.
+    location /backend/ {
+        proxy_pass http://127.0.0.1:3002/;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+    }
+}
