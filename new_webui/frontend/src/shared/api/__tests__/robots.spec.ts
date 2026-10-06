@@ -19,6 +19,8 @@ const wire = {
   accent: 3,
   active_map_id: null,
   desired_mode: 'nav' as const,
+  agent_token_set: true,
+  agent_token_created_at: '2026-10-01T08:00:00Z',
   created_at: '2026-09-25 08:00:00',
   updated_at: '2026-09-25 08:00:00',
 }
@@ -36,7 +38,15 @@ describe('fromWire', () => {
       accent: 3,
       activeMapId: null,
       desiredMode: 'nav',
+      agentTokenSet: true,
+      agentTokenCreatedAt: '2026-10-01T08:00:00Z',
     })
+  })
+
+  it('maps an unset agent token', () => {
+    const robot = fromWire({ ...wire, agent_token_set: false, agent_token_created_at: null })
+    expect(robot.agentTokenSet).toBe(false)
+    expect(robot.agentTokenCreatedAt).toBeNull()
   })
 
   it('keeps a zero domain as 0, because 0 is a real ROS domain', () => {

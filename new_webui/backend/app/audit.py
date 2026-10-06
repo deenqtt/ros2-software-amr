@@ -67,12 +67,14 @@ def record(
 def _is_agent_progress(request: Request, principal: Principal | None) -> bool:
     # An agent reports progress on every step of every lap. Recording each one
     # would bury the changes people made under thousands of rows nobody reads;
-    # the run itself already keeps that history.
+    # the run itself already keeps that history. The handler marks a report as
+    # progress-only, so an agent changing a run's state is still recorded.
     return (
         principal is not None
         and principal.kind == "agent"
         and request.method == "PATCH"
         and request.url.path.startswith("/api/runs/")
+        and getattr(request.state, "audit_skip", False)
     )
 
 

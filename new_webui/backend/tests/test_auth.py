@@ -157,9 +157,18 @@ def test_nobody_signed_in_may_not_change_anything(anon_client):
     assert anon_client.get("/api/users").status_code == 401
 
 
-def test_agent_endpoints_stay_open_only_while_agent_auth_is_optional(anon_client, floor):
+def test_anonymous_agents_are_let_in_only_in_optional_development_mode(anon_client, floor):
     robot_id = floor["robot"]["id"]
-    # What an agent does on every sync, with no credentials.
+    # By default nobody without credentials is taken for a robot.
+    assert anon_client.app.state.settings.agent_auth == "required"
+    assert anon_client.get(f"/api/robots/{robot_id}").status_code == 401
+    assert (
+        anon_client.put(f"/api/robots/{robot_id}/mode", json={"desired_mode": "nav"}).status_code
+        == 401
+    )
+
+    # The development-only window: what an agent does on every sync, with no credentials.
+    anon_client.app.state.settings.agent_auth = "optional"
     assert anon_client.get(f"/api/robots/{robot_id}").status_code == 200
     assert anon_client.get(f"/api/robots/{robot_id}/run").status_code == 200
     assert (
@@ -325,15 +334,18 @@ def test_sign_in_attempts_are_recorded_with_the_name_tried(anon_client, settings
     ]
 
 
-def test_agent_progress_reports_are_not_recorded(client, anon_client, floor, settings):
+def test_agent_progress_reports_are_not_recorded(client, agent_for, floor, settings):
+    agent = agent_for(client, floor["robot"]["id"])
     run = client.post(
         "/api/runs", json={"mission_id": floor["mission"]["id"], "robot_id": floor["robot"]["id"]}
     ).json()
-    anon_client.patch(f"/api/runs/{run['id']}", json={"step_index": 1})
-    anon_client.put(f"/api/robots/{floor['robot']['id']}/mode", json={"desired_mode": "idle"})
+    agent.patch(f"/api/runs/{run['id']}", json={"step_index": 1})
+    agent.put(f"/api/robots/{floor['robot']['id']}/mode", json={"desired_mode": "idle"})
 
     agent_rows = [
-        (row["method"], row["path"]) for row in audit_rows(settings) if row["username"] == "agent"
+        (row["method"], row["path"])
+        for row in audit_rows(settings)
+        if row["username"] == "agent:AMR-01"
     ]
     assert agent_rows == [("PUT", f"/api/robots/{floor['robot']['id']}/mode")]
 

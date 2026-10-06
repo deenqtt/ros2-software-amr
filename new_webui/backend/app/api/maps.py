@@ -25,7 +25,7 @@ from fastapi import APIRouter, File, Form, HTTPException, Request, Response, Upl
 from fastapi.responses import FileResponse
 
 from app.api.deps import Connection
-from app.auth import Admin, AdminOrAgent, Reader
+from app.auth import Admin, AdminOrAgent, Principal, Reader
 from app.db import transaction
 from app.maps_files import (
     YAML_NAME,
@@ -72,10 +72,10 @@ def get_map(map_id: str, connection: Connection) -> MapOut:
     "",
     response_model=MapOut,
     status_code=status.HTTP_201_CREATED,
-    dependencies=[AdminOrAgent],
 )
 async def create_map(
     request: Request,
+    principal: Annotated[Principal, AdminOrAgent],
     connection: Connection,
     name: Annotated[str, Form()],
     yaml_file: Annotated[UploadFile, File()],
@@ -103,6 +103,9 @@ async def create_map(
     except MapFormatError as error:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(error)) from error
 
+    if principal.kind == "agent" and principal.robot_id is not None:
+        # A robot publishes its own surveys; it cannot attribute one to another.
+        robot_id = principal.robot_id
     if robot_id is not None and robots_repo.get_robot(connection, robot_id) is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, f"Robot not found: {robot_id}")
 

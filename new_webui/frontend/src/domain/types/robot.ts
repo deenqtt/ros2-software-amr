@@ -75,6 +75,14 @@ export interface RobotConfig {
    * robot only moves when a mission gives it a goal.
    */
   desiredMode: DesiredMode
+  /**
+   * Whether this robot's agent has a token issued. The token itself is never
+   * readable after it is generated. Optional so fixtures that predate the
+   * field stay valid; absent means not set.
+   */
+  agentTokenSet?: boolean
+  /** When the current agent token was generated, or null when there is none. */
+  agentTokenCreatedAt?: string | null
 }
 
 /**

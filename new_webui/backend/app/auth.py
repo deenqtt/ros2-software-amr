@@ -5,11 +5,15 @@ Every route declares the least role it needs, through one of the dependencies at
 the bottom of this module. Nothing checks a role inline in a handler: a check
 that lives in one place is a check that can be read in one place.
 
-A request is either a signed-in person (session cookie) or a robot agent. Until
-agents carry their own credentials, an agent is recognised only by *not* being
-signed in, and only on the endpoints an agent uses, and only while
-``AMR_AGENT_AUTH=optional``. That window is deliberate and named, so it can be
-shut with one setting.
+A request is either a signed-in person (session cookie) or a robot agent. An
+agent presents ``Authorization: Bearer <token>``, a token an admin minted for one
+robot; it is accepted only on the endpoints an agent uses, and binds the caller
+to that robot. A bearer token that does not match is refused outright — it never
+falls through to being treated as anonymous.
+
+The old way in, "not signed in at all means agent", survives only for local
+development: ``AMR_AGENT_AUTH=optional`` outside production, with no cookie and
+no Authorization header on the request. Production refuses to start with it.
 """
 
 from __future__ import annotations
@@ -20,6 +24,7 @@ from typing import Annotated, Literal
 from fastapi import Depends, HTTPException, Request, status
 
 from app.api.deps import Connection
+from app.repositories import robots as robots_repo
 from app.repositories import users as users_repo
 from app.security import hash_token
 
@@ -41,6 +46,9 @@ class Principal:
     session: str | None = None
     #: Signed in with a password someone else chose; may only replace it.
     must_change_password: bool = False
+    #: The one robot an agent may act for. None for people, and for the
+    #: unbound development-only agent (``AMR_AGENT_AUTH=optional``).
+    robot_id: str | None = None
 
     def at_least(self, role: Role) -> bool:
         return self.role is not None and _RANK[self.role] >= _RANK[role]
@@ -78,27 +86,90 @@ def signed_in(request: Request, connection: Connection) -> Principal | None:
     return principal
 
 
+#: The unbound agent of ``AMR_AGENT_AUTH=optional`` (development only).
 AGENT = Principal(kind="agent", username="agent")
 
 
 PASSWORD_CHANGE_REQUIRED = "password_change_required"  # noqa: S105 — an error code, not a secret
 
 
+def _unauthorized(message: str = "Sign in to continue", scheme: str = "Cookie") -> HTTPException:
+    return HTTPException(
+        status.HTTP_401_UNAUTHORIZED, message, headers={"WWW-Authenticate": scheme}
+    )
+
+
+def _bearer_token(request: Request) -> str | None:
+    """The token of an ``Authorization: Bearer`` header, "" if malformed, None if absent."""
+    header = request.headers.get("authorization")
+    if header is None:
+        return None
+    scheme, _, token = header.strip().partition(" ")
+    if scheme.lower() != "bearer":
+        return None
+    return token.strip()
+
+
+def agent_from_token(connection: Connection, token: str) -> Principal | None:
+    """The agent this token belongs to, bound to its robot, or None."""
+    if not token:
+        return None
+    row = robots_repo.get_robot_by_agent_token(connection, hash_token(token))
+    if row is None:
+        return None
+    return Principal(
+        kind="agent",
+        username=f"agent:{row['name'] or row['id']}",
+        robot_id=row["id"],
+    )
+
+
+def _agent(request: Request, connection: Connection) -> Principal | None:
+    """
+    The robot agent behind this request, if it is one; raises on a bad token.
+
+    Not cached on ``request.state.principal``: a stricter guard on the same
+    request must still see "nobody signed in" and answer 401.
+    """
+    token = _bearer_token(request)
+    if token is not None:
+        bound = agent_from_token(connection, token)
+        if bound is None:
+            # A wrong token is a refusal, never a reason to try something else.
+            raise _unauthorized("Invalid agent token", "Bearer")
+        return bound
+
+    if signed_in(request, connection) is not None:
+        return None
+    settings = request.app.state.settings
+    if (
+        settings.agent_auth == "optional"
+        and not settings.is_production
+        and SESSION_COOKIE not in request.cookies
+        and "authorization" not in request.headers
+    ):
+        # Development only, and only for a request that carries no credential
+        # at all: a stale or forged cookie is a person who must sign in again,
+        # not a robot.
+        return AGENT
+    return None
+
+
 def _require(minimum: Role, *, agent: bool, pending_ok: bool = False):
     def dependency(request: Request, connection: Connection) -> Principal:
+        if agent:
+            # A bearer token is looked at first, and only on agent endpoints:
+            # it never stands in for a person on any other guard.
+            robot_agent = _agent(request, connection)
+            if robot_agent is not None:
+                # Recorded as the actor for the audit trail, but never cached
+                # as the signed-in principal.
+                request.state.actor = robot_agent
+                return robot_agent
+
         principal = signed_in(request, connection)
         if principal is None:
-            if agent and request.app.state.settings.agent_auth == "optional":
-                # Recorded as the actor for the audit trail, but never cached as
-                # the signed-in principal: a stricter guard on the same request
-                # must still see "nobody signed in" and answer 401.
-                request.state.actor = AGENT
-                return AGENT
-            raise HTTPException(
-                status.HTTP_401_UNAUTHORIZED,
-                "Sign in to continue",
-                headers={"WWW-Authenticate": "Cookie"},
-            )
+            raise _unauthorized()
         if principal.must_change_password and not pending_ok:
             # Everything but reading who you are, changing the password and
             # signing out waits until a password someone else chose is replaced.
@@ -123,6 +194,20 @@ def _require(minimum: Role, *, agent: bool, pending_ok: bool = False):
         return principal
 
     return dependency
+
+
+def ensure_robot(principal: Principal, robot_id: str) -> None:
+    """
+    Refuse an agent acting on a robot that is not its own.
+
+    People are unaffected: their role already decided what they may do. An
+    unbound agent (development only) is not limited either.
+    """
+    if principal.kind == "agent" and principal.robot_id is not None:
+        if principal.robot_id != robot_id:
+            raise HTTPException(
+                status.HTTP_403_FORBIDDEN, "This agent token belongs to another robot"
+            )
 
 
 # Read anything. People of any role, and the robot agent.

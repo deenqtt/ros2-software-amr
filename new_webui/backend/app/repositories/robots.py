@@ -12,9 +12,12 @@ import uuid
 
 ACCENT_COUNT = 8
 
+# The agent token's hash is deliberately not in here. Whether one is set is
+# derived instead, so no route can hand the hash out by returning a row.
 _COLUMNS = """
     id, name, bridge_url, ros_domain_id, camera_url,
-    namespace, serial, accent, active_map_id, desired_mode, created_at, updated_at
+    namespace, serial, accent, active_map_id, desired_mode, created_at, updated_at,
+    agent_token_hash IS NOT NULL AS agent_token_set, agent_token_created_at
 """
 
 
@@ -136,6 +139,37 @@ def set_desired_mode(connection: sqlite3.Connection, robot_id: str, mode: str) -
     """
     cursor = connection.execute(
         "UPDATE robots SET desired_mode = ? WHERE id = ?", (mode, robot_id)
+    )
+    return cursor.rowcount > 0
+
+
+def get_robot_by_agent_token(connection: sqlite3.Connection, token_hash: str) -> sqlite3.Row | None:
+    """The robot whose agent holds the token with this hash, or None."""
+    return connection.execute(
+        f"SELECT {_COLUMNS} FROM robots WHERE agent_token_hash = ?",  # noqa: S608 — fixed literal
+        (token_hash,),
+    ).fetchone()
+
+
+def set_agent_token(connection: sqlite3.Connection, robot_id: str, token_hash: str) -> bool:
+    """
+    Store a new agent token hash, replacing any previous one.
+
+    Replacing is the rotation: the old token stops matching the moment this
+    commits, so a leaked token is revoked by issuing a new one.
+    """
+    cursor = connection.execute(
+        "UPDATE robots SET agent_token_hash = ?, agent_token_created_at = datetime('now') "
+        "WHERE id = ?",
+        (token_hash, robot_id),
+    )
+    return cursor.rowcount > 0
+
+
+def clear_agent_token(connection: sqlite3.Connection, robot_id: str) -> bool:
+    cursor = connection.execute(
+        "UPDATE robots SET agent_token_hash = NULL, agent_token_created_at = NULL WHERE id = ?",
+        (robot_id,),
     )
     return cursor.rowcount > 0
 

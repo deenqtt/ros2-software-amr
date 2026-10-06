@@ -88,6 +88,24 @@ def client_as(anon_client: TestClient, settings: Settings) -> Callable[..., Test
 
 
 @pytest.fixture
+def agent_for(anon_client: TestClient) -> Callable[..., TestClient]:
+    """
+    ``agent_for(admin, robot_id)``: a client carrying that robot's agent token,
+    minted through the API by ``admin``. Has no session cookie.
+    """
+
+    def make(admin: TestClient, robot_id: str) -> TestClient:
+        response = admin.post(f"/api/robots/{robot_id}/agent-token")
+        assert response.status_code == 201, response.text
+        token = response.json()["token"]
+        test_client = TestClient(anon_client.app, headers={"Authorization": f"Bearer {token}"})
+        test_client.token = token  # type: ignore[attr-defined]
+        return test_client
+
+    return make
+
+
+@pytest.fixture
 def client(client_as) -> TestClient:
     """Signed in as a super admin, who may do everything. Most tests are about behaviour."""
     return client_as("super_admin", "admin")

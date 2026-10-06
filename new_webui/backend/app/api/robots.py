@@ -8,19 +8,29 @@ is what replaces that.
 
 from __future__ import annotations
 
+import secrets
 import sqlite3
+from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Response, status
 
 from app.api.deps import Connection
-from app.auth import Admin, AdminOrAgent, OperatorOrAgent, Reader
+from app.auth import (
+    Admin,
+    AdminOrAgent,
+    OperatorOrAgent,
+    Principal,
+    Reader,
+    ensure_robot,
+)
 from app.db import transaction
 from app.repositories import maps as maps_repo
 from app.repositories import missions as missions_repo
 from app.repositories import robots as repo
 from app.schemas.map import AssignMapIn
 from app.schemas.mission import RunPlan, StepOut
-from app.schemas.robot import RobotCreate, RobotOut, RobotUpdate, SetModeIn
+from app.schemas.robot import AgentTokenOut, RobotCreate, RobotOut, RobotUpdate, SetModeIn
+from app.security import hash_token
 
 router = APIRouter(prefix="/api/robots", tags=["robots"], dependencies=[Reader])
 
@@ -103,8 +113,13 @@ def delete_robot(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@router.put("/{robot_id}/mode", response_model=RobotOut, dependencies=[OperatorOrAgent])
-def set_mode(robot_id: str, body: SetModeIn, connection: Connection) -> RobotOut:
+@router.put("/{robot_id}/mode", response_model=RobotOut)
+def set_mode(
+    robot_id: str,
+    body: SetModeIn,
+    principal: Annotated[Principal, OperatorOrAgent],
+    connection: Connection,
+) -> RobotOut:
     """
     Say what this robot should be doing.
 
@@ -116,6 +131,7 @@ def set_mode(robot_id: str, body: SetModeIn, connection: Connection) -> RobotOut
     moving: an idle planner plans nothing, and the robot only moves when a
     mission gives it a goal.
     """
+    ensure_robot(principal, robot_id)
     if repo.get_robot(connection, robot_id) is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Robot not found")
 
@@ -129,7 +145,11 @@ def set_mode(robot_id: str, body: SetModeIn, connection: Connection) -> RobotOut
 
 
 @router.get("/{robot_id}/run", response_model=RunPlan | None)
-def get_active_run(robot_id: str, connection: Connection) -> RunPlan | None:
+def get_active_run(
+    robot_id: str,
+    principal: Annotated[Principal, Reader],
+    connection: Connection,
+) -> RunPlan | None:
     """
     What this robot should be doing, or null.
 
@@ -139,6 +159,7 @@ def get_active_run(robot_id: str, connection: Connection) -> RunPlan | None:
     is the call that replaces that, and it is also how an agent that has just
     restarted discovers it was in the middle of something.
     """
+    ensure_robot(principal, robot_id)
     if repo.get_robot(connection, robot_id) is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Robot not found")
 
@@ -153,10 +174,11 @@ def get_active_run(robot_id: str, connection: Connection) -> RunPlan | None:
     return RunPlan(**dict(run), steps=steps)
 
 
-@router.put("/{robot_id}/map", response_model=RobotOut, dependencies=[AdminOrAgent])
+@router.put("/{robot_id}/map", response_model=RobotOut)
 def assign_map(
     robot_id: str,
     body: AssignMapIn,
+    principal: Annotated[Principal, AdminOrAgent],
     connection: Connection,
 ) -> RobotOut:
     """
@@ -171,6 +193,7 @@ def assign_map(
     against its local cache, downloads if needed, and calls
     /map_server/load_map with a path on its own disk.
     """
+    ensure_robot(principal, robot_id)
     if repo.get_robot(connection, robot_id) is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Robot not found")
 
@@ -184,3 +207,44 @@ def assign_map(
     if row is None:  # pragma: no cover — existence was just checked
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Robot not found")
     return _to_out(row)
+
+
+@router.post(
+    "/{robot_id}/agent-token",
+    response_model=AgentTokenOut,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Admin],
+)
+def mint_agent_token(robot_id: str, response: Response, connection: Connection) -> AgentTokenOut:
+    """
+    Issue this robot's agent token, replacing any it had.
+
+    Shown once: only its hash is stored, so a lost token is replaced, not
+    recovered. Calling this again is the rotation — the previous token stops
+    working as soon as the new one is stored. A person only: an agent cannot
+    mint itself a new credential.
+    """
+    token = secrets.token_urlsafe(32)
+    with transaction(connection):
+        updated = repo.set_agent_token(connection, robot_id, hash_token(token))
+    if not updated:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Robot not found")
+
+    row = repo.get_robot(connection, robot_id)
+    if row is None:  # pragma: no cover — it was just updated
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Robot not found")
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["Pragma"] = "no-cache"
+    return AgentTokenOut(token=token, created_at=str(row["agent_token_created_at"]))
+
+
+@router.delete(
+    "/{robot_id}/agent-token", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Admin]
+)
+def revoke_agent_token(robot_id: str, connection: Connection) -> Response:
+    """Revoke this robot's agent token. Its agent is refused until a new one is issued."""
+    with transaction(connection):
+        updated = repo.clear_agent_token(connection, robot_id)
+    if not updated:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Robot not found")
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

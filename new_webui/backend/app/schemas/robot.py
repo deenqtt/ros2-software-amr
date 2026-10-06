@@ -131,6 +131,20 @@ class RobotOut(BaseModel):
     desired_mode: DesiredMode
     created_at: str
     updated_at: str
+    # Whether this robot's agent has a token, and since when. The token itself
+    # is shown once, when minted, and its hash never leaves the database.
+    agent_token_set: bool = False
+    agent_token_created_at: str | None = None
+
+
+class AgentTokenOut(BaseModel):
+    """
+    A freshly minted agent token. Returned once; the server keeps only its hash,
+    so a lost token is replaced, never recovered.
+    """
+
+    token: str
+    created_at: str
 
 
 class SetModeIn(BaseModel):

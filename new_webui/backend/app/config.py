@@ -53,11 +53,12 @@ class Settings(BaseSettings):
     # served over plain HTTP (the nginx example is), or the browser drops the
     # cookie and every sign-in appears to fail.
     cookie_secure: bool = False
-    # How a robot agent is let in. `optional`: an agent may call the endpoints
-    # it needs without credentials — what every agent does today, so nothing
-    # breaks while agent tokens roll out. `required`: only signed-in people;
-    # agents are refused until they carry a token.
-    agent_auth: Literal["optional", "required"] = "optional"
+    # How a robot agent is let in. `required`: only with its own bearer token
+    # (minted per robot by an admin: POST /api/robots/{id}/agent-token).
+    # `optional`: additionally, a request with no credentials at all is taken
+    # to be an unbound agent — for local development only; production refuses
+    # to start with it.
+    agent_auth: Literal["optional", "required"] = "required"
     audit_retention_days: int = Field(default=365, ge=1)
 
     # The first super admin on a fresh server. Read only while the database has
@@ -89,6 +90,11 @@ class Settings(BaseSettings):
         if self.is_production and "*" in self.cors_origins:
             raise ValueError(
                 "AMR_CORS_ORIGINS must name explicit origins in production; '*' is refused."
+            )
+        if self.is_production and self.agent_auth == "optional":
+            raise ValueError(
+                "AMR_AGENT_AUTH=optional lets anything without credentials act as a robot "
+                "agent; it is refused in production. Give each agent a token instead."
             )
         if not self.cors_origins:
             raise ValueError(

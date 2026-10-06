@@ -15,6 +15,7 @@ import {
   AlertCircle,
   CheckCircle2,
   CircleSlash,
+  KeyRound,
   Pencil,
   Radio,
   TriangleAlert,
@@ -35,6 +36,9 @@ import { usePermission } from '@/shared/composables/usePermission'
 import TopicHealthTable from '../components/TopicHealthTable.vue'
 import RobotBar from '../components/RobotBar.vue'
 import RobotFormDialog from '../components/RobotFormDialog.vue'
+import AgentTokenDialog from '../components/AgentTokenDialog.vue'
+import ConfirmDialog from '@/shared/components/ConfirmDialog.vue'
+import { robotsApi } from '@/shared/api/robots'
 import { useRobotStop } from '../useRobotStop'
 import { backendLabel, connectionHelp } from '../connectionHelp'
 import { problemTopics, robotHealth, type HealthTone } from '../robotHealth'
@@ -185,6 +189,64 @@ async function onSubmit(values: ReturnType<typeof toRobotPatch>) {
   } finally {
     saving.value = false
   }
+}
+
+// ── Agent token ──────────────────────────────────────────────────────────────
+
+const tokenStatus = computed(() => {
+  const r = robot.value
+  if (!r?.agentTokenSet) return 'Not set'
+  const date = r.agentTokenCreatedAt ? new Date(r.agentTokenCreatedAt) : null
+  return date && !Number.isNaN(date.getTime())
+    ? `Set on ${date.toLocaleDateString()}`
+    : 'Set'
+})
+
+/** Which confirmation is open. Rotating and revoking both cut the agent off. */
+const tokenConfirm = ref<'rotate' | 'revoke' | null>(null)
+const tokenPending = ref(false)
+/** The plaintext, held only while its dialog is open. */
+const issuedToken = ref('')
+const tokenDialogOpen = ref(false)
+
+watch(tokenDialogOpen, (open) => {
+  if (!open) issuedToken.value = ''
+})
+
+async function generateToken() {
+  if (!robot.value || !canEdit.value) return
+  tokenPending.value = true
+  try {
+    const issued = await robotsApi.createAgentToken(robot.value.id)
+    issuedToken.value = issued.token
+    tokenDialogOpen.value = true
+    tokenConfirm.value = null
+    await fleet.load()
+  } catch (error) {
+    toast.error(fleet.describeError(error))
+  } finally {
+    tokenPending.value = false
+  }
+}
+
+async function revokeToken() {
+  if (!robot.value || !canEdit.value) return
+  tokenPending.value = true
+  try {
+    await robotsApi.revokeAgentToken(robot.value.id)
+    toast.success('Agent token revoked')
+    tokenConfirm.value = null
+    await fleet.load()
+  } catch (error) {
+    toast.error(fleet.describeError(error))
+  } finally {
+    tokenPending.value = false
+  }
+}
+
+function onGenerateClick() {
+  if (robot.value?.agentTokenSet) tokenConfirm.value = 'rotate'
+  else void generateToken()
 }
 </script>
 
@@ -418,6 +480,40 @@ async function onSubmit(values: ReturnType<typeof toRobotPatch>) {
                 {{ robot.cameraUrl || '—' }}
               </dd>
             </div>
+            <div class="flex flex-wrap items-center justify-between gap-sm sm:col-span-2">
+              <dt class="flex shrink-0 items-center gap-xs text-muted">
+                <KeyRound :size="13" /> Agent token
+              </dt>
+              <dd class="flex flex-wrap items-center gap-xs">
+                <span
+                  data-testid="agent-token-status"
+                  :class="robot.agentTokenSet ? 'text-ink' : 'text-muted'"
+                  >{{ tokenStatus }}</span
+                >
+                <BlockedTip :reason="editBlocker">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    data-testid="agent-token-generate"
+                    :disabled="!canEdit || tokenPending"
+                    @click="onGenerateClick"
+                  >
+                    {{ robot.agentTokenSet ? 'Rotate token' : 'Generate token' }}
+                  </Button>
+                </BlockedTip>
+                <BlockedTip v-if="robot.agentTokenSet" :reason="editBlocker">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    data-testid="agent-token-revoke"
+                    :disabled="!canEdit || tokenPending"
+                    @click="tokenConfirm = 'revoke'"
+                  >
+                    Revoke
+                  </Button>
+                </BlockedTip>
+              </dd>
+            </div>
           </dl>
         </CollapsibleSection>
 
@@ -465,5 +561,23 @@ async function onSubmit(values: ReturnType<typeof toRobotPatch>) {
       :server-error="formError"
       @submit="onSubmit"
     />
+
+    <ConfirmDialog
+      :open="tokenConfirm !== null"
+      destructive
+      :pending="tokenPending"
+      :title="tokenConfirm === 'revoke' ? `Revoke ${robot.name}'s token?` : `Rotate ${robot.name}'s token?`"
+      :description="
+        tokenConfirm === 'revoke'
+          ? 'The robot agent stops authenticating with the server right away and stays cut off until a new token is generated, put in /etc/amr/robot.env as AMR_AGENT_TOKEN, and amr-agent is restarted.'
+          : 'The current token stops working at once, so the robot agent stops authenticating until the new token is put in /etc/amr/robot.env as AMR_AGENT_TOKEN and amr-agent is restarted.'
+      "
+      :confirm-label="tokenConfirm === 'revoke' ? 'Revoke' : 'Rotate'"
+      @update:open="(open: boolean) => !open && !tokenPending && (tokenConfirm = null)"
+      @cancel="tokenConfirm = null"
+      @confirm="tokenConfirm === 'revoke' ? revokeToken() : generateToken()"
+    />
+
+    <AgentTokenDialog v-model:open="tokenDialogOpen" :token="issuedToken" :robot-name="robot.name" />
   </div>
 </template>

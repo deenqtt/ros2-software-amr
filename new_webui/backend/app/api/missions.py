@@ -10,11 +10,12 @@ the next goal.
 from __future__ import annotations
 
 import sqlite3
+from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Query, Response, status
+from fastapi import APIRouter, HTTPException, Query, Request, Response, status
 
 from app.api.deps import Connection
-from app.auth import Admin, CurrentOperator, OperatorOrAgent, Reader
+from app.auth import Admin, CurrentOperator, OperatorOrAgent, Principal, Reader, ensure_robot
 from app.db import transaction
 from app.repositories import maps as maps_repo
 from app.repositories import missions as repo
@@ -232,8 +233,14 @@ def start_run(body: RunStart, operator: CurrentOperator, connection: Connection)
     return RunOut.model_validate(dict(row))
 
 
-@runs_router.patch("/{run_id}", response_model=RunOut, dependencies=[OperatorOrAgent])
-def update_run(run_id: str, body: RunProgress, connection: Connection) -> RunOut:
+@runs_router.patch("/{run_id}", response_model=RunOut)
+def update_run(
+    run_id: str,
+    body: RunProgress,
+    request: Request,
+    principal: Annotated[Principal, OperatorOrAgent],
+    connection: Connection,
+) -> RunOut:
     """
     Report progress, or end the run.
 
@@ -248,6 +255,8 @@ def update_run(run_id: str, body: RunProgress, connection: Connection) -> RunOut
     current = repo.get_run(connection, run_id)
     if current is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Run not found")
+    # An agent reports on its own robot's runs only.
+    ensure_robot(principal, str(current["robot_id"]))
     if current["state"] in ("done", "failed", "canceled"):
         raise HTTPException(
             status.HTTP_409_CONFLICT,
@@ -258,6 +267,10 @@ def update_run(run_id: str, body: RunProgress, connection: Connection) -> RunOut
         )
 
     patch = body.model_dump(exclude_unset=True)
+    if principal.kind == "agent" and "state" not in patch:
+        # Lap and step reports arrive constantly; the audit trail skips those,
+        # but still records an agent changing the run's state.
+        request.state.audit_skip = True
     if not patch:
         row = repo.get_run(connection, run_id)
         return RunOut.model_validate(dict(row))  # type: ignore[arg-type]

@@ -22,6 +22,8 @@ interface RobotWire {
   accent: number
   active_map_id: string | null
   desired_mode: DesiredMode
+  agent_token_set: boolean
+  agent_token_created_at: string | null
   created_at: string
   updated_at: string
 }
@@ -61,6 +63,8 @@ export function fromWire(wire: RobotWire): RobotConfig {
     accent: wire.accent,
     activeMapId: wire.active_map_id,
     desiredMode: wire.desired_mode,
+    agentTokenSet: wire.agent_token_set ?? false,
+    agentTokenCreatedAt: wire.agent_token_created_at ?? null,
   }
 }
 
@@ -160,6 +164,25 @@ export async function setMode(robotId: string, mode: DesiredMode): Promise<Robot
   return fromWire(await api.put<RobotWire>(`/robots/${robotId}/mode`, { desired_mode: mode }))
 }
 
+/** A freshly issued agent token. The plaintext exists only in this response. */
+export interface AgentToken {
+  token: string
+  createdAt: string
+}
+
+/** Generate, or rotate, the robot agent's token. Admin only. */
+export async function createAgentToken(robotId: string): Promise<AgentToken> {
+  const wire = await api.post<{ token: string; created_at: string }>(
+    `/robots/${robotId}/agent-token`,
+  )
+  return { token: wire.token, createdAt: wire.created_at }
+}
+
+/** Revoke the robot agent's token; the agent stops authenticating. Admin only. */
+export async function revokeAgentToken(robotId: string): Promise<void> {
+  await api.del<void>(`/robots/${robotId}/agent-token`)
+}
+
 export const robotsApi = {
   async list(): Promise<RobotConfig[]> {
     const rows = await api.get<RobotWire[]>('/robots')
@@ -182,4 +205,6 @@ export const robotsApi = {
 
   assignMap,
   setMode,
+  createAgentToken,
+  revokeAgentToken,
 }
