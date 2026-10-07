@@ -95,7 +95,9 @@ class AgentState:
         the hash it was recorded with before a robot navigates on it.
         """
         current = self.load_registry() or {}
-        if map_record is None and current.get("map_record", {}).get("id") == active_map_id:
+        # `or {}`: a robot with no map stores map_record as null, and .get's
+        # default only covers a missing key.
+        if map_record is None and (current.get("map_record") or {}).get("id") == active_map_id:
             # The assignment was re-read without the map: keep the map we had.
             map_record = current.get("map_record")
         _write_json(
