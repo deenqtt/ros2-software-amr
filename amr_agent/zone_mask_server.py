@@ -7,7 +7,7 @@ through *costmap filters*, and this publishes one filter's worth for each kind
 of zone so a map can carry every kind at once.
 
   keepout  -> KeepoutFilter, mask value 100. Never enter. Each keepout also gets
-              a non-lethal halo round it (95 at the edge falling to 55, 0.6 m
+              a non-lethal halo round it (95 at the edge falling to 60, 0.6 m
               wide by default): filters are not inflated, and without the halo
               the robot's body clips into the keepout and MPPI deadlocks there.
   avoid    -> a second KeepoutFilter on its own mask. The UI's avoid_cost 1..99
@@ -32,7 +32,7 @@ changing those too.
 Parameters:
     keepout_halo_width   m, default 0.6. 0 turns the halo off.
     keepout_halo_inner   mask value at the keepout's edge, default 95.
-    keepout_halo_outer   mask value at the halo's outer rim, default 55.
+    keepout_halo_outer   mask value at the halo's outer rim, default 60.
 
 Topics:
   Subscribe:
@@ -42,7 +42,7 @@ Topics:
   Publish (all transient_local + reliable, depth 1, so a filter that starts
   later still gets them):
     /zone_keepout_filter_info   nav2_msgs/CostmapFilterInfo  type 0, base 0, multiplier 1
-    /zone_keepout_mask          nav_msgs/OccupancyGrid       keepouts 100 + halo 55..95
+    /zone_keepout_mask          nav_msgs/OccupancyGrid       keepouts 100 + halo 60..95
     /zone_avoid_filter_info     nav2_msgs/CostmapFilterInfo  type 0, base 0, multiplier 1
     /zone_avoid_mask            nav_msgs/OccupancyGrid       avoid zones 8..80
     /zone_speed_filter_info     nav2_msgs/CostmapFilterInfo  type 2, base 0, multiplier 0.01

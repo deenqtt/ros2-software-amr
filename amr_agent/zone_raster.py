@@ -24,9 +24,11 @@ in, and the next step finds the footprint in lethal cost with no way out: MPPI
 reports "Optimizer fail to compute path" and the robot sits there.
 
 The halo is a band of falling, never lethal, cost round each keepout: high
-enough (from 95 at the edge down to 55 at the outer rim) that the footprint is
+enough (from 95 at the edge down to 60 at the outer rim) that the footprint is
 checked all through it, low enough that the robot may still pass through the
-band when that is the only way. Its default width, 0.6 m, is more than the
+band when that is the only way. 60 rather than the bare minimum of 54 leaves a
+margin: the threshold follows the inflation layer (radius 0.51, cost scaling 3.1
+today), so recheck it if those change. Its default width, 0.6 m, is more than the
 circumscribed radius (0.49 m) with a couple of cells to spare, so the whole body
 is being checked before any part of it can reach the keepout.
 
@@ -58,7 +60,7 @@ BINARY_VALUE = 100
 # Halo defaults. See the module docstring for where the numbers come from.
 HALO_WIDTH_M = 0.6
 HALO_INNER = 95
-HALO_OUTER = 55
+HALO_OUTER = 60
 
 # UI avoid_cost 1..99 onto these mask values.
 AVOID_COST_MIN, AVOID_COST_MAX = 1, 99
