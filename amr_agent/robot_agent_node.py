@@ -51,6 +51,12 @@ calls    /mission_plan        custom_interfaces/action/MissionPlan
            are reported back to the registry, so an agent restarted mid-route
            reads its own progress and carries on.
 
+calls    /global_costmap/clear_entirely_global_costmap   nav2_msgs/srv/ClearEntireCostmap
+         /local_costmap/clear_entirely_local_costmap     (mission_via=nav only)
+           Before every navigate_to_pose goal and after every one that does
+           not succeed, best effort with a short timeout. Nav2 otherwise keeps
+           stale obstacle marks — a detour's obstacle, long gone — as lethal.
+
 topic    /amr/zones           std_msgs/String  (JSON, latched)
            The map's zones as polygons, for zone_mask_server to rasterise into
            the costmap filter masks Nav2 reads. Polygons rather than a mask
@@ -142,7 +148,7 @@ from std_msgs.msg import String
 from std_srvs.srv import Trigger
 
 from nav2_msgs.action import NavigateToPose
-from nav2_msgs.srv import LoadMap, ReloadDockDatabase, SaveMap
+from nav2_msgs.srv import ClearEntireCostmap, LoadMap, ReloadDockDatabase, SaveMap
 
 from agent_state import TERMINAL_STATES, AgentState
 from delivery import (
@@ -282,6 +288,20 @@ RUN_CANCEL_CHECK_S = 2.0
 # Returned as a step's detail when the run was ended from outside. Not a
 # failure: nothing is reported, because the run already has its final state.
 RUN_CANCELED = "run canceled"
+# Wiped before every goal the agent sends and after every goal that does not
+# succeed. Nav2 keeps what it once saw: an obstacle marked during a detour stays
+# lethal after it has gone, and a goal then fails against something that is no
+# longer there. Stacks driven by a master_control cleared these themselves; this
+# agent drives missions without one, so it has to.
+CLEAR_COSTMAP_SERVICES = (
+    "/global_costmap/clear_entirely_global_costmap",
+    "/local_costmap/clear_entirely_local_costmap",
+)
+# Short: a clear is a courtesy to the next goal, never a reason to delay it.
+CLEAR_COSTMAP_WAIT_S = 0.5
+CLEAR_COSTMAP_TIMEOUT_S = 2.0
+# A stack without these services says so once in this long, not every goal.
+CLEAR_COSTMAP_WARN_PERIOD_S = 300.0
 MAP_LOADER_SERVICE = "/map_server/load_map"
 SERVICE_WAIT_S = 10.0
 SERVICE_CALL_TIMEOUT_S = 120.0
@@ -541,6 +561,13 @@ class RobotAgent(Node):
         self._state = STATE_IDLE
         self._detail = ""
         self._worker: threading.Thread | None = None
+        # Clients for the costmap clears, made once; and when a missing clear
+        # service was last complained about.
+        self._clear_clients = {
+            name: self.create_client(ClearEntireCostmap, name, callback_group=self._cb)
+            for name in CLEAR_COSTMAP_SERVICES
+        }
+        self._clear_warned_at = -CLEAR_COSTMAP_WARN_PERIOD_S
 
         self._status_pub = self.create_publisher(String, "/robot_mode_status", 10)
         # transient_local: zone_mask_server may come up after this, and a zone
@@ -853,6 +880,42 @@ class RobotAgent(Node):
                 raise RuntimeError(f"service {client.srv_name} timed out after {timeout:.0f}s")
             time.sleep(0.05)
         return future.result()
+
+    def _clear_costmaps(self, why: str) -> None:
+        """
+        Wipe the global and local costmaps, best effort.
+
+        Never raises and never holds a goal up for long: a stack without these
+        services, or one too busy to answer, still gets its goal, and says so
+        once in a while rather than on every step. Called from the run thread,
+        never from a callback — see _call_service.
+        """
+        missing = []
+        pending = []
+        for name, client in self._clear_clients.items():
+            if not client.wait_for_service(timeout_sec=CLEAR_COSTMAP_WAIT_S):
+                missing.append(name)
+                continue
+            pending.append((name, client.call_async(ClearEntireCostmap.Request())))
+
+        deadline = time.time() + CLEAR_COSTMAP_TIMEOUT_S
+        for name, future in pending:
+            while not future.done() and time.time() < deadline:
+                time.sleep(0.02)
+            if not future.done():
+                future.cancel()
+                missing.append(name)
+
+        if missing:
+            now = time.monotonic()
+            if now - self._clear_warned_at >= CLEAR_COSTMAP_WARN_PERIOD_S:
+                self._clear_warned_at = now
+                self.get_logger().warning(
+                    f"[robot_agent] could not clear {', '.join(missing)} ({why}); "
+                    "carrying on with the costmaps as they are"
+                )
+        else:
+            self.get_logger().debug(f"[robot_agent] costmaps cleared ({why})")
 
     # ── Saving a map ──────────────────────────────────────────────────────────
 
@@ -1941,6 +2004,10 @@ class RobotAgent(Node):
             return False, f"{NAV_READY_ACTION} is not available"
 
         x, y, yaw = pose
+        # A clean slate for this goal: marks left from the last one — the
+        # obstacle it detoured round, a person who has since walked off — would
+        # otherwise still be lethal, and a goal fails against nothing.
+        self._clear_costmaps("before a goal")
         goal = NavigateToPose.Goal()
         goal.pose.header.frame_id = "map"
         # Stamped zero on purpose: under sim time a stamp taken from this
@@ -1953,6 +2020,17 @@ class RobotAgent(Node):
         goal.pose.pose.orientation.z = math.sin(yaw / 2.0)
         goal.pose.pose.orientation.w = math.cos(yaw / 2.0)
 
+        ok, detail = self._drive_goal(client, goal, run_id)
+        if not ok:
+            # Whatever stopped this goal — an abort, a cancel, a timeout — the
+            # costmaps may now hold the very marks that blocked it. Cleared
+            # here as well as before the next goal, so a robot left standing
+            # after a failed run is not left with a phantom wall either.
+            self._clear_costmaps("after a goal that did not succeed")
+        return ok, detail
+
+    def _drive_goal(self, client, goal, run_id: str) -> tuple[bool, str]:
+        """Send one NavigateToPose goal and wait for it to end."""
         send_future = client.send_goal_async(goal, feedback_callback=self._on_nav_feedback)
         deadline = time.time() + MISSION_GOAL_ACCEPT_TIMEOUT_S
         while not send_future.done():
