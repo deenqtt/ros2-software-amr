@@ -144,10 +144,15 @@ bernomor — dengan **Set pose**, **Go here**, **Cancel goal**, dan **Stop & par
 
   | Jenis | Perilaku robot |
   |---|---|
-  | 🟥 **Keep out** | Dilarang masuk, dianggap dinding |
-  | 🟧 **Avoid** | Dihindari bila ada jalan lain (tingkat keengganan 1–99) |
-  | 🟦 **Speed limit** | Melambat sampai batas kecepatan di dalam area |
+  | 🟥 **Keep out** | Dilarang masuk, dianggap dinding; dikelilingi *halo* 0,6 m berbiaya tinggi (bukan *lethal*) agar badan robot tidak menyerempet masuk |
+  | 🟧 **Avoid** | Dihindari bila ada jalan lain (1 = sedikit, 99 = kuat); tetap bisa dilewati bila tidak ada jalan lain |
+  | 🟦 **Speed limit** | Melambat sampai batas kecepatan di dalam area (lebih dari 0 s.d. 0,6 m/s — kecepatan maksimum robot). Bukan untuk menghentikan robot: pakai Keep out |
   | 🟪 **Trigger** | Menyalakan sinyal (lampu/buzzer) selama di dalam area |
+
+  Di robot, `zone_mask_server` menerbitkan satu pasang info + mask per filter Nav2:
+  `/zone_keepout_*`, `/zone_avoid_*`, `/zone_speed_*` (absolut, mask = m/s × 100) dan `/zone_binary_*`.
+  Nama topic ini harus sama dengan konfigurasi costmap filter Nav2 di robot — rinciannya di docstring
+  `amr_agent/zone_mask_server.py`.
 
 - **Mission** — rute berurutan dari beberapa station; dijalankan **Once**, **Laps**, atau **Until stopped**,
   dengan *Stop after lap*, *Cancel mission*, dan *Cancel goal*. Step bertanda **Wait for confirm** menahan robot
@@ -421,6 +426,10 @@ Program kecil di setiap robot yang menjadi penghubung antara Web UI dan robot.
 4. Menyalakan/mematikan Nav2 atau SLAM sesuai mode; `zone_mask_server` ikut menyala bersama Nav2.
 5. Menyimpan station & zone ke disk robot dan meneruskan zone ke Nav2.
 6. Mengambil dan menjalankan mission, melaporkan setiap step, tiba, selesai, gagal (beserta alasannya), atau batal.
+
+Saat Nav2 menyala pada sebuah peta, agent memberi AMCL posisi terakhir robot di peta itu (`/initialpose`,
+disimpan di disk robot), kecuali operator sudah mengatur posisi lebih dulu. Dengan `mission_via=nav`, costmap
+global dan lokal dibersihkan sebelum setiap goal dan setelah goal yang gagal atau dibatalkan.
 
 **Konfirmasi pengambilan** (`mission_via=nav`): di step bertanda *confirm* robot menunggu tombol
 **Sudah diambil** di Kiosk (service `/mission_confirm`) sampai `confirm_timeout` (default 120 detik),
