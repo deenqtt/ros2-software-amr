@@ -21,6 +21,9 @@ other — and the link between them drops. Three things went wrong when it did:
    offline did not know where anything was, nor where it must not go. The last
    station set and zone set for each map are kept here.
 
+And one more that is not about the server: the robot's own last pose on each
+map, so navigation that comes back up does not start localised at the origin.
+
 No ROS imports, on purpose: this is plain file handling, and it is tested
 without a robot.
 
@@ -32,6 +35,7 @@ outbox would lose exactly the reports it exists to keep.
 from __future__ import annotations
 
 import json
+import math
 import os
 import threading
 import time
@@ -45,6 +49,28 @@ OUTBOX_LIMIT = 5000
 FINISHED_LIMIT = 200
 
 TERMINAL_STATES = ("done", "failed", "canceled")
+
+# How far the robot must have moved before its remembered pose is rewritten.
+# The pose is only a starting guess for AMCL, so a few centimetres do not
+# matter, and not rewriting a parked robot's pose spares the Jetson's flash.
+POSE_MIN_DISTANCE_M = 0.05
+POSE_MIN_ANGLE_RAD = 0.05
+
+
+def pose_changed(
+    old: tuple[float, float, float] | None,
+    new: tuple[float, float, float],
+    min_distance: float = POSE_MIN_DISTANCE_M,
+    min_angle: float = POSE_MIN_ANGLE_RAD,
+) -> bool:
+    """True when `new` is worth writing over `old`: nothing saved, moved, or turned."""
+    if old is None:
+        return True
+    if math.hypot(new[0] - old[0], new[1] - old[1]) >= min_distance:
+        return True
+    # Wrapped, so turning from +pi to -pi is no turn at all.
+    turn = math.atan2(math.sin(new[2] - old[2]), math.cos(new[2] - old[2]))
+    return abs(turn) >= min_angle
 
 
 def _write_json(path: Path, value) -> None:
@@ -142,6 +168,41 @@ class AgentState:
         """
         value = _read_json(self._zones_path(map_id), None)
         return value if isinstance(value, list) else None
+
+    # ── Last known pose ──────────────────────────────────────────────────────
+    #
+    # AMCL starts every bring-up at (0, 0, 0) unless told otherwise, so a robot
+    # that switched from mapping back to navigation, or whose agent restarted,
+    # believed itself at the map origin wherever it was actually standing — and
+    # the first goal went somewhere else entirely. The pose it last had on each
+    # map is kept here and handed back to AMCL when navigation comes up on that
+    # map again. Per map, because a pose means nothing in another map's frame.
+
+    def _pose_path(self, map_id: str) -> Path:
+        return self.directory / f"pose_{map_id}.json"
+
+    def save_pose(self, map_id: str, x: float, y: float, yaw: float) -> None:
+        """Remember where the robot is on this map, in the map frame (m, rad)."""
+        values = [float(x), float(y), float(yaw)]
+        if not all(math.isfinite(value) for value in values):
+            # A NaN written here would come back as a NaN initial pose, which
+            # AMCL accepts and then cannot recover from.
+            raise ValueError(f"pose is not finite: {values}")
+        _write_json(
+            self._pose_path(map_id),
+            {"x": values[0], "y": values[1], "yaw": values[2], "saved_at": time.time()},
+        )
+
+    def load_pose(self, map_id: str) -> tuple[float, float, float] | None:
+        """(x, y, yaw) last saved for this map, or None if there is none usable."""
+        value = _read_json(self._pose_path(map_id), None)
+        if not isinstance(value, dict):
+            return None
+        try:
+            pose = (float(value["x"]), float(value["y"]), float(value["yaw"]))
+        except (KeyError, TypeError, ValueError):
+            return None
+        return pose if all(math.isfinite(part) for part in pose) else None
 
     # ── Run report outbox ────────────────────────────────────────────────────
 

@@ -57,6 +57,12 @@ calls    /global_costmap/clear_entirely_global_costmap   nav2_msgs/srv/ClearEnti
            not succeed, best effort with a short timeout. Nav2 otherwise keeps
            stale obstacle marks — a detour's obstacle, long gone — as lethal.
 
+topic    /initialpose         geometry_msgs/PoseWithCovarianceStamped  (out, and in)
+           Once per navigation bring-up, when AMCL is active: the pose the
+           robot last had on that map (map -> base_frame from TF, kept per map
+           in agent_state.py), so AMCL does not start at the origin. Skipped
+           when there is none, or when somebody else set a pose first.
+
 topic    /amr/zones           std_msgs/String  (JSON, latched)
            The map's zones as polygons, for zone_mask_server to rasterise into
            the costmap filter masks Nav2 reads. Polygons rather than a mask
@@ -137,20 +143,24 @@ import time
 from pathlib import Path
 
 import rclpy
+import rclpy.time
 from rclpy.action import ActionClient
 from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
 from action_msgs.msg import GoalStatus
-from geometry_msgs.msg import Twist
+from geometry_msgs.msg import PoseWithCovarianceStamped, Twist
+from lifecycle_msgs.msg import State as LifecycleState
+from lifecycle_msgs.srv import GetState
 from std_msgs.msg import String
 from std_srvs.srv import Trigger
+from tf2_ros import Buffer, TransformException, TransformListener
 
 from nav2_msgs.action import NavigateToPose
 from nav2_msgs.srv import ClearEntireCostmap, LoadMap, ReloadDockDatabase, SaveMap
 
-from agent_state import TERMINAL_STATES, AgentState
+from agent_state import TERMINAL_STATES, AgentState, pose_changed
 from delivery import (
     CONFIRMED,
     PHASE_BLOCKED,
@@ -303,6 +313,32 @@ CLEAR_COSTMAP_TIMEOUT_S = 2.0
 # A stack without these services says so once in this long, not every goal.
 CLEAR_COSTMAP_WARN_PERIOD_S = 300.0
 MAP_LOADER_SERVICE = "/map_server/load_map"
+
+# Handing AMCL back the robot's last pose when navigation comes up.
+#
+# AMCL starts every bring-up at the origin. After a survey, or an agent
+# restart, the robot is almost never standing there, and AMCL — told it is at
+# (0, 0) — matches the laser against the wrong part of the map and is
+# confidently wrong. The pose the robot last had on this map is the best guess
+# there is, so it is remembered (agent_state.py) and published once AMCL is
+# active.
+INITIAL_POSE_TOPIC = "/initialpose"
+AMCL_STATE_SERVICE = "/amcl/get_state"
+# How long to wait for AMCL to become active after navigation is up. Its
+# lifecycle manager is separate from the one navigate_to_pose waits on, so it
+# can finish a little later.
+AMCL_ACTIVE_TIMEOUT_S = 30.0
+# After AMCL reports active, a moment for discovery to match our publisher with
+# its subscription; a message published before that is simply lost.
+AMCL_SETTLE_S = 1.0
+# Variances for the pose handed back: 0.5 m and 15 degrees standard deviation.
+# Wide enough to cover a robot pushed a little while the stack was down, narrow
+# enough that AMCL converges on the first scans.
+INITIAL_POSE_VAR_XY = 0.25
+INITIAL_POSE_VAR_YAW = 0.07
+# How often the pose is sampled from TF, and the least time between writes.
+POSE_SAMPLE_S = 2.0
+POSE_SAVE_PERIOD_S = 5.0
 SERVICE_WAIT_S = 10.0
 SERVICE_CALL_TIMEOUT_S = 120.0
 # nav2 defaults; kept explicit so a saved map records the thresholds it was
@@ -448,6 +484,8 @@ class RobotAgent(Node):
         # boundary. m/s and rad/s.
         self.declare_parameter("max_teleop_linear", 0.5)
         self.declare_parameter("max_teleop_angular", 1.5)
+        # The robot's body frame, for remembering where it is on the map.
+        self.declare_parameter("base_frame", "base_link")
 
         self._managed = bool(self.get_parameter("managed_mode").value)
         self._use_sim_time_arg = bool(self.get_parameter("use_sim_time_arg").value)
@@ -568,6 +606,35 @@ class RobotAgent(Node):
             for name in CLEAR_COSTMAP_SERVICES
         }
         self._clear_warned_at = -CLEAR_COSTMAP_WARN_PERIOD_S
+
+        # Last known pose. The map id of the current navigation bring-up, and
+        # whether the pose may be recorded yet: not until AMCL has been given a
+        # starting pose, or it would record the origin AMCL starts at over the
+        # good pose it is about to be handed. A generation number so a restore
+        # still waiting for AMCL gives up when the stack is switched again.
+        self._base_frame = str(self.get_parameter("base_frame").value)
+        self._pose_lock = threading.Lock()
+        self._pose_map_id: str | None = None
+        self._pose_tracking = False
+        self._pose_saved: tuple[float, float, float] | None = None
+        self._pose_saved_at = 0.0
+        self._initialpose_seen = False
+        self._nav_generation = 0
+        self._tf_buffer = Buffer()
+        self._tf_listener = TransformListener(self._tf_buffer, self)
+        self._initialpose_pub = self.create_publisher(
+            PoseWithCovarianceStamped, INITIAL_POSE_TOPIC, 10
+        )
+        # Anyone setting the pose — an operator in the web UI, RViz — wins over
+        # the remembered one, and makes the pose worth recording again.
+        self.create_subscription(
+            PoseWithCovarianceStamped,
+            INITIAL_POSE_TOPIC,
+            self._on_initialpose,
+            10,
+            callback_group=self._cb,
+        )
+        self.create_timer(POSE_SAMPLE_S, self._sample_pose, callback_group=self._cb)
 
         self._status_pub = self.create_publisher(String, "/robot_mode_status", 10)
         # transient_local: zone_mask_server may come up after this, and a zone
@@ -2335,6 +2402,9 @@ class RobotAgent(Node):
             # Whatever happens next, the robot must not keep executing the
             # operator's last teleop command through the transition.
             self._halt_teleop()
+            # Where navigation left the robot, written before the stack that
+            # knows it goes away.
+            self._end_pose_tracking()
             self._set_state(self._mode, STATE_STOPPING, "Stopping current stack")
             self._stop_child()
 
@@ -2349,6 +2419,8 @@ class RobotAgent(Node):
             if self._await_ready(markers) and self._await_usable(mode):
                 self._set_state(mode, STATE_RUNNING, "")
                 self.get_logger().info(f"[robot_agent] {mode} mode running")
+                if mode == MODE_NAV:
+                    self._begin_pose_restore()
             else:
                 detail = f"Timed out after {READY_TIMEOUT_S:.0f}s waiting for {mode} nodes"
                 self._stop_child()
@@ -2357,6 +2429,180 @@ class RobotAgent(Node):
         except Exception as exc:  # noqa: BLE001 — a failed switch must not kill the agent
             self._set_state(self._mode, STATE_FAILED, str(exc))
             self.get_logger().error(f"[robot_agent] switch failed: {exc}")
+
+    # ── Last known pose ───────────────────────────────────────────────────────
+
+    def _nav_map_id(self) -> str | None:
+        """
+        The registry id of the map navigation was started on, or None.
+
+        Read from the path: a cached map lives at <map_cache_dir>/<id>/. A map
+        from anywhere else (the launch default, a manual path) has no id, and
+        no remembered pose either.
+        """
+        try:
+            relative = Path(os.path.realpath(self._current_map)).relative_to(
+                os.path.realpath(self._cache_dir)
+            )
+        except ValueError:
+            return None
+        return relative.parts[0] if len(relative.parts) >= 2 else None
+
+    def _lookup_pose(self) -> tuple[float, float, float] | None:
+        """map -> base frame as (x, y, yaw), or None while TF does not have it."""
+        try:
+            transform = self._tf_buffer.lookup_transform(
+                "map", self._base_frame, rclpy.time.Time()
+            )
+        except TransformException:
+            return None
+        t = transform.transform.translation
+        q = transform.transform.rotation
+        yaw = math.atan2(2.0 * (q.w * q.z + q.x * q.y), 1.0 - 2.0 * (q.y * q.y + q.z * q.z))
+        return (t.x, t.y, yaw)
+
+    def _record_pose(self, force: bool = False) -> None:
+        """Write the current pose for the map in use, if it moved and may be."""
+        with self._pose_lock:
+            map_id = self._pose_map_id
+            if not self._pose_tracking or map_id is None:
+                return
+            if not force and time.monotonic() - self._pose_saved_at < POSE_SAVE_PERIOD_S:
+                return
+            pose = self._lookup_pose()
+            if pose is None or not pose_changed(self._pose_saved, pose):
+                return
+            try:
+                self._store.save_pose(map_id, *pose)
+            except (OSError, ValueError) as exc:
+                self.get_logger().warning(f"[robot_agent] could not save the pose: {exc}")
+                return
+            self._pose_saved = pose
+            self._pose_saved_at = time.monotonic()
+
+    def _sample_pose(self) -> None:
+        if self._mode == MODE_NAV and self._state == STATE_RUNNING:
+            self._record_pose()
+
+    def _end_pose_tracking(self) -> None:
+        """Save the pose one last time, then stop: the next stack is not ours yet."""
+        if self._mode == MODE_NAV and self._state == STATE_RUNNING:
+            self._record_pose(force=True)
+        with self._pose_lock:
+            self._nav_generation += 1
+            self._pose_tracking = False
+            self._pose_map_id = None
+
+    def _on_initialpose(self, msg: PoseWithCovarianceStamped) -> None:
+        del msg
+        with self._pose_lock:
+            self._initialpose_seen = True
+            # Set by somebody, so what AMCL now reports is worth keeping.
+            if self._pose_map_id is not None:
+                self._pose_tracking = True
+
+    def _begin_pose_restore(self) -> None:
+        """Start handing AMCL the remembered pose for this bring-up's map."""
+        map_id = self._nav_map_id()
+        saved = self._store.load_pose(map_id) if map_id else None
+        with self._pose_lock:
+            self._nav_generation += 1
+            generation = self._nav_generation
+            self._pose_map_id = map_id
+            self._pose_saved = saved
+            self._pose_saved_at = 0.0
+            self._initialpose_seen = False
+            # Nothing remembered means nothing to protect: record from the start.
+            self._pose_tracking = map_id is not None and saved is None
+        if map_id is None:
+            return
+        if saved is None:
+            self.get_logger().info(
+                f"[robot_agent] no remembered pose on map {map_id}; set it in the UI if AMCL is lost"
+            )
+            return
+        threading.Thread(
+            target=self._restore_pose,
+            args=(generation, map_id, saved),
+            name="restore-pose",
+            daemon=True,
+        ).start()
+
+    def _amcl_active(self, client) -> bool:
+        if not client.wait_for_service(timeout_sec=1.0):
+            return False
+        future = client.call_async(GetState.Request())
+        deadline = time.time() + 2.0
+        while not future.done():
+            if time.time() > deadline:
+                future.cancel()
+                return False
+            time.sleep(0.05)
+        reply = future.result()
+        return reply is not None and reply.current_state.id == LifecycleState.PRIMARY_STATE_ACTIVE
+
+    def _restore_pose(self, generation: int, map_id: str, pose: tuple[float, float, float]) -> None:
+        """
+        Publish the remembered pose on /initialpose once AMCL can take it.
+
+        Once per bring-up, and never over a pose somebody else set first: an
+        operator who has already placed the robot knows better than a file.
+        """
+
+        def superseded() -> bool:
+            with self._pose_lock:
+                return self._nav_generation != generation or self._initialpose_seen
+
+        client = self.create_client(GetState, AMCL_STATE_SERVICE, callback_group=self._cb)
+        try:
+            deadline = time.time() + AMCL_ACTIVE_TIMEOUT_S
+            active = False
+            while time.time() < deadline and not superseded():
+                if self._amcl_active(client):
+                    active = True
+                    break
+                time.sleep(0.5)
+            if active:
+                time.sleep(AMCL_SETTLE_S)
+        finally:
+            self.destroy_client(client)
+
+        with self._pose_lock:
+            if self._nav_generation != generation:
+                return
+            if self._initialpose_seen:
+                self.get_logger().info(
+                    "[robot_agent] the pose was set by someone else; remembered pose not sent"
+                )
+                return
+            if not active:
+                self.get_logger().warning(
+                    f"[robot_agent] AMCL ({AMCL_STATE_SERVICE}) never became active; "
+                    "remembered pose not sent"
+                )
+                return
+            x, y, yaw = pose
+            msg = PoseWithCovarianceStamped()
+            msg.header.frame_id = "map"
+            # Stamped zero, like the goals: under sim time a stamp from this
+            # process is on a different clock to the robot's.
+            msg.header.stamp.sec = 0
+            msg.header.stamp.nanosec = 0
+            msg.pose.pose.position.x = x
+            msg.pose.pose.position.y = y
+            msg.pose.pose.orientation.z = math.sin(yaw / 2.0)
+            msg.pose.pose.orientation.w = math.cos(yaw / 2.0)
+            covariance = [0.0] * 36
+            covariance[0] = INITIAL_POSE_VAR_XY
+            covariance[7] = INITIAL_POSE_VAR_XY
+            covariance[35] = INITIAL_POSE_VAR_YAW
+            msg.pose.covariance = covariance
+            self._initialpose_pub.publish(msg)
+            self._pose_tracking = True
+        self.get_logger().info(
+            f"[robot_agent] gave AMCL the remembered pose on map {map_id}: "
+            f"({x:.2f}, {y:.2f}, {math.degrees(yaw):.0f} deg)"
+        )
 
     def _halt_teleop(self) -> None:
         """Send a stop and drop the held command."""
@@ -2553,6 +2799,7 @@ class RobotAgent(Node):
             pass
 
     def destroy_node(self) -> bool:
+        self._end_pose_tracking()
         self._stop_child()
         return super().destroy_node()
 
