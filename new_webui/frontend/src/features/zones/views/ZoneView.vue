@@ -14,19 +14,23 @@
  * its agent next syncs, and the panel says so.
  */
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { PanelRightClose, PanelRightOpen, Plus, Shapes, X } from 'lucide-vue-next'
+import { PanelRightClose, PanelRightOpen, Plus, Shapes, TriangleAlert, X } from 'lucide-vue-next'
 import { toast } from 'vue-sonner'
 import { useMapStore } from '@/stores/maps'
 import { useZoneStore } from '@/stores/zones'
 import { useUiStore } from '@/stores/ui'
 import { mapsApi } from '@/shared/api/maps'
+import { stationsApi } from '@/shared/api/stations'
 import { decodePgm, type Grid } from '@/domain/map/pgm'
 import {
+  KEEPOUT_HALO_M,
+  keepoutCrowds,
   SPEED_MAX,
   SPEED_MIN,
   SPEED_STEP,
   speedLimitProblem,
   ZONE_MIN_POINTS,
+  type Station,
   type Zone,
   type ZoneKind,
   type ZonePoint,
@@ -106,11 +110,36 @@ async function loadMapImage(mapId: string) {
   }
 }
 
+/**
+ * The map's stations, only to warn when a keep-out crowds one. Fetched here
+ * rather than through the station store, so opening zones does not swap the
+ * map that store holds; and a failure only means no warning.
+ */
+const mapStations = ref<Station[]>([])
+
+async function loadStations(mapId: string) {
+  mapStations.value = []
+  try {
+    const rows = await stationsApi.list(mapId)
+    if (selectedMapId.value === mapId) mapStations.value = rows
+  } catch {
+    // Not this page's subject: the zones still load and save without it.
+  }
+}
+
+const crowdingAdvice = `The robot keeps a ${KEEPOUT_HALO_M} m margin round every keep-out, so it may be unable to reach or leave a station this close.`
+
+/** Station names a keep-out with this outline would crowd. Empty for other kinds. */
+function crowdedStations(kind: ZoneKind, polygon: ZonePoint[]): string[] {
+  if (kind !== 'keepout') return []
+  return keepoutCrowds(polygon, mapStations.value).map((station) => station.name)
+}
+
 async function selectMap(mapId: string) {
   selectedMapId.value = mapId
   selectedId.value = null
   drawing.value = null
-  await Promise.all([loadMapImage(mapId), zones.load(mapId)])
+  await Promise.all([loadMapImage(mapId), zones.load(mapId), loadStations(mapId)])
 }
 
 onMounted(async () => {
@@ -184,7 +213,13 @@ function movePoint(payload: { id: string; index: number; point: ZonePoint }) {
   if (reshapeWrite) clearTimeout(reshapeWrite)
   reshapeWrite = setTimeout(async () => {
     try {
-      await zones.update(payload.id, { polygon: next })
+      const updated = await zones.update(payload.id, { polygon: next })
+      const crowded = crowdedStations(updated.kind, next)
+      if (crowded.length) {
+        toast.warning(`${updated.name} now crowds ${crowded.join(', ')}`, {
+          description: crowdingAdvice,
+        })
+      }
     } catch (error) {
       toast.error('Could not reshape the zone', { description: zones.describeError(error) })
       if (selectedMapId.value) await zones.load(selectedMapId.value)
@@ -258,6 +293,14 @@ const nameProblem = computed(() => {
 /** Only a speed zone has a limit to get wrong. */
 const speedProblem = computed(() =>
   form.value.kind === 'speed' ? speedLimitProblem(form.value.speedLimit) : null,
+)
+
+/**
+ * Stations this keep-out would crowd, shown as a warning and never a refusal:
+ * a keep-out right beside a dock can be exactly what was meant.
+ */
+const crowded = computed(() =>
+  form.value.open ? crowdedStations(form.value.kind, form.value.polygon) : [],
 )
 
 /** Anything that would make the server refuse the save, said before it does. */
@@ -694,6 +737,18 @@ watch(phone, (small) => {
             <Input :id="id" v-model="form.note" placeholder="Panel listrik, jangan ketabrak" />
           </template>
         </FormField>
+
+        <p
+          v-if="crowded.length"
+          class="flex items-start gap-xs rounded-control border border-status-warn/40 bg-status-warn/10 p-sm text-caption text-body"
+          data-testid="keepout-crowds"
+        >
+          <TriangleAlert :size="13" class="mt-px shrink-0 text-status-warn" />
+          <span>
+            Close to
+            <span class="font-medium">{{ crowded.join(', ') }}</span>. {{ crowdingAdvice }}
+          </span>
+        </p>
 
         <label class="flex items-center gap-xs text-body-sm text-body">
           <input v-model="form.enabled" type="checkbox" class="accent-[rgb(var(--primary))]" />

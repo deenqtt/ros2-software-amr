@@ -8,8 +8,12 @@
  */
 import { describe, expect, it } from 'vitest'
 import {
+  distanceToPolygon,
+  KEEPOUT_HALO_M,
+  keepoutCrowds,
   polygonArea,
   pointInPolygon,
+  ROBOT_RADIUS_M,
   SPEED_MAX,
   speedLimitProblem,
   type Zone,
@@ -122,5 +126,44 @@ describe('speed limits', () => {
     expect(zoneSetting({ kind: 'speed', speedLimit: 0.25, avoidCost: null } as Zone)).toBe(
       '0.25 m/s',
     )
+  })
+})
+
+describe('keepoutCrowds', () => {
+  const station = (name: string, x: number, y: number) => ({ name, x, y })
+
+  it('measures to the outline, and is zero inside', () => {
+    expect(distanceToPolygon(SQUARE, 2, 2)).toBe(0)
+    expect(distanceToPolygon(SQUARE, 5, 2)).toBeCloseTo(1, 9)
+    // Off a corner, the distance is to the corner, not to the nearest box side.
+    expect(distanceToPolygon(SQUARE, 7, 8)).toBeCloseTo(5, 9)
+    // In the notch of the L: outside, 1 m from the inner corner's edges.
+    expect(distanceToPolygon(ELL, 3, 3)).toBeCloseTo(1, 9)
+  })
+
+  it('flags a station within the halo plus the robot radius', () => {
+    const clearance = KEEPOUT_HALO_M + ROBOT_RADIUS_M // 1.09 m
+    const near = station('Dock', 4 + clearance - 0.01, 2)
+    const clear = station('Bay', 4 + clearance + 0.01, 2)
+    const inside = station('Inside', 1, 1)
+    const corner = station('Corner', 4.7, 4.7) // 0.99 m off the corner
+    const farCorner = station('Far corner', 4.8, 4.8) // 1.13 m off the corner
+    expect(keepoutCrowds(SQUARE, [near, clear, inside, corner, farCorner])).toEqual([
+      near,
+      inside,
+      corner,
+    ])
+  })
+
+  it('flags nothing for a shape that is not yet a polygon', () => {
+    expect(
+      keepoutCrowds(
+        [
+          [0, 0],
+          [1, 1],
+        ],
+        [station('A', 0.5, 0.5)],
+      ),
+    ).toEqual([])
   })
 })

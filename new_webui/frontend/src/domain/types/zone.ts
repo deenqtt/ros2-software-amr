@@ -109,3 +109,48 @@ export function pointInPolygon(polygon: ZonePoint[], x: number, y: number): bool
   }
   return inside
 }
+
+/**
+ * The band of high, non-lethal cost the robot lays round every keep-out, in
+ * metres. Mirrors keepout_halo_width in amr_agent/zone_raster.py: costmap
+ * filters are not inflated, so without it the robot's body clips into a
+ * keep-out and gets stuck there.
+ */
+export const KEEPOUT_HALO_M = 0.6
+
+/** The robot footprint's circumscribed radius: 0.783 m x 0.582 m, from the centre. */
+export const ROBOT_RADIUS_M = 0.49
+
+/** Distance from a point to the polygon's outline, or 0 when the point is inside it. */
+export function distanceToPolygon(polygon: ZonePoint[], x: number, y: number): number {
+  if (polygon.length >= ZONE_MIN_POINTS && pointInPolygon(polygon, x, y)) return 0
+  let best = Infinity
+  for (let i = 0; i < polygon.length; i += 1) {
+    const [ax, ay] = polygon[i] as ZonePoint
+    const [bx, by] = polygon[(i + 1) % polygon.length] as ZonePoint
+    const dx = bx - ax
+    const dy = by - ay
+    const lengthSq = dx * dx + dy * dy
+    const t =
+      lengthSq === 0 ? 0 : Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / lengthSq))
+    best = Math.min(best, Math.hypot(x - (ax + t * dx), y - (ay + t * dy)))
+  }
+  return best
+}
+
+/**
+ * The places a keep-out would crowd: a robot standing there, body and all,
+ * would touch the keep-out or its halo.
+ *
+ * Not a reason to refuse the zone — a keep-out right beside a dock can be
+ * exactly what was meant — but a robot sent to such a station may be unable to
+ * reach it, or to leave it, and the operator should know before saving.
+ */
+export function keepoutCrowds<T extends { x: number; y: number }>(
+  polygon: ZonePoint[],
+  places: T[],
+  clearance: number = KEEPOUT_HALO_M + ROBOT_RADIUS_M,
+): T[] {
+  if (polygon.length < ZONE_MIN_POINTS) return []
+  return places.filter((place) => distanceToPolygon(polygon, place.x, place.y) < clearance)
+}
