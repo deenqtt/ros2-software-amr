@@ -5,8 +5,8 @@
  * Map first, because a zone is a shape on a floor. The panel beside it is
  * reference: what each one is called, and what it does.
  *
- * Four kinds, three Nav2 filters — `keep out` and `avoid` are the same filter
- * with a different value in its mask. The kind picker says what each one does
+ * Four kinds, three Nav2 filter types — `keep out` and `avoid` are both
+ * KeepoutFilters, each with its own mask on the robot. The kind picker says what each one does
  * rather than naming the filter, because "KeepoutFilter with cost 60" is not
  * what an operator is deciding.
  *
@@ -25,6 +25,7 @@ import {
   SPEED_MAX,
   SPEED_MIN,
   SPEED_STEP,
+  speedLimitProblem,
   ZONE_MIN_POINTS,
   type Zone,
   type ZoneKind,
@@ -254,6 +255,14 @@ const nameProblem = computed(() => {
   return null
 })
 
+/** Only a speed zone has a limit to get wrong. */
+const speedProblem = computed(() =>
+  form.value.kind === 'speed' ? speedLimitProblem(form.value.speedLimit) : null,
+)
+
+/** Anything that would make the server refuse the save, said before it does. */
+const formProblem = computed(() => nameProblem.value ?? speedProblem.value)
+
 // A zone already of an unavailable kind keeps its kind when edited; it just
 // cannot be switched to one.
 const kindOptions = computed(() =>
@@ -273,7 +282,7 @@ const legendKinds = computed(() =>
 )
 
 async function onSubmit() {
-  if (nameProblem.value || !selectedMapId.value || !canEdit.value) return
+  if (formProblem.value || !selectedMapId.value || !canEdit.value) return
   saving.value = true
   formError.value = null
   try {
@@ -637,18 +646,21 @@ watch(phone, (small) => {
         </FormField>
 
         <!--
-          Steps of 0.1 because that is what the mask can express: Nav2 reads a
-          mask value of 0 as "no limit", so the encoding starts at 0.1 m/s.
+          Steps of 0.01 because that is what the mask can express (cm/s), and
+          never 0: Nav2 reads a mask value of 0 as "no limit", not "stop". The
+          top is the robots' MPPI vx_max — see SPEED_MAX.
         -->
         <FormField
           v-if="form.kind === 'speed'"
           label="Speed limit (m/s)"
           required
-          hint="How fast a robot may go while inside."
+          :hint="`How fast a robot may go while inside: more than 0, at most ${SPEED_MAX} m/s (the robots' top speed). This slows robots down, it never stops them — to keep them out, use a Keep out zone.`"
+          :error="speedProblem ?? undefined"
         >
-          <template #default="{ id }">
+          <template #default="{ id, invalid }">
             <Input
               :id="id"
+              :invalid="invalid"
               :model-value="form.speedLimit"
               type="number"
               :min="SPEED_MIN"
@@ -663,7 +675,7 @@ watch(phone, (small) => {
           v-if="form.kind === 'avoid'"
           label="Avoid strength (1–99)"
           required
-          :hint="`${avoidLevel(form.avoidCost)}. Higher means the robot tries harder to go around; 100 would be a keep-out.`"
+          :hint="`${avoidLevel(form.avoidCost)}. 1 = slight preference, 99 = strong. The robot may still cross if there is no other way — to forbid an area, use a Keep out zone.`"
         >
           <template #default="{ id }">
             <Input
@@ -693,7 +705,7 @@ watch(phone, (small) => {
         <Button variant="secondary" size="sm" :disabled="saving" @click="form.open = false">
           Cancel
         </Button>
-        <Button size="sm" :disabled="Boolean(nameProblem) || saving" @click="onSubmit">
+        <Button size="sm" :disabled="Boolean(formProblem) || saving" @click="onSubmit">
           {{ saving ? 'Saving…' : form.editing ? 'Save' : 'Add zone' }}
         </Button>
       </template>

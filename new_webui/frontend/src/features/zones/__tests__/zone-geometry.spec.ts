@@ -7,7 +7,14 @@
  * enforce as another, and nothing on screen would say so.
  */
 import { describe, expect, it } from 'vitest'
-import { polygonArea, pointInPolygon, type Zone, type ZonePoint } from '@/domain/types'
+import {
+  polygonArea,
+  pointInPolygon,
+  SPEED_MAX,
+  speedLimitProblem,
+  type Zone,
+  type ZonePoint,
+} from '@/domain/types'
 import { avoidLevel, ZONE_KIND_STYLE, zoneSetting } from '../zoneKind'
 
 const SQUARE: ZonePoint[] = [
@@ -93,5 +100,27 @@ describe('zone kinds', () => {
   it('does not offer a trigger zone the robots would ignore', () => {
     expect(ZONE_KIND_STYLE.binary.unavailable).toBeTruthy()
     expect(ZONE_KIND_STYLE.keepout.unavailable).toBeUndefined()
+  })
+})
+
+describe('speed limits', () => {
+  it("stops at the robots' top speed, the same ceiling as the backend", () => {
+    expect(SPEED_MAX).toBe(0.6)
+    expect(speedLimitProblem(0.01)).toBeNull()
+    expect(speedLimitProblem(0.3)).toBeNull()
+    expect(speedLimitProblem(0.6)).toBeNull()
+    expect(speedLimitProblem(0.61)).toMatch(/at most 0.6 m\/s/)
+  })
+
+  it('refuses zero, because Nav2 reads it as no limit rather than stop', () => {
+    expect(speedLimitProblem(0)).toMatch(/Keep out/)
+    expect(speedLimitProblem(-0.2)).not.toBeNull()
+    expect(speedLimitProblem(Number.NaN)).not.toBeNull()
+  })
+
+  it('lists a limit to the centimetre per second the robot encodes', () => {
+    expect(zoneSetting({ kind: 'speed', speedLimit: 0.25, avoidCost: null } as Zone)).toBe(
+      '0.25 m/s',
+    )
   })
 })

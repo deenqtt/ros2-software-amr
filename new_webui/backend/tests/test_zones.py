@@ -294,3 +294,27 @@ def test_nullable_zone_fields_still_clear_with_null(client, warehouse):
 
     assert response.status_code == 200
     assert (response.json()["speed_limit"], response.json()["note"]) == (None, None)
+
+
+@pytest.mark.parametrize("limit", [-0.1, 0.61, 1.0, 10])
+def test_a_speed_limit_outside_the_robots_range_is_refused(client, warehouse, limit):
+    """Above MPPI's vx_max the limit is unclamped and speeds up turning, too."""
+    response = client.post("/api/zones", json=zone(warehouse, kind="speed", speed_limit=limit))
+    assert response.status_code == 422
+    assert "at most 0.6 m/s" in str(response.json()["detail"])
+
+
+@pytest.mark.parametrize("limit", [0.01, 0.25, 0.6])
+def test_a_speed_limit_up_to_the_robots_top_speed_is_accepted(client, warehouse, limit):
+    response = client.post("/api/zones", json=zone(warehouse, kind="speed", speed_limit=limit))
+    assert response.status_code == 201
+    assert response.json()["speed_limit"] == limit
+
+
+def test_a_patch_cannot_raise_a_speed_limit_past_the_top_speed(client, warehouse):
+    created = client.post(
+        "/api/zones", json=zone(warehouse, kind="speed", speed_limit=0.3)
+    ).json()
+    response = client.patch(f"/api/zones/{created['id']}", json={"speed_limit": 0.9})
+    assert response.status_code == 422
+    assert "keep-out" in str(response.json()["detail"])

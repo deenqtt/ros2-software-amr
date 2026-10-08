@@ -2,9 +2,9 @@
  * Zones: areas of a map that change how a robot behaves inside them.
  *
  * Not only keepout. Nav2 enforces zones through *costmap filters*, of which
- * there are exactly three, and these four kinds cover all of them — `keepout`
- * and `avoid` share a filter and differ only in the value written into its
- * mask.
+ * there are exactly three types, and these four kinds cover all of them —
+ * `keepout` and `avoid` are both KeepoutFilters, each with its own mask on the
+ * robot, and an avoid zone is never lethal.
  *
  * A zone belongs to a map, not to a robot: a speed limit at a blind corner is a
  * property of the building. A robot that must go slower everywhere is a robot
@@ -26,10 +26,27 @@ export type ZonePoint = [number, number]
 export const ZONE_MIN_POINTS = 3
 export const ZONE_MAX_POINTS = 500
 
-/** Nav2 reads a mask value of 0 as "no limit", so this is the slowest expressible. */
-export const SPEED_STEP = 0.1
-export const SPEED_MIN = 0.1
-export const SPEED_MAX = 10
+/**
+ * Speed zone limits, m/s. Mirrors SPEED_LIMIT_MAX in the backend's zone schema.
+ *
+ * The robot encodes a limit in centimetres per second, so 0.01 is the finest
+ * step and the slowest limit there is — Nav2 reads a mask value of 0 as "no
+ * limit", never as "stop". The top is the robots' MPPI vx_max: Nav2 hands MPPI
+ * an absolute limit it does not clamp, and MPPI scales its turning speed by the
+ * same ratio, so a limit above it would make a robot turn faster inside the
+ * zone meant to slow it down. To forbid an area, draw a keep-out instead.
+ */
+export const SPEED_STEP = 0.01
+export const SPEED_MIN = 0.01
+export const SPEED_MAX = 0.6
+
+/** Why a speed limit cannot be saved, or null when it can. Same rule as the backend. */
+export function speedLimitProblem(limit: number): string | null {
+  if (!Number.isFinite(limit) || limit <= 0 || limit > SPEED_MAX) {
+    return `Must be more than 0 and at most ${SPEED_MAX} m/s (the robots' top speed). To keep robots out, use a Keep out zone.`
+  }
+  return null
+}
 
 export interface Zone {
   id: string
@@ -39,7 +56,10 @@ export interface Zone {
   polygon: ZonePoint[]
   /** m/s. Only on a speed zone. */
   speedLimit: number | null
-  /** 1..99 reluctance. Only on an avoid zone — 100 would be a keepout. */
+  /**
+   * 1..99 reluctance. Only on an avoid zone — 100 would be a keepout. The robot
+   * maps it onto a cost that is never lethal, so it may still cross.
+   */
   avoidCost: number | null
   /** Switched off without being deleted, so it comes back the same shape. */
   enabled: boolean

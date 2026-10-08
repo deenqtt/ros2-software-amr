@@ -2,9 +2,9 @@
 Request and response models for zones.
 
 A zone is an area of a map that changes how a robot behaves inside it. Nav2
-enforces them through costmap filters, and there are exactly three of those —
-so there are four kinds here, two of which share a filter and differ only in the
-value written into its mask.
+enforces them through costmap filters, of which there are exactly three types —
+so there are four kinds here, two of which (keepout and avoid) are both
+KeepoutFilters, each with its own mask on the robot.
 
 Polygons are carried as points, never as the rasterised mask. The mask belongs
 to one map resolution and cannot be edited back into corners; the polygon is
@@ -23,7 +23,7 @@ from app.schemas.patch import reject_nulls
 
 NAME_MAX = 64
 
-#: keepout and avoid are the same Nav2 filter; only the mask value differs.
+#: keepout and avoid are both KeepoutFilters; avoid has its own mask, never lethal.
 ZoneKind = Literal["keepout", "avoid", "speed", "binary"]
 
 # Three points make an area; two make a line with none.
@@ -33,6 +33,29 @@ MIN_POINTS = 3
 MAX_POINTS = 500
 
 ZoneName = Annotated[str, Field(min_length=1, max_length=NAME_MAX)]
+
+#: The fastest a speed zone may allow, in m/s: the robots' MPPI vx_max.
+#:
+#: Not a cosmetic ceiling. Nav2's SpeedFilter hands MPPI an absolute limit
+#: that MPPI does not clamp to its own maximum, and MPPI scales its turning
+#: speed by the same ratio — so a "limit" above vx_max makes a robot turn
+#: faster than it is tuned for, inside the very area meant to slow it down.
+#: The frontend mirrors this as SPEED_MAX.
+SPEED_LIMIT_MAX = 0.6
+
+SPEED_LIMIT_MESSAGE = (
+    f"speed_limit must be more than 0 and at most {SPEED_LIMIT_MAX} m/s, the robots' "
+    "top speed. 0 would mean no limit at all, not stop: use a keep-out zone to forbid an area"
+)
+
+
+def _check_speed_limit(value: float | None) -> float | None:
+    # Zero is excluded as well as negatives: Nav2 reads a speed of 0 as "no
+    # limit", so a zone meant to stop robots would let them through at full speed.
+    if value is not None and not (math.isfinite(value) and 0 < value <= SPEED_LIMIT_MAX):
+        raise ValueError(SPEED_LIMIT_MESSAGE)
+    return value
+
 
 #: Metres in the map frame. Never pixels — a re-survey at a finer resolution
 #: must not move a zone.
@@ -59,7 +82,7 @@ class ZoneBase(BaseModel):
     name: ZoneName
     kind: ZoneKind
     polygon: list[Point]
-    speed_limit: Annotated[float, Field(gt=0, le=10)] | None = None
+    speed_limit: float | None = None
     avoid_cost: Annotated[int, Field(ge=1, le=99)] | None = None
     enabled: bool = True
     note: str | None = None
@@ -76,6 +99,11 @@ class ZoneBase(BaseModel):
     @classmethod
     def _validate_polygon(cls, value: list[Point]) -> list[Point]:
         return _check_polygon(value)
+
+    @field_validator("speed_limit")
+    @classmethod
+    def _validate_speed_limit(cls, value: float | None) -> float | None:
+        return _check_speed_limit(value)
 
     @model_validator(mode="after")
     def _settings_match_the_kind(self) -> ZoneBase:
@@ -119,7 +147,7 @@ class ZonePatch(BaseModel):
     name: ZoneName | None = None
     kind: ZoneKind | None = None
     polygon: list[Point] | None = None
-    speed_limit: Annotated[float, Field(gt=0, le=10)] | None = None
+    speed_limit: float | None = None
     avoid_cost: Annotated[int, Field(ge=1, le=99)] | None = None
     enabled: bool | None = None
     note: str | None = None
@@ -138,6 +166,11 @@ class ZonePatch(BaseModel):
     @classmethod
     def _validate_polygon(cls, value: list[Point] | None) -> list[Point] | None:
         return None if value is None else _check_polygon(value)
+
+    @field_validator("speed_limit")
+    @classmethod
+    def _validate_speed_limit(cls, value: float | None) -> float | None:
+        return _check_speed_limit(value)
 
     @model_validator(mode="after")
     def _no_null_on_required(self) -> ZonePatch:

@@ -38,7 +38,7 @@ export const ZONE_KIND_STYLE: Record<ZoneKind, ZoneKindStyle> = {
     label: 'Avoid',
     colour: '#f0a020',
     icon: TrendingDown,
-    hint: 'Go around if there is a reasonable way round.',
+    hint: 'Go around if there is a reasonable way round; may still cross if there is no other way.',
     filter: 'KeepoutFilter',
   },
   speed: {
@@ -79,7 +79,7 @@ export function avoidLevel(cost: number): 'Low' | 'Medium' | 'High' {
 
 /** The kind-specific setting, spelled out for a list row. */
 export function zoneSetting(zone: Zone): string {
-  if (zone.kind === 'speed') return `${zone.speedLimit?.toFixed(1)} m/s`
+  if (zone.kind === 'speed') return `${zone.speedLimit?.toFixed(2)} m/s`
   if (zone.kind === 'avoid' && zone.avoidCost !== null) {
     return `${avoidLevel(zone.avoidCost)} (${zone.avoidCost})`
   }
