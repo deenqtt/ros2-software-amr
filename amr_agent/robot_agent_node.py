@@ -1420,6 +1420,13 @@ class RobotAgent(Node):
         record = self._backend.get_map(map_id)
         yaml_path = self._ensure_cached(record)
 
+        # A hot swap under a running stack: the pose AMCL reports after it is in the
+        # new map's frame. Save the old map's pose now and stop recording, or the
+        # next samples would be written into the old map's file.
+        swapping = self._mode == MODE_NAV and self._state == STATE_RUNNING
+        if swapping:
+            self._end_pose_tracking()
+
         loader = self.create_client(LoadMap, MAP_LOADER_SERVICE, callback_group=self._cb)
         try:
             request = LoadMap.Request()
@@ -1432,6 +1439,9 @@ class RobotAgent(Node):
             self.destroy_client(loader)
 
         if reply is None or reply.result != LoadMap.Response.RESULT_SUCCESS:
+            if swapping:
+                # The old map is still the one loaded: keep recording on it.
+                self._resume_pose_tracking()
             code = "no reply" if reply is None else reply.result
             raise RuntimeError(f"map_server refused the map (result {code})")
 
@@ -1445,6 +1455,9 @@ class RobotAgent(Node):
         # Stations are expressed in this map's frame, so they follow the map in
         # and are pushed only once it is the one actually loaded.
         self._push_stations(map_id)
+        if swapping:
+            # Track (and, if remembered, restore) the pose on the map now loaded.
+            self._begin_pose_restore()
         self._publish_status()
 
     # ── Desired mode ──────────────────────────────────────────────────────────
@@ -2493,13 +2506,26 @@ class RobotAgent(Node):
             self._pose_tracking = False
             self._pose_map_id = None
 
+    def _resume_pose_tracking(self) -> None:
+        """Record again on the map still loaded, without sending AMCL anything."""
+        map_id = self._nav_map_id()
+        saved = self._store.load_pose(map_id) if map_id else None
+        with self._pose_lock:
+            self._nav_generation += 1
+            self._pose_map_id = map_id
+            self._pose_saved = saved
+            self._pose_saved_at = time.monotonic()
+            self._pose_tracking = map_id is not None
+
     def _on_initialpose(self, msg: PoseWithCovarianceStamped) -> None:
         del msg
         with self._pose_lock:
             self._initialpose_seen = True
-            # Set by somebody, so what AMCL now reports is worth keeping.
+            # Set by somebody, so what AMCL now reports is worth keeping, once it
+            # has caught up (see POSE_SAVE_PERIOD_S below).
             if self._pose_map_id is not None:
                 self._pose_tracking = True
+                self._pose_saved_at = time.monotonic()
 
     def _begin_pose_restore(self) -> None:
         """Start handing AMCL the remembered pose for this bring-up's map."""
@@ -2599,6 +2625,10 @@ class RobotAgent(Node):
             msg.pose.covariance = covariance
             self._initialpose_pub.publish(msg)
             self._pose_tracking = True
+            # AMCL's map->odom trails by up to its transform_tolerance (1 s), so a
+            # sample taken now could still be the old estimate: the first save
+            # waits a full POSE_SAVE_PERIOD_S.
+            self._pose_saved_at = time.monotonic()
         self.get_logger().info(
             f"[robot_agent] gave AMCL the remembered pose on map {map_id}: "
             f"({x:.2f}, {y:.2f}, {math.degrees(yaw):.0f} deg)"
