@@ -428,7 +428,9 @@ Program kecil di setiap robot yang menjadi penghubung antara Web UI dan robot.
 6. Mengambil dan menjalankan mission, melaporkan setiap step, tiba, selesai, gagal (beserta alasannya), atau batal.
 
 Saat Nav2 menyala pada sebuah peta, agent memberi AMCL posisi terakhir robot di peta itu (`/initialpose`,
-disimpan di disk robot), kecuali operator sudah mengatur posisi lebih dulu. Dengan `mission_via=nav`, costmap
+disimpan di disk robot), kecuali operator sudah mengatur posisi lebih dulu. Di simulasi (sim time) ini mati
+secara default (`restore_last_pose:=auto`): setiap reset simulasi robot kembali ke titik spawn, yaitu (0,0,0)
+peta, tempat AMCL memang mulai. Dengan `mission_via=nav`, costmap
 global dan lokal dibersihkan sebelum setiap goal dan setelah goal yang gagal atau dibatalkan.
 
 **Konfirmasi pengambilan** (`mission_via=nav`): di step bertanda *confirm* robot menunggu tombol

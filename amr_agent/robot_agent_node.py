@@ -419,6 +419,11 @@ class RobotAgent(Node):
 
         self.declare_parameter("managed_mode", False)
         self.declare_parameter("use_sim_time_arg", True)
+        # Hand AMCL the remembered pose when navigation starts: "true", "false", or
+        # "auto" = only off simulation. A simulator puts the robot back at its spawn
+        # point (map 0,0,0, where AMCL starts anyway) on every reset, so a pose
+        # remembered from the last run would be wrong there.
+        self.declare_parameter("restore_last_pose", "auto")
         self.declare_parameter("default_map", DEFAULT_MAP)
         self.declare_parameter("backend_url", "")
         self.declare_parameter("robot_id", "")
@@ -489,6 +494,10 @@ class RobotAgent(Node):
 
         self._managed = bool(self.get_parameter("managed_mode").value)
         self._use_sim_time_arg = bool(self.get_parameter("use_sim_time_arg").value)
+        restore = str(self.get_parameter("restore_last_pose").value).strip().lower()
+        self._restore_last_pose = (
+            not self._use_sim_time_arg if restore == "auto" else restore in ("true", "1", "yes")
+        )
         self._current_map = str(self.get_parameter("default_map").value)
         # Invalid limits stop the agent at startup (ValueError) rather than
         # silently running with no ceiling.
@@ -2529,6 +2538,16 @@ class RobotAgent(Node):
 
     def _begin_pose_restore(self) -> None:
         """Start handing AMCL the remembered pose for this bring-up's map."""
+        if not self._restore_last_pose:
+            with self._pose_lock:
+                self._nav_generation += 1
+                self._pose_tracking = False
+                self._pose_map_id = None
+            self.get_logger().info(
+                "[robot_agent] remembered pose not used (restore_last_pose off; in simulation "
+                "AMCL starts at the spawn point, map 0,0,0)"
+            )
+            return
         map_id = self._nav_map_id()
         saved = self._store.load_pose(map_id) if map_id else None
         with self._pose_lock:
