@@ -3,14 +3,20 @@
 zone_mask_server — turns zone polygons into the costmap filter masks Nav2 reads.
 
 Replaces keepout_mask_server. A zone is not only a keepout: Nav2 enforces zones
-through *costmap filters*, of which there are exactly three, and this publishes
-all three so a map can carry every kind at once.
+through *costmap filters*, and this publishes one filter's worth for each kind
+of zone so a map can carry every kind at once.
 
-  keepout  -> KeepoutFilter, mask value 100. Never enter.
-  avoid    -> KeepoutFilter, mask value 1..99. Go around if you reasonably can.
-              Same filter as keepout; only the value in the mask differs.
-  speed    -> SpeedFilter, a maximum velocity in m/s.
+  keepout  -> KeepoutFilter, mask value 100. Never enter. Each keepout also gets
+              a non-lethal halo round it (95 at the edge falling to 55, 0.6 m
+              wide by default): filters are not inflated, and without the halo
+              the robot's body clips into the keepout and MPPI deadlocks there.
+  avoid    -> a second KeepoutFilter on its own mask. The UI's avoid_cost 1..99
+              becomes 8..80: go around if you reasonably can, never lethal.
+  speed    -> SpeedFilter, absolute: mask value = m/s * 100 (1..100).
   binary   -> BinaryFilter, toggles a topic on entry.
+
+The arithmetic — polygon fill, halo, value mapping — lives in zone_raster.py,
+which has no ROS imports and is unit-tested; this node only moves messages.
 
 Each filter needs its own CostmapFilterInfo *and* its own mask, on separate
 topics. They are told apart by the `type` field — which the previous version got
@@ -19,16 +25,28 @@ filter. KeepoutFilter happens not to check the type, so keepout kept working and
 nothing reported the mistake; it would have started mattering the moment a
 second filter appeared, which is now.
 
+The topic names are a contract with the robot's Nav2 parameters: each filter
+plugin there names one of the info topics below. Rename nothing here without
+changing those too.
+
+Parameters:
+    keepout_halo_width   m, default 0.6. 0 turns the halo off.
+    keepout_halo_inner   mask value at the keepout's edge, default 95.
+    keepout_halo_outer   mask value at the halo's outer rim, default 55.
+
 Topics:
   Subscribe:
     /map                        nav_msgs/OccupancyGrid (transient_local)
     /amr/zones                  std_msgs/String — JSON array from the agent
 
-  Publish (all transient_local, so a filter that starts later still gets them):
-    /zone_keepout_filter_info   nav2_msgs/CostmapFilterInfo  type 0
-    /zone_keepout_mask          nav_msgs/OccupancyGrid
-    /zone_speed_filter_info     nav2_msgs/CostmapFilterInfo  type 2
-    /zone_speed_mask            nav_msgs/OccupancyGrid
+  Publish (all transient_local + reliable, depth 1, so a filter that starts
+  later still gets them):
+    /zone_keepout_filter_info   nav2_msgs/CostmapFilterInfo  type 0, base 0, multiplier 1
+    /zone_keepout_mask          nav_msgs/OccupancyGrid       keepouts 100 + halo 55..95
+    /zone_avoid_filter_info     nav2_msgs/CostmapFilterInfo  type 0, base 0, multiplier 1
+    /zone_avoid_mask            nav_msgs/OccupancyGrid       avoid zones 8..80
+    /zone_speed_filter_info     nav2_msgs/CostmapFilterInfo  type 2, base 0, multiplier 0.01
+    /zone_speed_mask            nav_msgs/OccupancyGrid       round(m/s * 100), 0 = no limit
     /zone_binary_filter_info    nav2_msgs/CostmapFilterInfo  type 3
     /zone_binary_mask           nav_msgs/OccupancyGrid
 """
@@ -41,6 +59,17 @@ from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPo
 from std_msgs.msg import String
 from nav_msgs.msg import OccupancyGrid, MapMetaData
 from nav2_msgs.msg import CostmapFilterInfo
+
+from zone_raster import (
+    HALO_INNER,
+    HALO_OUTER,
+    HALO_WIDTH_M,
+    SPEED_BASE,
+    SPEED_MULTIPLIER,
+    Grid,
+    rasterise,
+    validate_halo,
+)
 
 
 TRANSIENT_LOCAL_QOS = QoSProfile(
@@ -57,21 +86,25 @@ FILTER_SPEED_PERCENT = 1
 FILTER_SPEED_ABSOLUTE = 2
 FILTER_BINARY = 3
 
-# speed_limit = base + multiplier * mask_value, so a mask value of 1..100 with
-# this multiplier spans 0.1 .. 10.0 m/s in 0.1 steps. Absolute m/s rather than a
-# percentage because "0.3 m/s past the blind corner" is a number an operator can
-# check with a tape measure; "30% of maximum" depends on a setting elsewhere.
-SPEED_BASE = 0.0
-SPEED_MULTIPLIER = 0.1
-
-KEEPOUT_VALUE = 100
-BINARY_VALUE = 100
+# The speed filter's encoding (base 0, multiplier 0.01: a mask value is cm/s)
+# is defined in zone_raster, next to the code that writes the values.
 
 
 class ZoneMaskServer(Node):
 
     def __init__(self):
         super().__init__('zone_mask_server')
+
+        self.declare_parameter('keepout_halo_width', HALO_WIDTH_M)
+        self.declare_parameter('keepout_halo_inner', HALO_INNER)
+        self.declare_parameter('keepout_halo_outer', HALO_OUTER)
+        # Refused at startup: a halo of 100 would quietly grow every keepout,
+        # and a negative width is a typo rather than a setting.
+        self._halo = validate_halo(
+            self.get_parameter('keepout_halo_width').value,
+            self.get_parameter('keepout_halo_inner').value,
+            self.get_parameter('keepout_halo_outer').value,
+        )
 
         self._map_info: MapMetaData = None
         self._zones: list = []
@@ -84,7 +117,7 @@ class ZoneMaskServer(Node):
         # restarted — would otherwise never hear the zones and run with none.
         self.create_subscription(String, '/amr/zones', self._on_zones, TRANSIENT_LOCAL_QOS)
 
-        # One info + one mask per filter. A single pair cannot serve three
+        # One info + one mask per filter. A single pair cannot serve four
         # filters: each reads the type from its own info topic to decide how to
         # interpret the values in the mask it points at.
         self._filters = {
@@ -92,6 +125,12 @@ class ZoneMaskServer(Node):
             # defaults and complains otherwise, so these two are not free.
             'keepout': self._make_filter(
                 FILTER_KEEPOUT, '/zone_keepout_filter_info', '/zone_keepout_mask',
+                0.0, 1.0,
+            ),
+            # A second KeepoutFilter instance, so avoid costs no longer share a
+            # mask with the keepout halo and cannot outrank it.
+            'avoid': self._make_filter(
+                FILTER_KEEPOUT, '/zone_avoid_filter_info', '/zone_avoid_mask',
                 0.0, 1.0,
             ),
             'speed': self._make_filter(
@@ -105,7 +144,10 @@ class ZoneMaskServer(Node):
         }
 
         self._publish_filter_info()
-        self.get_logger().info('Zone Mask Server started. Waiting for /map...')
+        self.get_logger().info(
+            f'Zone Mask Server started (keepout halo {self._halo.width:.2f} m, '
+            f'{self._halo.inner}..{self._halo.outer}). Waiting for /map...'
+        )
 
     def _make_filter(self, kind: int, info_topic: str, mask_topic: str,
                      base: float, multiplier: float) -> dict:
@@ -137,56 +179,21 @@ class ZoneMaskServer(Node):
             spec['info_pub'].publish(msg)
             self.get_logger().debug(f'filter info published for {name} (type {spec["type"]})')
 
-    def _speed_value(self, limit: float) -> int:
-        """
-        A speed limit in m/s as a mask value.
-
-        Clamped to 1 at the bottom: 0 in a speed mask means *no restriction*,
-        so rounding a very low limit down to zero would turn the slowest zone on
-        the map into the fastest.
-        """
-        value = int(round((limit - SPEED_BASE) / SPEED_MULTIPLIER))
-        return max(1, min(100, value))
-
     def _publish_masks(self):
         if self._map_info is None:
             return
 
-        w = self._map_info.width
-        h = self._map_info.height
-        res = self._map_info.resolution
-        ox = self._map_info.origin.position.x
-        oy = self._map_info.origin.position.y
-
-        buffers = {name: bytearray(w * h) for name in self._filters}
-        counts = {name: 0 for name in self._filters}
-
-        for zone in self._zones:
-            if not zone.get('enabled', True):
-                continue
-            polygon = zone.get('polygon') or []
-            if len(polygon) < 3:
-                continue
-
-            kind = str(zone.get('kind', 'keepout'))
-            if kind == 'keepout':
-                target, value = 'keepout', KEEPOUT_VALUE
-            elif kind == 'avoid':
-                target, value = 'keepout', int(zone.get('avoid_cost') or 50)
-            elif kind == 'speed':
-                target, value = 'speed', self._speed_value(float(zone.get('speed_limit') or 0.1))
-            elif kind == 'binary':
-                target, value = 'binary', BINARY_VALUE
-            else:
-                self.get_logger().warning(f'unknown zone kind "{kind}", skipped')
-                continue
-
-            cells = [
-                (int((point[0] - ox) / res), int((point[1] - oy) / res))
-                for point in polygon
-            ]
-            self._fill_polygon(buffers[target], cells, w, h, value)
-            counts[target] += 1
+        grid = Grid(
+            width=self._map_info.width,
+            height=self._map_info.height,
+            resolution=self._map_info.resolution,
+            origin_x=self._map_info.origin.position.x,
+            origin_y=self._map_info.origin.position.y,
+        )
+        result = rasterise(self._zones, grid, self._halo)
+        for reason in result.skipped:
+            self.get_logger().warning(f'{reason}, skipped')
+        buffers, counts = result.masks, result.counts
 
         for name, spec in self._filters.items():
             mask = OccupancyGrid()
@@ -228,46 +235,6 @@ class ZoneMaskServer(Node):
         self._zones = parsed
         self.get_logger().info(f'Zones updated: {len(self._zones)} zone(s)')
         self._publish_masks()
-
-    # ── Polygon fill ───────────────────────────────────────────────────────────
-
-    def _fill_polygon(self, data: bytearray, vertices: list, width: int,
-                      height: int, value: int = 100):
-        """
-        Scanline fill.
-
-        Writes the larger value when zones overlap, so a keepout drawn across a
-        speed zone stays a keepout — the stricter rule wins rather than whichever
-        polygon happened to be drawn last.
-        """
-        if len(vertices) < 3:
-            return
-
-        ys = [y for _, y in vertices]
-        y_start = max(0, min(ys))
-        y_end = min(height - 1, max(ys))
-
-        count = len(vertices)
-        for y in range(y_start, y_end + 1):
-            crossings = []
-            for i in range(count):
-                x1, y1 = vertices[i]
-                x2, y2 = vertices[(i + 1) % count]
-                if y1 == y2:
-                    continue
-                # Half-open test, so a vertex lying exactly on the scanline is
-                # counted once rather than twice — otherwise the fill leaks.
-                if (y1 <= y < y2) or (y2 <= y < y1):
-                    crossings.append(x1 + (y - y1) * (x2 - x1) / (y2 - y1))
-
-            crossings.sort()
-            for i in range(0, len(crossings) - 1, 2):
-                x_start = max(0, int(round(crossings[i])))
-                x_end = min(width - 1, int(round(crossings[i + 1])))
-                row = y * width
-                for x in range(x_start, x_end + 1):
-                    if value > data[row + x]:
-                        data[row + x] = value
 
 
 def main():
