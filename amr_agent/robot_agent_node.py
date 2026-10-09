@@ -161,6 +161,7 @@ from nav2_msgs.action import NavigateToPose
 from nav2_msgs.srv import ClearEntireCostmap, LoadMap, ReloadDockDatabase, SaveMap
 
 from agent_state import TERMINAL_STATES, AgentState, pose_changed
+from child_groups import ChildGroups, stop_group
 from delivery import (
     CONFIRMED,
     PHASE_BLOCKED,
@@ -203,10 +204,6 @@ STATE_STOPPING = "stopping"
 STATE_FAILED = "failed"
 
 DEFAULT_MAP = "/maps/amr_map.yaml"
-
-# How long a child gets to shut down politely before it is killed.
-SIGINT_GRACE_S = 8.0
-SIGTERM_GRACE_S = 4.0
 
 # Nodes that prove a stack is actually up, rather than merely spawned.
 SLAM_MARKER_NODES = ("slam_toolbox", "map_saver")
@@ -513,6 +510,15 @@ class RobotAgent(Node):
         self._cache_dir = Path(str(self.get_parameter("map_cache_dir").value))
         state_dir = str(self.get_parameter("state_dir").value).strip()
         self._store = AgentState(Path(state_dir) if state_dir else Path.home() / ".amr_agent")
+        # Stacks a previous agent started and never stopped (it was killed, or
+        # its terminal closed) are stopped before this one starts its own: a
+        # second Nav2 next to a leftover one fails to come up, and the leftover
+        # goes on driving the robot.
+        self._groups = ChildGroups(self._store.directory)
+        for name, outcome in self._groups.stop_leftovers().items():
+            self.get_logger().warning(
+                f"[robot_agent] a previous agent left its {name} running: {outcome}"
+            )
         # The registry's desired mode as last read, kept with the map snapshot.
         self._registry_desired = "nav"
         # Said once per outage rather than every sync.
@@ -2702,6 +2708,7 @@ class RobotAgent(Node):
             stdout=subprocess.PIPE,
             stderr=self._child_errors,
         )
+        self._groups.record("launch", self._child.pid)
         # Nav2 logs to stdout, so a goal that fails says why on a terminal and
         # nowhere else: diagnosing a robot meant asking whoever was next to it
         # to copy lines across. Every line still goes to the console, and also
@@ -2736,6 +2743,7 @@ class RobotAgent(Node):
         cmd = [sys.executable, str(script), "--ros-args", "-p", f"use_sim_time:={use_sim_time}"]
         self.get_logger().info(f"[robot_agent] exec: {shlex.join(cmd)}")
         self._zone_mask = subprocess.Popen(cmd, start_new_session=True)
+        self._groups.record("zone_mask", self._zone_mask.pid)
 
     def _child_error_tail(self, lines: int = 4) -> str:
         """The last few lines the launch complained about, for the status."""
@@ -2811,50 +2819,54 @@ class RobotAgent(Node):
         self._zone_mask = None
         if companion is not None:
             self._stop_group(companion)
+            self._groups.forget("zone_mask")
 
         child = self._child
         self._child = None
         self._release_child_errors()
         if child is not None:
             self._stop_group(child)
+            self._groups.forget("launch")
 
     def _stop_group(self, child: subprocess.Popen) -> None:
         """Stop a process started in its own session, and everything it spawned."""
-        if child.poll() is not None:
-            return
-
-        pgid = os.getpgid(child.pid)
-
-        # SIGINT first: ros2 launch treats it as a shutdown request and lets its
-        # children exit cleanly, which matters for anything holding a map file.
-        for sig, grace in ((signal.SIGINT, SIGINT_GRACE_S), (signal.SIGTERM, SIGTERM_GRACE_S)):
-            try:
-                os.killpg(pgid, sig)
-            except ProcessLookupError:
-                return
-            deadline = time.time() + grace
-            while time.time() < deadline:
-                if child.poll() is not None:
-                    return
-                time.sleep(0.2)
-
-        # Nothing polite worked. An orphaned stack would hold the topics the
-        # next mode needs, so this is not optional.
+        # By group, not by child: `ros2 launch` exiting first used to end this
+        # here, with the nodes it had started still running.
+        outcome = stop_group(child.pid)
         try:
-            os.killpg(pgid, signal.SIGKILL)
-            child.wait(timeout=5)
-            self.get_logger().warning("[robot_agent] child needed SIGKILL")
-        except (ProcessLookupError, subprocess.TimeoutExpired):
+            child.wait(timeout=1)
+        except subprocess.TimeoutExpired:
             pass
+        if outcome == "killed":
+            self.get_logger().warning("[robot_agent] child needed SIGKILL")
+        elif outcome == "stuck":
+            self.get_logger().error(
+                f"[robot_agent] process group {child.pid} is still running after SIGKILL"
+            )
 
     def destroy_node(self) -> bool:
-        self._end_pose_tracking()
-        self._stop_child()
+        # The stack is stopped even when saving the pose fails: a stack left
+        # running is the next start's problem, a lost pose is not.
+        try:
+            self._end_pose_tracking()
+        finally:
+            self._stop_child()
         return super().destroy_node()
+
+
+def _interrupt(signum, frame) -> None:
+    del signum, frame
+    raise KeyboardInterrupt
 
 
 def main(args=None) -> None:
     rclpy.init(args=args)
+    # A closed terminal (SIGHUP) or a plain `kill` (SIGTERM) ends the agent the
+    # way Ctrl+C does, through the cleanup below. By default either one killed
+    # it outright, and the stack it had started, in a session of its own, ran on
+    # next to the one the next agent started.
+    signal.signal(signal.SIGHUP, _interrupt)
+    signal.signal(signal.SIGTERM, _interrupt)
     node = RobotAgent()
     executor = MultiThreadedExecutor()
     executor.add_node(node)

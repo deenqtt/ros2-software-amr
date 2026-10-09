@@ -329,6 +329,7 @@ ros2-software-amr/
 ├── amr_agent/             Robot Agent + Kiosk (di-copy ke setiap robot)
 │   ├── robot_agent_node.py   agent utama (rclpy)
 │   ├── agent_state.py        "ingatan" offline: registry, station, zone, outbox
+│   ├── child_groups.py       catat & hentikan stack Nav2/SLAM yang ditinggal agent sebelumnya
 │   ├── backend_client.py     klien HTTP ke backend
 │   ├── zone_mask_server.py   zone → mask filter Nav2
 │   ├── delivery.py           tunggu konfirmasi, hampir sampai / terhalang (tanpa ROS)
