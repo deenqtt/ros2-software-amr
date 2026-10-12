@@ -18,6 +18,7 @@ from zone_raster import (  # noqa: E402
     speed_value,
     to_cells,
     validate_halo,
+    walls_from_occupancy,
 )
 
 # 10 m x 10 m at 0.05 m/cell, origin at (-5, -5): the map centre is (0, 0).
@@ -242,3 +243,85 @@ def test_avoid_and_halo_never_produce_100():
     assert 100 not in out.masks["avoid"]
     # The avoid zone touching the keepout does not leak into the keepout mask.
     assert cell_at(out.masks["keepout"], 2.5, 0.0) == 0
+
+
+# ── Halo and walls ──────────────────────────────────────────────────────────
+
+
+def walls_at(*rects, grid=GRID, grow=0):
+    """Walls over metre rectangles (x0, y0, x1, y1), as OccupancyGrid data would give them."""
+    data = [0] * (grid.width * grid.height)
+    for x0, y0, x1, y1 in rects:
+        for j in range(grid.height):
+            cy = grid.origin_y + (j + 0.5) * grid.resolution
+            if not y0 <= cy <= y1:
+                continue
+            for i in range(grid.width):
+                cx = grid.origin_x + (i + 0.5) * grid.resolution
+                if x0 <= cx <= x1:
+                    data[j * grid.width + i] = 100
+    return walls_from_occupancy(data, grid.width, grid.height, grow=grow)
+
+
+def keepout_mask(walls=None):
+    return rasterise([zone("keepout")], GRID, Halo(), walls).masks["keepout"]
+
+
+def test_in_open_space_the_halo_is_what_it_always_was():
+    assert keepout_mask(walls_at()) == keepout_mask()
+
+
+def test_the_halo_does_not_cross_a_wall():
+    # A corridor wall 0.2 m above the keepout, running the width of the map.
+    walls = walls_at((-5.0, 1.2, 5.0, 1.25))
+    assert cell_at(keepout_mask(), 0.0, 1.45) > 0
+    assert cell_at(keepout_mask(walls), 0.0, 1.45) == 0
+    # This side of the wall keeps its halo.
+    assert cell_at(keepout_mask(walls), 0.0, 1.1) == cell_at(keepout_mask(), 0.0, 1.1)
+
+
+def test_a_keepout_whose_edge_is_a_wall_has_no_halo_beyond_it():
+    # Drawn in a room with its top edge on the corridor wall: the corridor
+    # cannot reach it, which is the case that filled half a corridor.
+    walls = walls_at((-5.0, 0.95, 5.0, 1.05))
+    mask = keepout_mask(walls)
+    for y in (1.15, 1.3, 1.5):
+        assert cell_at(mask, 0.0, y) == 0
+    # The room side, where the robot can come at it, is still covered.
+    assert cell_at(mask, 0.0, -1.2) > 0
+    assert cell_at(mask, -1.2, 0.0) > 0
+
+
+def test_the_halo_goes_round_the_end_of_a_wall_only_as_far_as_it_reaches():
+    walls = walls_at((-5.0, 1.2, 0.5, 1.25))
+    mask = keepout_mask(walls)
+    # Past the wall's end: straight up from the keepout, nothing in the way.
+    assert cell_at(mask, 0.85, 1.4) == cell_at(keepout_mask(), 0.85, 1.4) > 0
+    # Behind the wall: 0.4 m away in a straight line, over a metre round the end.
+    assert cell_at(keepout_mask(), -0.5, 1.4) > 0
+    assert cell_at(mask, -0.5, 1.4) == 0
+
+
+def test_a_pinhole_in_a_wall_does_not_let_the_halo_through():
+    # One missing cell, as SLAM leaves them; grown walls close it.
+    walls = walls_at((-5.0, 1.2, -0.03, 1.25), (0.03, 1.2, 5.0, 1.25), grow=1)
+    mask = keepout_mask(walls)
+    assert cell_at(mask, 0.0, 1.45) == 0
+
+
+def test_walls_get_no_halo():
+    walls = walls_at((-5.0, 1.2, 5.0, 1.25))
+    assert cell_at(keepout_mask(walls), 0.0, 1.22) == 0
+
+
+def test_walls_from_occupancy_reads_walls_and_ignores_unknown():
+    data = [0, 64, 65, 100, -1, 0]
+    assert list(walls_from_occupancy(data, 6, 1, grow=0)) == [0, 0, 1, 1, 0, 0]
+
+
+def test_walls_are_grown_by_a_cell_all_round():
+    data = [0] * 25
+    data[12] = 100  # the centre of a 5 x 5 map
+    walls = walls_from_occupancy(data, 5, 5)
+    grown = [index for index, value in enumerate(walls) if value]
+    assert grown == [6, 7, 8, 11, 12, 13, 16, 17, 18]

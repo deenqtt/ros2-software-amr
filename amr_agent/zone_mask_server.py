@@ -10,6 +10,8 @@ of zone so a map can carry every kind at once.
               a non-lethal halo round it (95 at the edge falling to 60, 0.6 m
               wide by default): filters are not inflated, and without the halo
               the robot's body clips into the keepout and MPPI deadlocks there.
+              The halo stops at the map's walls: it only covers what the robot
+              could reach the keepout from.
   avoid    -> a second KeepoutFilter on its own mask. The UI's avoid_cost 1..99
               becomes 8..80: go around if you reasonably can, never lethal.
   speed    -> SpeedFilter, absolute: mask value = m/s * 100 (1..100).
@@ -33,6 +35,8 @@ Parameters:
     keepout_halo_width   m, default 0.6. 0 turns the halo off.
     keepout_halo_inner   mask value at the keepout's edge, default 95.
     keepout_halo_outer   mask value at the halo's outer rim, default 60.
+    keepout_halo_stops_at_walls  default true. false draws the halo through
+                         walls, as before.
 
 Topics:
   Subscribe:
@@ -69,6 +73,7 @@ from zone_raster import (
     Grid,
     rasterise,
     validate_halo,
+    walls_from_occupancy,
 )
 
 
@@ -106,7 +111,14 @@ class ZoneMaskServer(Node):
             self.get_parameter('keepout_halo_outer').value,
         )
 
+        self.declare_parameter('keepout_halo_stops_at_walls', True)
+        self._halo_stops_at_walls = bool(
+            self.get_parameter('keepout_halo_stops_at_walls').value
+        )
+
         self._map_info: MapMetaData = None
+        # The map's walls, grown by a cell; what a keepout halo cannot cross.
+        self._walls = None
         self._zones: list = []
 
         self.create_subscription(
@@ -190,7 +202,7 @@ class ZoneMaskServer(Node):
             origin_x=self._map_info.origin.position.x,
             origin_y=self._map_info.origin.position.y,
         )
-        result = rasterise(self._zones, grid, self._halo)
+        result = rasterise(self._zones, grid, self._halo, self._walls)
         for reason in result.skipped:
             self.get_logger().warning(f'{reason}, skipped')
         buffers, counts = result.masks, result.counts
@@ -212,6 +224,10 @@ class ZoneMaskServer(Node):
 
     def _on_map(self, msg: OccupancyGrid):
         self._map_info = msg.info
+        self._walls = (
+            walls_from_occupancy(msg.data, msg.info.width, msg.info.height)
+            if self._halo_stops_at_walls else None
+        )
         self.get_logger().info(
             f'Map received: {msg.info.width}x{msg.info.height} '
             f'@ {msg.info.resolution:.3f} m/cell, '
