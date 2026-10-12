@@ -43,6 +43,7 @@ import { cancelAllGoals } from '../cancelGoal'
 import { stallLabel } from '../stall'
 import { SERVICE_TYPES } from '@/domain/ros/topics'
 import { keepoutAt } from '@/domain/types/zone'
+import { destinationOptions as buildDestinationOptions } from '../destination'
 import RobotMapCanvas, { type MapTool } from '../components/RobotMapCanvas.vue'
 import RobotBar from '../components/RobotBar.vue'
 import { useRobotStop } from '../useRobotStop'
@@ -444,31 +445,75 @@ function onPick(pose: PlanarPose) {
     return
   }
 
-  const active = tool.value
-  if (active === 'goal') {
-    const keepout = keepoutAt(zones.zones, pose.x, pose.y)
-    if (keepout) {
-      toast.error('That spot is inside a keep-out zone', {
-        description: `"${keepout.name}" forbids robots. Pick a point outside it.`,
-      })
-      return
-    }
+  if (tool.value === 'goal') {
+    if (sendGoal(pose)) tool.value = 'view'
+    return
   }
-  const sent =
-    active === 'initialPose'
-      ? client.publish('initialPose', initialPoseMessage(pose))
-      : client.publish('goalPose', goalPoseMessage(pose))
-
-  if (!sent) {
+  if (!client.publish('initialPose', initialPoseMessage(pose))) {
     toast.error('Could not send — the link dropped')
     return
   }
-
-  toast.success(active === 'initialPose' ? 'Pose sent. Watch the particles settle.' : 'Goal sent', {
+  toast.success('Pose sent. Watch the particles settle.', {
     description: `${pose.x.toFixed(2)}, ${pose.y.toFixed(2)} m`,
   })
-  if (active === 'goal') sentGoal.value = { ...pose }
   tool.value = 'view'
+}
+
+/**
+ * Send one goal, from the map or from a station. True when it went out.
+ *
+ * One path for both, so a station goal gets the same keep-out check, the same
+ * marker on the map and the same goal status as a point clicked on the map.
+ */
+function sendGoal(pose: PlanarPose, name?: string): boolean {
+  if (!canOperate.value) return false
+  const keepout = keepoutAt(zones.zones, pose.x, pose.y)
+  if (keepout) {
+    toast.error(
+      name ? `${name} is inside a keep-out zone` : 'That spot is inside a keep-out zone',
+      { description: `"${keepout.name}" forbids robots. Pick a point outside it.` },
+    )
+    return false
+  }
+  const client = pool.clientFor(robotId.value)
+  if (!client) {
+    toast.error('No connection to this robot')
+    return false
+  }
+  if (!client.publish('goalPose', goalPoseMessage(pose))) {
+    toast.error('Could not send — the link dropped')
+    return false
+  }
+  toast.success(name ? `Going to ${name}` : 'Goal sent', {
+    description: `${pose.x.toFixed(2)}, ${pose.y.toFixed(2)} m`,
+  })
+  sentGoal.value = { ...pose }
+  return true
+}
+
+/**
+ * Destination: one station, driven to directly, no mission needed. See
+ * ../destination.ts for why a station inside a keep-out cannot be picked.
+ */
+const destinationId = ref<string | null>(null)
+const destinationOptions = computed(() => buildDestinationOptions(stations.stations, zones.zones))
+const destinationBlocker = computed(() => {
+  const blocked = toolBlocker('goal')
+  if (blocked) return blocked
+  if (activeRun.value) return 'A mission is running. Cancel it first.'
+  if (!destinationId.value) return 'Choose a station.'
+  return null
+})
+// A station deleted, or a map swapped, while it was chosen.
+watch(destinationOptions, (options) => {
+  const chosen = options.find((option) => option.value === destinationId.value)
+  if (destinationId.value && (!chosen || chosen.disabled)) destinationId.value = null
+})
+
+function goToDestination() {
+  const station = destinationId.value ? stations.byId(destinationId.value) : null
+  if (!station || destinationBlocker.value) return
+  sendGoal({ x: station.x, y: station.y, theta: station.yaw }, station.name)
 }
 
 /**
@@ -963,6 +1008,33 @@ async function cancelMission() {
                 </Button>
               </template>
             </div>
+
+            <section class="space-y-sm border-t border-hairline pt-base">
+              <p class="text-label uppercase text-muted">Destination</p>
+              <div class="flex items-center gap-xs">
+                <Select
+                  label="Destination"
+                  :model-value="destinationId"
+                  :options="destinationOptions"
+                  placeholder="Choose a station…"
+                  class="min-w-0 flex-1"
+                  @update:model-value="destinationId = $event"
+                />
+                <BlockedTip :reason="destinationBlocker">
+                  <Button
+                    size="sm"
+                    :disabled="Boolean(destinationBlocker)"
+                    data-testid="go-to-destination"
+                    @click="goToDestination"
+                  >
+                    <Navigation :size="13" /> Go
+                  </Button>
+                </BlockedTip>
+              </div>
+              <p v-if="!stations.stations.length" class="text-caption text-muted">
+                No stations on this map. Add them on the Station page.
+              </p>
+            </section>
 
             <section class="space-y-sm border-t border-hairline pt-base">
               <p class="text-label uppercase text-muted">Mission</p>

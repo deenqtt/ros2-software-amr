@@ -68,7 +68,16 @@ describe('pointInPolygon', () => {
   })
 
   it('says nothing is inside a degenerate ring', () => {
-    expect(pointInPolygon([[0, 0], [1, 1]] as ZonePoint[], 0.5, 0.5)).toBe(false)
+    expect(
+      pointInPolygon(
+        [
+          [0, 0],
+          [1, 1],
+        ] as ZonePoint[],
+        0.5,
+        0.5,
+      ),
+    ).toBe(false)
   })
 })
 
@@ -88,7 +97,12 @@ describe('polygonArea', () => {
   })
 
   it('is zero for a line', () => {
-    expect(polygonArea([[0, 0], [3, 3]] as ZonePoint[])).toBeCloseTo(0, 9)
+    expect(
+      polygonArea([
+        [0, 0],
+        [3, 3],
+      ] as ZonePoint[]),
+    ).toBeCloseTo(0, 9)
   })
 })
 

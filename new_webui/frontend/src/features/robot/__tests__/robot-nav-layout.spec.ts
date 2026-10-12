@@ -225,6 +225,14 @@ describe('RobotNavigationView — larger screens', () => {
     expect(wrapper.get('[data-testid="map"]').text()).not.toBe('')
   })
 
+  it('offers a single destination next to the mission, gated until a station is chosen', async () => {
+    const wrapper = await mountNav(1280)
+    expect(wrapper.text()).toContain('Destination')
+    const go = wrapper.get('[data-testid="go-to-destination"]')
+    expect(go.attributes('disabled')).toBeDefined()
+    expect(wrapper.text()).toContain('No stations on this map')
+  })
+
   it('starts folded on a tablet, map first', async () => {
     const wrapper = await mountNav(900)
     const header = wrapper.get('aside button[aria-expanded]')
