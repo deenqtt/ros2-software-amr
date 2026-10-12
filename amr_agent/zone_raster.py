@@ -445,3 +445,29 @@ def rasterise(
     for polygon in keepouts:
         draw_halo(out.masks["keepout"], polygon, grid, halo, walls)
     return out
+
+
+def keepout_at(zones: list, x: float, y: float) -> str | None:
+    """
+    The name of the enabled keep-out zone that (x, y), in metres, lies in.
+
+    None when there is none. A goal there can never be reached — the planner
+    treats a keep-out as lethal — and Nav2 would otherwise spend minutes on
+    recoveries against an area that will not move. Same polygon rule as the
+    fill, so a point refused here is a point the mask covers.
+    """
+    for zone in zones or []:
+        if not isinstance(zone, dict) or not zone.get("enabled", True):
+            continue
+        if str(zone.get("kind", "keepout")) != "keepout":
+            continue
+        polygon = zone.get("polygon") or []
+        if len(polygon) < 3:
+            continue
+        try:
+            points = [(float(px), float(py)) for px, py in polygon]
+        except (TypeError, ValueError):
+            continue
+        if _inside(float(x), float(y), points):
+            return str(zone.get("name") or zone.get("id") or "keep-out")
+    return None

@@ -10,6 +10,7 @@ import { describe, expect, it } from 'vitest'
 import {
   distanceToPolygon,
   KEEPOUT_HALO_M,
+  keepoutAt,
   keepoutCrowds,
   polygonArea,
   pointInPolygon,
@@ -165,5 +166,30 @@ describe('keepoutCrowds', () => {
         [station('A', 0.5, 0.5)],
       ),
     ).toEqual([])
+  })
+})
+
+describe('keepoutAt', () => {
+  const square: ZonePoint[] = [
+    [0, 0],
+    [2, 0],
+    [2, 2],
+    [0, 2],
+  ]
+  const zone = (kind: Zone['kind'], enabled = true, name = 'Panel') => ({
+    kind,
+    enabled,
+    name,
+    polygon: square,
+  })
+
+  it('names the active keep-out a point falls in', () => {
+    expect(keepoutAt([zone('keepout')], 1, 1)?.name).toBe('Panel')
+  })
+
+  it('ignores points outside, switched-off keep-outs and other kinds', () => {
+    expect(keepoutAt([zone('keepout')], 3, 1)).toBeUndefined()
+    expect(keepoutAt([zone('keepout', false)], 1, 1)).toBeUndefined()
+    expect(keepoutAt([zone('avoid'), zone('speed')], 1, 1)).toBeUndefined()
   })
 })

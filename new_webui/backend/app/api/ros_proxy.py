@@ -41,6 +41,7 @@ from websockets.exceptions import ConnectionClosed
 from app import auth
 from app.audit import client_ip
 from app.db import connect
+from app.goal_guard import goal_refusal
 from app.repositories import audit as audit_repo
 from app.repositories import robots as robots_repo
 from app.ros_policy import Decision, decide
@@ -299,6 +300,12 @@ class _Relay:
             principal = self.session.principal
             assert principal is not None  # noqa: S101
             decision = decide(frame, principal.role or "", self.namespace)
+            if decision.allow:
+                refusal = goal_refusal(
+                    self.session.connection, self.robot_id, self.namespace, frame
+                )
+                if refusal is not None:
+                    decision = Decision(False, refusal, audit=True)
             self._audit(frame, decision, principal)
 
         if decision.allow:

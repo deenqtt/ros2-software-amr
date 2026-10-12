@@ -42,6 +42,7 @@ import { GOAL_OUTCOME_LABEL } from '../goalStatus'
 import { cancelAllGoals } from '../cancelGoal'
 import { stallLabel } from '../stall'
 import { SERVICE_TYPES } from '@/domain/ros/topics'
+import { keepoutAt } from '@/domain/types/zone'
 import RobotMapCanvas, { type MapTool } from '../components/RobotMapCanvas.vue'
 import RobotBar from '../components/RobotBar.vue'
 import { useRobotStop } from '../useRobotStop'
@@ -444,6 +445,15 @@ function onPick(pose: PlanarPose) {
   }
 
   const active = tool.value
+  if (active === 'goal') {
+    const keepout = keepoutAt(zones.zones, pose.x, pose.y)
+    if (keepout) {
+      toast.error('That spot is inside a keep-out zone', {
+        description: `"${keepout.name}" forbids robots. Pick a point outside it.`,
+      })
+      return
+    }
+  }
   const sent =
     active === 'initialPose'
       ? client.publish('initialPose', initialPoseMessage(pose))

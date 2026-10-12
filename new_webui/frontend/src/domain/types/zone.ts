@@ -154,3 +154,26 @@ export function keepoutCrowds<T extends { x: number; y: number }>(
   if (polygon.length < ZONE_MIN_POINTS) return []
   return places.filter((place) => distanceToPolygon(polygon, place.x, place.y) < clearance)
 }
+
+/**
+ * The active keep-out a point lies in, if any.
+ *
+ * A goal there can never be reached: the planner treats a keep-out as lethal,
+ * and Nav2 then retries its recoveries against an area that will not move.
+ * The robot's agent and the backend's relay refuse such a goal too; this is
+ * so the operator hears why at once, in words, instead of watching a robot
+ * try for minutes.
+ */
+export function keepoutAt(
+  zones: Pick<Zone, 'kind' | 'enabled' | 'polygon' | 'name'>[],
+  x: number,
+  y: number,
+): Pick<Zone, 'kind' | 'enabled' | 'polygon' | 'name'> | undefined {
+  return zones.find(
+    (zone) =>
+      zone.kind === 'keepout' &&
+      zone.enabled &&
+      zone.polygon.length >= ZONE_MIN_POINTS &&
+      pointInPolygon(zone.polygon, x, y),
+  )
+}

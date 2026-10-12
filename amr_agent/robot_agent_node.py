@@ -162,6 +162,7 @@ from nav2_msgs.srv import ClearEntireCostmap, LoadMap, ReloadDockDatabase, SaveM
 
 from agent_state import TERMINAL_STATES, AgentState, pose_changed
 from child_groups import ChildGroups, stop_group
+from zone_raster import keepout_at
 from delivery import (
     CONFIRMED,
     PHASE_BLOCKED,
@@ -2099,6 +2100,14 @@ class RobotAgent(Node):
             return False, f"{NAV_READY_ACTION} is not available"
 
         x, y, yaw = pose
+        # Refused here, before Nav2 sees it: a station inside a keep-out can
+        # never be reached, and Nav2 would spend minutes of recoveries — and
+        # nudge the robot about — before giving up on it.
+        zones = self._store.load_zones(self._loaded_map_id) if self._loaded_map_id else None
+        keepout = keepout_at(zones or [], x, y)
+        if keepout is not None:
+            return False, f"station {station_id} is inside keep-out zone '{keepout}'"
+
         # A clean slate for this goal: marks left from the last one — the
         # obstacle it detoured round, a person who has since walked off — would
         # otherwise still be lethal, and a goal fails against nothing.

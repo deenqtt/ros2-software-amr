@@ -553,3 +553,70 @@ def test_same_host_origin_scheme(
         ):
             pass
         assert caught.value.code == 4403
+
+
+# ── goals inside a keep-out ──────────────────────────────────────────────────
+
+
+def _keepout_round_goal(client: TestClient, robot_id: str, *, enabled: bool = True) -> None:
+    """A map assigned to the robot, with a keep-out over GOAL's point (1.5, -2.0)."""
+    from tests.test_zones import make_map
+
+    warehouse = make_map(client, "Warehouse A")
+    assigned = client.put(f"/api/robots/{robot_id}/map", json={"map_id": warehouse["id"]})
+    assert assigned.status_code == 200, assigned.text
+    response = client.post(
+        "/api/zones",
+        json={
+            "map_id": warehouse["id"],
+            "name": "Switchboard",
+            "kind": "keepout",
+            "enabled": enabled,
+            "polygon": [[1.0, -2.5], [2.0, -2.5], [2.0, -1.5], [1.0, -1.5]],
+        },
+    )
+    assert response.status_code == 201, response.text
+
+
+def test_goal_inside_a_keepout_is_refused_with_its_name(
+    client, client_as, settings: Settings, robot: FakeRobot, robot_id: str
+) -> None:
+    _keepout_round_goal(client, robot_id)
+    operator = client_as("operator", "olivia")
+    with operator.websocket_connect(f"/api/robots/{robot_id}/ros", headers=ORIGIN) as ws:
+        expect_ready(ws)
+        ws.send_text(json.dumps(GOAL))
+        refusal = ws.receive_json()
+    assert refusal["op"] == "status"
+    assert refusal["id"] == GOAL["id"]
+    assert "keep-out zone 'Switchboard'" in refusal["msg"]
+    assert all(frame["op"] != "publish" for frame in robot.received)
+    [row] = audit_rows(settings)
+    assert (row["username"], row["status"]) == ("olivia", 403)
+    assert "Switchboard" in row["detail"]
+
+
+def test_goal_inside_a_switched_off_keepout_is_forwarded(
+    client, client_as, robot: FakeRobot, robot_id: str
+) -> None:
+    _keepout_round_goal(client, robot_id, enabled=False)
+    operator = client_as("operator")
+    with operator.websocket_connect(f"/api/robots/{robot_id}/ros", headers=ORIGIN) as ws:
+        expect_ready(ws)
+        ws.send_text(json.dumps(GOAL))
+        echoed = ws.receive_json()
+    assert echoed == {"op": "echo", "frame": GOAL}
+
+
+def test_goal_outside_every_keepout_is_forwarded(
+    client, client_as, robot: FakeRobot, robot_id: str
+) -> None:
+    _keepout_round_goal(client, robot_id)
+    goal = json.loads(json.dumps(GOAL))
+    goal["msg"]["pose"]["position"]["x"] = 5.0
+    operator = client_as("operator")
+    with operator.websocket_connect(f"/api/robots/{robot_id}/ros", headers=ORIGIN) as ws:
+        expect_ready(ws)
+        ws.send_text(json.dumps(goal))
+        echoed = ws.receive_json()
+    assert echoed == {"op": "echo", "frame": goal}

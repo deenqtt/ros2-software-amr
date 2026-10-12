@@ -14,6 +14,7 @@ from zone_raster import (  # noqa: E402
     draw_halo,
     fill_polygon,
     halo_value,
+    keepout_at,
     rasterise,
     speed_value,
     to_cells,
@@ -325,3 +326,22 @@ def test_walls_are_grown_by_a_cell_all_round():
     walls = walls_from_occupancy(data, 5, 5)
     grown = [index for index, value in enumerate(walls) if value]
     assert grown == [6, 7, 8, 11, 12, 13, 16, 17, 18]
+
+
+# ── Goals inside a keep-out ─────────────────────────────────────────────────
+
+
+def test_keepout_at_names_the_enabled_keepout_a_point_is_in():
+    zones = [zone("avoid"), {**zone("keepout"), "name": "Panel"}]
+    assert keepout_at(zones, 0.0, 0.0) == "Panel"
+    assert keepout_at(zones, 3.0, 0.0) is None
+
+
+def test_keepout_at_ignores_disabled_keepouts_and_other_kinds():
+    assert keepout_at([{**zone("keepout"), "enabled": False}], 0.0, 0.0) is None
+    assert keepout_at([zone("avoid"), zone("speed", speed_limit=0.3)], 0.0, 0.0) is None
+
+
+def test_keepout_at_survives_rows_it_cannot_read():
+    assert keepout_at(None, 0.0, 0.0) is None
+    assert keepout_at([{"kind": "keepout", "polygon": [[0, 0], [1, 1]]}, "junk"], 0.0, 0.0) is None
