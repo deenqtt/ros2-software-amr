@@ -78,7 +78,7 @@ function station(id: string, name: string): Station {
     id,
     mapId: 'map-1',
     name,
-    type: 'pick',
+    type: 'pick_drop',
     x: 0,
     y: 0,
     yaw: 0,

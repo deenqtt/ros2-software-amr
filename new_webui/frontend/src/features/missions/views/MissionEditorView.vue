@@ -37,7 +37,6 @@ import {
   type StepConfirm,
   type StepDraft,
   type StepTask,
-  type StationType,
 } from '@/domain/types'
 import { STATION_TYPE_STYLE } from '@/features/stations/stationType'
 import MissionRouteMap from '../components/MissionRouteMap.vue'
@@ -203,22 +202,14 @@ const focusedStationId = ref<string | null>(null)
 
 // ── Editing the list ─────────────────────────────────────────────────────────
 
-/** What a step usually does at a station of this type; still editable after. */
-const DEFAULT_TASK: Record<StationType, StepTask> = {
-  pick: 'pick',
-  drop: 'drop',
-  pick_drop: 'none',
-  charging: 'none',
-}
-
 function appendStep(stationId: string) {
-  const station = stations.byId(stationId)
   steps.value = [
     ...steps.value,
     {
       key: makeKey(),
       stationId,
-      task: station ? DEFAULT_TASK[station.type] : 'none',
+      // The station's type does not say what to do there; the operator picks it.
+      task: 'none',
       confirm: 'auto',
       note: null,
     },

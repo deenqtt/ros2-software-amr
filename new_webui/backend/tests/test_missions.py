@@ -43,7 +43,7 @@ def make_station(client, stored_map: dict, name: str, **overrides) -> dict:
         json={
             "map_id": stored_map["id"],
             "name": name,
-            "type": "pick",
+            "type": "pick_drop",
             "x": 1.0,
             "y": 2.0,
             "yaw": 0.0,
@@ -61,7 +61,7 @@ def warehouse(client):
 def stations(client, warehouse):
     return [
         make_station(client, warehouse, "Pickup A"),
-        make_station(client, warehouse, "Dropoff", type="drop", x=4.0),
+        make_station(client, warehouse, "Dropoff", type="pick_drop", x=4.0),
     ]
 
 

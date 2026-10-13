@@ -20,11 +20,12 @@ NAME_MAX = 64
 
 StationName = Annotated[str, Field(min_length=1, max_length=NAME_MAX)]
 
-# Mirrors the robot's StationConfig.srv enum (0=Pick, 1=Drop, 2=Pick&Drop,
-# 3=Charging) in a form a person can read. The agent maps it to the number.
-StationType = Literal["pick", "drop", "pick_drop", "charging"]
+# Mirrors master_control's Station_t (0=Home, 1=Pick-drop, 2=Charging), which
+# /station_config's `type` carries, in a form a person can read. The agent maps
+# it to the number. What is done at a station is the mission step's task.
+StationType = Literal["home", "pick_drop", "charging"]
 
-TYPE_TO_WIRE: dict[str, int] = {"pick": 0, "drop": 1, "pick_drop": 2, "charging": 3}
+TYPE_TO_WIRE: dict[str, int] = {"home": 0, "pick_drop": 1, "charging": 2}
 
 
 def _finite(value: float, field: str) -> float:

@@ -52,7 +52,7 @@ function station(): Station {
     id: 's1',
     mapId: 'm1',
     name: 'Dock 1',
-    type: 'pick',
+    type: 'pick_drop',
     x: 1,
     y: 2,
     yaw: 0,

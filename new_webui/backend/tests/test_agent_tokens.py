@@ -25,7 +25,7 @@ def site(client):
     """One map, two robots on it, a mission, and a live run on each robot."""
     warehouse = make_map(client, "Warehouse A")
     a = make_station(client, warehouse, "Pickup A")
-    b = make_station(client, warehouse, "Dropoff", type="drop", x=4.0)
+    b = make_station(client, warehouse, "Dropoff", type="pick_drop", x=4.0)
     robots = {}
     for name, host in (("AMR-01", "10.0.0.1"), ("AMR-02", "10.0.0.2")):
         robot = client.post(

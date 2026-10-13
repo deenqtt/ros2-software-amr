@@ -28,7 +28,7 @@ function station(id: string, x: number): Station {
     id,
     mapId: 'map-1',
     name: id.toUpperCase(),
-    type: 'pick',
+    type: 'pick_drop',
     x,
     y: 0,
     yaw: 0,

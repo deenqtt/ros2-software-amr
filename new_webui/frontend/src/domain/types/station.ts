@@ -12,21 +12,23 @@
  */
 
 /**
- * The four kinds the robot understands.
+ * The three kinds master_control understands (its Station_t).
+ *
+ * What is done at a station — pick, drop, or both — is the mission step's task,
+ * not the station's type.
  *
  * Carried as text everywhere in the application and converted to the wire
  * number only at the edge — a registry that stores `2` is one nobody can read.
  */
-export const STATION_TYPES = ['pick', 'drop', 'pick_drop', 'charging'] as const
+export const STATION_TYPES = ['home', 'pick_drop', 'charging'] as const
 
 export type StationType = (typeof STATION_TYPES)[number]
 
-/** custom_interfaces/srv/StationConfig.srv: 0=Pick, 1=Drop, 2=Pick&Drop, 3=Charging. */
+/** StationConfig.srv `type`, as master_control's Station_t: 0=Home, 1=Pick-drop, 2=Charging. */
 export const STATION_TYPE_WIRE: Record<StationType, number> = {
-  pick: 0,
-  drop: 1,
-  pick_drop: 2,
-  charging: 3,
+  home: 0,
+  pick_drop: 1,
+  charging: 2,
 }
 
 /** StationConfig.srv action field: 0 = delete, 1 = save. */
@@ -73,8 +75,7 @@ export interface StationDraft {
 }
 
 export const STATION_TYPE_LABEL: Record<StationType, string> = {
-  pick: 'Pick',
-  drop: 'Drop',
+  home: 'Home',
   pick_drop: 'Pick & drop',
   charging: 'Charging',
 }

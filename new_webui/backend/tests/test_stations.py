@@ -135,9 +135,16 @@ def test_an_unknown_type_is_refused(client, stored_map):
     assert response.status_code == 422
 
 
-@pytest.mark.parametrize("kind", ["pick", "drop", "pick_drop", "charging"])
+@pytest.mark.parametrize("kind", ["home", "pick_drop", "charging"])
 def test_every_type_the_robot_understands_is_accepted(client, stored_map, kind):
     assert client.post("/api/stations", json=station(stored_map, type=kind)).status_code == 201
+
+
+@pytest.mark.parametrize("kind", ["pick", "drop"])
+def test_pick_and_drop_are_tasks_not_station_types(client, stored_map, kind):
+    # master_control's Station_t has no pick or drop station; that is what a
+    # mission step's task says.
+    assert client.post("/api/stations", json=station(stored_map, type=kind)).status_code == 422
 
 
 @pytest.mark.parametrize("literal", ["NaN", "Infinity", "-Infinity"])
@@ -148,7 +155,7 @@ def test_a_non_finite_coordinate_is_refused(client, stored_map, literal):
     Written as a raw body because a JSON *writer* refuses to emit them.
     """
     body = (
-        f'{{"map_id": "{stored_map["id"]}", "name": "Dock 1", "type": "pick", '
+        f'{{"map_id": "{stored_map["id"]}", "name": "Dock 1", "type": "pick_drop", '
         f'"x": {literal}, "y": 0.0, "yaw": 0.0}}'
     )
 

@@ -114,7 +114,7 @@ describe('writing', () => {
     const store = useStationStore()
     await store.load('m1')
 
-    await store.create({ mapId: 'm1', name: 'Alpha', type: 'pick', x: 0, y: 0, yaw: 0 })
+    await store.create({ mapId: 'm1', name: 'Alpha', type: 'pick_drop', x: 0, y: 0, yaw: 0 })
 
     expect(store.stations.map((s) => s.name)).toEqual(['Alpha', 'Bravo'])
   })

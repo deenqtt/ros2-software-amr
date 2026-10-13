@@ -25,7 +25,7 @@ def floor(client):
     """A map, two stations, a robot on that map, and a mission across them."""
     warehouse = make_map(client, "Warehouse A")
     a = make_station(client, warehouse, "Pickup A")
-    b = make_station(client, warehouse, "Dropoff", type="drop", x=4.0)
+    b = make_station(client, warehouse, "Dropoff", type="pick_drop", x=4.0)
     robot = client.post(
         "/api/robots", json={"name": "AMR-01", "bridge_url": "ws://10.0.0.1:8765"}
     ).json()
@@ -150,7 +150,7 @@ def test_nobody_signed_in_may_not_change_anything(anon_client):
     # 401, not 403: the answer is "sign in", not "you are not allowed".
     response = anon_client.post(
         "/api/stations",
-        json={"map_id": "x", "name": "A", "type": "pick", "x": 0, "y": 0, "yaw": 0},
+        json={"map_id": "x", "name": "A", "type": "pick_drop", "x": 0, "y": 0, "yaw": 0},
     )
     assert response.status_code == 401
     assert anon_client.get("/api/auth/me").status_code == 401

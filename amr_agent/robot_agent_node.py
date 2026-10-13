@@ -247,9 +247,11 @@ STATION_CONFIG_SERVICE = "/station_config"
 # anything answers it. `ros2 node info /docking_server` is.
 DOCK_RELOAD_SERVICE = "/docking_server/reload_database"
 
-# StationConfig.srv: 0=Pick, 1=Drop, 2=Pick&Drop, 3=Charging. The registry
-# stores these as words; this is the only place the numbers are known.
-STATION_TYPE_WIRE = {"pick": 0, "drop": 1, "pick_drop": 2, "charging": 3}
+# StationConfig.srv `type`, numbered as master_control's Station_t: 0=Home,
+# 1=Pick-drop, 2=Charging. The registry stores these as words; this is the only
+# place the numbers are known. What is done at a station is the step's task
+# (MISSION_TASK_WIRE), not the station's type.
+STATION_TYPE_WIRE = {"home": 0, "pick_drop": 1, "charging": 2}
 STATION_ACTION_SAVE = 1
 STATION_ACTION_DELETE = 0
 
@@ -2528,7 +2530,7 @@ class RobotAgent(Node):
                 # name, so renaming one registered a second station and
                 # orphaned the first; a mission then addressed neither.
                 request.station_id = str(station["id"])
-                request.type = STATION_TYPE_WIRE.get(str(station.get("type")), 0)
+                request.type = STATION_TYPE_WIRE.get(str(station.get("type")), 1)
                 request.x_pose = float(station["x"])
                 request.y_pose = float(station["y"])
                 request.yaw_pose = float(station["yaw"])

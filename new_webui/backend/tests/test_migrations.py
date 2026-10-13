@@ -185,3 +185,65 @@ def test_drop_pick_migration_keeps_every_step(settings, tmp_path):
     connection.execute("DELETE FROM missions WHERE id = 'r1'")
     assert connection.execute("SELECT count(*) FROM mission_steps").fetchone()[0] == 0
     connection.close()
+
+
+def test_station_types_migration_folds_pick_and_drop(settings, tmp_path):
+    """
+    012 rebuilds stations to master_control's three types. Pick and drop
+    stations become pick_drop, charging stays, and the steps that name them
+    keep pointing at them.
+    """
+    import shutil
+
+    from app.db import MIGRATIONS_DIR
+
+    before = tmp_path / "before"
+    before.mkdir()
+    for path in sorted(MIGRATIONS_DIR.glob("*.sql")):
+        if int(path.stem.split("_")[0]) < 12:
+            shutil.copy(path, before / path.name)
+
+    connection = connect(settings.db_path)
+    migrate(connection, before)
+    connection.execute(
+        "INSERT INTO maps (id, name, version, content_hash, yaml_file, image_file, image_bytes) "
+        "VALUES ('m1', 'Floor', 1, 'h', 'a.yaml', 'a.pgm', 1)"
+    )
+    connection.execute(
+        "INSERT INTO stations (id, map_id, name, type, x, y, yaw) VALUES "
+        "('s1', 'm1', 'A', 'pick', 0, 0, 0), ('s2', 'm1', 'B', 'drop', 1, 1, 0), "
+        "('s3', 'm1', 'C', 'pick_drop', 2, 2, 0), ('s4', 'm1', 'D', 'charging', 3, 3, 0)"
+    )
+    connection.execute("INSERT INTO missions (id, map_id, name) VALUES ('r1', 'm1', 'Shuttle')")
+    connection.execute(
+        "INSERT INTO mission_steps (id, mission_id, ordinal, station_id, task) VALUES "
+        "('a', 'r1', 1, 's1', 'pick'), ('b', 'r1', 2, 's2', 'drop')"
+    )
+
+    assert 12 in migrate(connection)
+
+    rows = connection.execute("SELECT id, type FROM stations ORDER BY id").fetchall()
+    assert [tuple(row) for row in rows] == [
+        ("s1", "pick_drop"),
+        ("s2", "pick_drop"),
+        ("s3", "pick_drop"),
+        ("s4", "charging"),
+    ]
+    with pytest.raises(sqlite3.IntegrityError):
+        connection.execute(
+            "INSERT INTO stations (id, map_id, name, type, x, y, yaw) "
+            "VALUES ('s5', 'm1', 'E', 'pick', 0, 0, 0)"
+        )
+    connection.execute(
+        "INSERT INTO stations (id, map_id, name, type, x, y, yaw) "
+        "VALUES ('s6', 'm1', 'Base', 'home', 0, 0, 0)"
+    )
+    # Steps still name their stations, and a used station still refuses deletion.
+    with pytest.raises(sqlite3.IntegrityError):
+        connection.execute("DELETE FROM stations WHERE id = 's1'")
+    # The updated_at trigger came back with the table.
+    connection.execute("UPDATE stations SET updated_at = 'old' WHERE id = 's4'")
+    assert connection.execute(
+        "SELECT updated_at FROM stations WHERE id = 's4'"
+    ).fetchone()[0] != "old"
+    connection.close()

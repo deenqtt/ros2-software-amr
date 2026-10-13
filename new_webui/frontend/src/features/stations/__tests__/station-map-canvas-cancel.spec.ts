@@ -28,7 +28,7 @@ const station: Station = {
   id: 's1',
   mapId: 'm1',
   name: 'Dock 1',
-  type: 'pick',
+  type: 'pick_drop',
   x: 0.5,
   y: 0.5,
   yaw: 0,

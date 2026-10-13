@@ -15,8 +15,8 @@ _COLUMNS = """
     taught_by_robot_id, created_at, updated_at
 """
 
-# The four the robot's StationConfig.srv understands, in its own order.
-STATION_TYPES = ("pick", "drop", "pick_drop", "charging")
+# The three master_control's Station_t knows, in its own order.
+STATION_TYPES = ("home", "pick_drop", "charging")
 
 
 class DuplicateStationError(Exception):
