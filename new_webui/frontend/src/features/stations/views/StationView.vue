@@ -31,6 +31,7 @@ import { mapsApi } from '@/shared/api/maps'
 import { StationInUseError } from '@/shared/api/stations'
 import { decodePgm, type Grid } from '@/domain/map/pgm'
 import { radToDeg } from '@/domain/ros/quaternion'
+import { checkDocking, dockingProblemText, STAGING_DISTANCE_M } from '@/domain/docking'
 import { type Station, type StationType } from '@/domain/types'
 import { STATION_TYPE_LIST } from '../stationType'
 import StationMapCanvas from '../components/StationMapCanvas.vue'
@@ -245,6 +246,24 @@ function teachFromRobot() {
   openCreate(pose, teachRobotId.value)
 }
 
+/**
+ * Whether the robot fits at the docking entry of the pose in the form.
+ *
+ * Pick and drop steps dock from a point STAGING_DISTANCE_M behind the station,
+ * and the planner refuses that point if the robot does not fit there: the
+ * mission then sits still with nothing on screen saying why. Not a hard stop —
+ * a station only ever visited as a waypoint never docks — but said before saving.
+ */
+const formDocking = computed(() => {
+  if (!grid.value || !form.value.open) return null
+  const check = checkDocking(grid.value, placement.value, {
+    x: form.value.x,
+    y: form.value.y,
+    yaw: form.value.yaw,
+  })
+  return { check, problem: dockingProblemText(check) }
+})
+
 const nameProblem = computed(() => {
   const name = form.value.name.trim()
   if (!name) return 'A name is required.'
@@ -267,8 +286,10 @@ async function onSubmit() {
       yaw: form.value.yaw,
       note: form.value.note.trim() || null,
     }
+    const dockingProblem = formDocking.value?.problem ?? null
     if (form.value.editing) {
       const updated = await stations.update(form.value.editing.id, payload)
+      selectedId.value = updated.id
       toast.success(`Updated ${updated.name}`)
     } else {
       const created = await stations.create({
@@ -278,6 +299,9 @@ async function onSubmit() {
       })
       selectedId.value = created.id
       toast.success(`Added ${created.name}`)
+    }
+    if (dockingProblem) {
+      toast.warning('Pick and drop cannot dock here', { description: dockingProblem })
     }
     form.value.open = false
   } catch (error) {
@@ -510,6 +534,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
           :movable="canEdit && !phone"
           :robot-pose="robotPose"
           :hide-legend="phone && selectedStation !== null"
+          docking-entry
           @place="openCreate"
           @select="selectedId = $event"
           @move="onMove"
@@ -527,6 +552,10 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
             <span v-if="robotPose" class="flex items-center gap-xxs">
               <span class="h-2.5 w-2.5 rounded-full border-2 border-ink bg-surface" />
               Robot
+            </span>
+            <span v-if="selectedStation" class="flex items-center gap-xxs">
+              <span class="h-2.5 w-3.5 rounded-[2px] border-[1.5px] border-dashed border-status-ok" />
+              Docking entry
             </span>
           </template>
         </StationMapCanvas>
@@ -745,6 +774,32 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
               />
             </template>
           </FormField>
+        </div>
+
+        <div
+          v-if="formDocking"
+          data-testid="docking-entry"
+          :class="
+            cn(
+              'rounded-control border px-sm py-xs text-body-sm',
+              formDocking.problem
+                ? 'border-status-fault/40 bg-status-fault/10 text-ink'
+                : 'border-hairline text-body',
+            )
+          "
+        >
+          <p class="font-medium text-ink">
+            Docking entry {{ STAGING_DISTANCE_M.toFixed(1) }} m behind the station
+            <span :class="formDocking.problem ? 'text-status-fault' : 'text-status-ok'">
+              · {{ formDocking.problem ? 'robot does not fit' : 'clear' }}
+            </span>
+          </p>
+          <p class="mt-xxs text-caption text-muted">
+            {{
+              formDocking.problem ??
+              'Pick and drop steps stop here first, then drive straight onto the station.'
+            }}
+          </p>
         </div>
 
         <FormField label="Note" hint="Why this spot, for whoever inherits the site.">

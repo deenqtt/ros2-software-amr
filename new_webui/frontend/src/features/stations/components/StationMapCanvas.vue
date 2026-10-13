@@ -17,6 +17,7 @@ import { Maximize, Minus, Plus } from 'lucide-vue-next'
 import { CELL, gridToWorld, worldToGrid, type Grid } from '@/domain/map/pgm'
 import { Button } from '@/shared/ui/button'
 import type { Station } from '@/domain/types'
+import { checkDocking, footprintCorners, ROBOT_FOOTPRINT, type PlanarPose } from '@/domain/docking'
 import { STATION_TYPE_STYLE } from '../stationType'
 
 const props = defineProps<{
@@ -38,6 +39,13 @@ const props = defineProps<{
   movable?: boolean
   /** Hides the legend and readout, for while a card covers the bottom of the map. */
   hideLegend?: boolean
+  /**
+   * Draws where the robot stands before docking at the selected station (and
+   * at one being placed), green when it fits there and red when it does not.
+   * The station editor turns this on: a pick or drop step docks from there,
+   * and nothing else on the map shows it.
+   */
+  dockingEntry?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -229,6 +237,84 @@ function drawMarker(context: CanvasRenderingContext2D, station: Station, selecte
   context.fillText(label, screen.sx, top)
 }
 
+const ENTRY_OK = '#0f9d58'
+const ENTRY_BAD = '#d93025'
+const ENTRY_UNSURE = '#e8a317'
+
+/**
+ * The docking entry of one station: a robot-sized outline where the robot
+ * stops first, a dashed line along the way it creeps in, and the robot's
+ * outline on the station itself, faint.
+ */
+function drawDockingEntry(context: CanvasRenderingContext2D, station: PlanarPose) {
+  const grid = props.grid
+  if (!grid) return
+  const check = checkDocking(grid, props.placement, station)
+  const colour =
+    check.problem === null ? ENTRY_OK : check.problem === 'staging-unknown' ? ENTRY_UNSURE : ENTRY_BAD
+
+  const outline = (pose: PlanarPose) =>
+    footprintCorners(pose, ROBOT_FOOTPRINT.length, ROBOT_FOOTPRINT.width)
+      .map((corner) => toScreen(corner.x, corner.y))
+      .filter((point): point is { sx: number; sy: number } => point !== null)
+  const trace = (points: { sx: number; sy: number }[]) => {
+    context.beginPath()
+    points.forEach((point, index) =>
+      index === 0 ? context.moveTo(point.sx, point.sy) : context.lineTo(point.sx, point.sy),
+    )
+    context.closePath()
+  }
+
+  context.save()
+  // The robot on the station, faint: where it ends up once docked.
+  const docked = outline(station)
+  if (docked.length === 4) {
+    trace(docked)
+    context.fillStyle = 'rgba(10,11,13,0.06)'
+    context.fill()
+    context.strokeStyle = 'rgba(10,11,13,0.35)'
+    context.lineWidth = 1
+    context.stroke()
+  }
+
+  // The entry: where it has to fit.
+  const entry = outline(check.staging)
+  if (entry.length === 4) {
+    trace(entry)
+    context.fillStyle = `${colour}26`
+    context.fill()
+    context.setLineDash([5, 4])
+    context.strokeStyle = colour
+    context.lineWidth = 2
+    context.stroke()
+    context.setLineDash([])
+  }
+
+  // The way in, entry to station, with an arrowhead at the station end.
+  const from = toScreen(check.staging.x, check.staging.y)
+  const to = toScreen(station.x, station.y)
+  if (from && to) {
+    context.setLineDash([4, 4])
+    context.strokeStyle = colour
+    context.lineWidth = 1.5
+    context.beginPath()
+    context.moveTo(from.sx, from.sy)
+    context.lineTo(to.sx, to.sy)
+    context.stroke()
+    context.setLineDash([])
+    const angle = Math.atan2(to.sy - from.sy, to.sx - from.sx)
+    const tip = { x: to.sx - Math.cos(angle) * (MARKER_RADIUS + 2), y: to.sy - Math.sin(angle) * (MARKER_RADIUS + 2) }
+    context.fillStyle = colour
+    context.beginPath()
+    context.moveTo(tip.x, tip.y)
+    context.lineTo(tip.x - Math.cos(angle - 0.5) * 7, tip.y - Math.sin(angle - 0.5) * 7)
+    context.lineTo(tip.x - Math.cos(angle + 0.5) * 7, tip.y - Math.sin(angle + 0.5) * 7)
+    context.closePath()
+    context.fill()
+  }
+  context.restore()
+}
+
 /** The route's path, under the markers so the discs stay on top of it. */
 function drawRoute(context: CanvasRenderingContext2D, points: { sx: number; sy: number }[]) {
   if (points.length < 2) return
@@ -354,6 +440,11 @@ function paintMarkers() {
     drawRoute(context, points)
   }
 
+  if (props.dockingEntry) {
+    const selected = props.stations.find((station) => station.id === props.selectedId)
+    if (selected) drawDockingEntry(context, selected)
+  }
+
   for (const station of props.stations) {
     drawMarker(context, station, station.id === props.selectedId)
   }
@@ -364,6 +455,7 @@ function paintMarkers() {
   // aimed between.
   const preview = placePreview.value
   if (preview) {
+    if (props.dockingEntry) drawDockingEntry(context, preview)
     const screen = toScreen(preview.x, preview.y)
     if (screen) {
       const length = MARKER_RADIUS + 22
@@ -634,7 +726,13 @@ watch(
 )
 
 watch(
-  [() => props.stations, () => props.selectedId, () => props.robotPose, () => props.route],
+  [
+    () => props.stations,
+    () => props.selectedId,
+    () => props.robotPose,
+    () => props.route,
+    () => props.dockingEntry,
+  ],
   () => paintMarkers(),
   { deep: true },
 )
