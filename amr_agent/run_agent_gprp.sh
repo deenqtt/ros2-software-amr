@@ -21,6 +21,9 @@
 # Environment (optional):
 #   AMR_ROS_DISTRO       ROS 2 under /opt/ros to use (jazzy)
 #   AMR_CONFIRM_TIMEOUT  seconds a `confirm` stop waits before driving on (120)
+#   AMR_MISSION_VIA      who drives mission steps: nav (the agent, through Nav2)
+#                        or mission_plan (master_control's /mission_plan; try it
+#                        in sim with tools/fake_master_control.py) (nav)
 #   AMR_MAX_LINEAR       teleop ceiling in m/s (0.5)
 #   AMR_MAX_ANGULAR      teleop ceiling in rad/s (1.5)
 #   AMR_AGENT_TOKEN      backend credential; read by the agent from its
@@ -93,6 +96,12 @@ MAX_LINEAR="${AMR_MAX_LINEAR:-0.5}"
 MAX_ANGULAR="${AMR_MAX_ANGULAR:-1.5}"
 [[ "$MAX_ANGULAR" == *.* ]] || MAX_ANGULAR="$MAX_ANGULAR.0"
 
+MISSION_VIA="${AMR_MISSION_VIA:-nav}"
+case "$MISSION_VIA" in
+    nav | mission_plan) ;;
+    *) echo "AMR_MISSION_VIA must be nav or mission_plan, not '$MISSION_VIA'" >&2; exit 64 ;;
+esac
+
 stop_kiosk() {
     if [[ -n "$KIOSK_PID" ]]; then kill "$KIOSK_PID" 2>/dev/null || true; fi
 }
@@ -117,7 +126,7 @@ python3 "$HERE/robot_agent_node.py" --ros-args \
     -p "station_file:=$HOME/amr_agent/station_data.yaml" \
     -p dock_reload_service:=/docking_server/reload_database \
     -p dock_plugin:=simple_charging_dock \
-    -p mission_via:=nav \
+    -p "mission_via:=$MISSION_VIA" \
     -p "confirm_timeout:=$CONFIRM_TIMEOUT" \
     -p "max_teleop_linear:=$MAX_LINEAR" \
     -p "max_teleop_angular:=$MAX_ANGULAR"
