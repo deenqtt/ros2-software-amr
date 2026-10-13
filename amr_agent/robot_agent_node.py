@@ -1349,11 +1349,7 @@ class RobotAgent(Node):
             # re-applies it instead of being skipped as already-current.
             if self._loaded_map_id is not None:
                 self.get_logger().info("[robot_agent] map assignment cleared")
-                self._loaded_map_id = None
-                self._loaded_hash = None
-                self._station_hash = None
-                self._station_ids = set()
-                self._zone_hash = None
+                self._forget_loaded_map()
             return
 
         # Zones are fetched and kept on disk in every mode, not only once Nav2
@@ -2574,6 +2570,14 @@ class RobotAgent(Node):
 
     # ── Switching ─────────────────────────────────────────────────────────────
 
+    def _forget_loaded_map(self) -> None:
+        """Drop the belief that a map, its stations and zones are applied."""
+        self._loaded_map_id = None
+        self._loaded_hash = None
+        self._station_hash = None
+        self._station_ids = set()
+        self._zone_hash = None
+
     def _switch(self, mode: str) -> None:
         try:
             # Whatever happens next, the robot must not keep executing the
@@ -2584,6 +2588,13 @@ class RobotAgent(Node):
             self._end_pose_tracking()
             self._set_state(self._mode, STATE_STOPPING, "Stopping current stack")
             self._stop_child()
+            # What was loaded went with the stack. A new one starts with the
+            # launch default dock database and no zones, so the next sync has
+            # to load the map, the stations and the zones again — even when
+            # the map is the same one. Without this a restarted Nav2 kept the
+            # packaged dock database and every docking step failed with
+            # "Dock ID requested is not in database".
+            self._forget_loaded_map()
 
             if mode == MODE_STOP:
                 self._set_state(MODE_UNKNOWN, STATE_IDLE, "Stopped on request")
