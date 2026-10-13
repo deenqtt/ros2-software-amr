@@ -283,31 +283,16 @@ async function onSave() {
     // The survey is finished, so the stack that was running it comes down.
     // Leaving SLAM up after a save means the robot keeps building a map
     // nobody asked for, and its next map load has to fight the running one.
-    await stopMapping(`${name} is in the registry and SLAM has been shut down.`)
-
-    // And then straight back to work.
     //
-    // `nav` is the resting state of a robot that is powered on — the registry
-    // defaults to it precisely so that assigning a map is enough to make a
-    // robot useful, with no button in the production flow. Stopping SLAM goes
-    // through /robot_mode stop, which the agent records as `idle`, and that is
-    // right for an emergency stop and wrong here: a survey that ended normally
-    // left the robot parked, and only an operator who knew to go and release it
-    // could get it moving again.
-    //
-    // Deliberately not fatal. The map is saved and assigned; losing this note
-    // costs one click on the dashboard, while failing here would throw away a
-    // finished survey over it.
-    try {
-      await fleet.setMode(robotId.value, 'nav')
-    } catch (error) {
-      toast.warning('Robot is parked', {
-        description:
-          error instanceof Error
-            ? `${error.message} — release it from the dashboard when you are ready.`
-            : 'Release it from the dashboard when you are ready.',
-      })
-    }
+    // The robot is left idle, not started on the new map. Navigation is
+    // started by hand from the dashboard: the map is checked first (a tilted
+    // or doubled survey is better redone than driven on), and stations and
+    // missions are added before the robot is meant to move. Stopping SLAM goes
+    // through /robot_mode stop, which the agent records as `idle`, so nothing
+    // starts Nav2 behind the operator's back.
+    await stopMapping(
+      `${name} is in the registry and SLAM has been shut down. Start navigation from the dashboard when the map looks right.`,
+    )
 
     void router.push('/maps')
   } catch (error) {

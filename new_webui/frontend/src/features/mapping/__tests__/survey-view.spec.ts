@@ -25,6 +25,12 @@ vi.mock('../useRobotTelemetry', () => ({
   useRobotTelemetry: () => telemetry.value,
 }))
 
+const rosClient = vi.hoisted(() => ({
+  callService: vi.fn(),
+  publish: vi.fn(),
+  onMessage: vi.fn(() => () => {}),
+}))
+
 vi.mock('@/app/ros/pool', () => {
   const pool = {
     onSnapshot: vi.fn(),
@@ -54,7 +60,7 @@ vi.mock('@/shared/composables/useGamepad', async () => {
   }
 })
 
-const robotsMock = vi.hoisted(() => ({ list: vi.fn() }))
+const robotsMock = vi.hoisted(() => ({ list: vi.fn(), setMode: vi.fn() }))
 
 vi.mock('@/shared/api/robots', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/shared/api/robots')>()
@@ -135,6 +141,8 @@ beforeEach(() => {
   auth.status = 'signed-in'
   document.body.innerHTML = ''
   robotsMock.list.mockReset().mockResolvedValue([robot])
+  robotsMock.setMode.mockReset()
+  rosClient.callService.mockReset()
   telemetry.value = mappingTelemetry()
 })
 
@@ -179,5 +187,26 @@ describe('SurveyView — phone layout', () => {
       .findAll('button')
       .filter((b) => b.classes().includes('flex-1') && b.classes().includes('touch:h-11'))
     expect(presets.length).toBeGreaterThan(1)
+  })
+})
+
+describe('SurveyView — after a save', () => {
+  it('stops SLAM and leaves the robot idle instead of starting Nav2', async () => {
+    const { useRosPool } = await import('@/app/ros/pool')
+    vi.mocked(useRosPool().clientFor).mockReturnValue(rosClient as never)
+    rosClient.callService.mockImplementation(async (name: string) =>
+      name === 'mapSave' ? { result: 'SAVED map-1' } : { result: 'ACCEPTED: switching to stop' },
+    )
+    const wrapper = await mountSurvey()
+    const vm = wrapper.vm as unknown as { saveName: string; onSave: () => Promise<void> }
+    vm.saveName = 'Floor 1'
+    await vm.onSave()
+    await flushPromises()
+
+    const modes = rosClient.callService.mock.calls
+      .filter(([name]) => name === 'robotMode')
+      .map(([, , request]) => (request as { robot_mode: string }).robot_mode)
+    expect(modes).toEqual(['stop'])
+    expect(robotsMock.setMode).not.toHaveBeenCalled()
   })
 })
