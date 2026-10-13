@@ -123,6 +123,67 @@ TEXT = {
     },
 }
 
+# What the arrived screen asks of the person at the robot, per step task. The
+# table above is a restaurant's ("your order has arrived, take it"), which is
+# what a pass-through stop with a confirm is. A pick stop needs somebody to put
+# something on the robot, a drop stop to take it off, and the button says what
+# was done. Only these keys change; everything else comes from TEXT.
+TASK_TEXT = {
+    "id": {
+        "pick": {
+            "arrived_kicker": "Robot siap dimuati",
+            "arrived_hint": "Taruh barang di robot, lalu tekan tombol hijau",
+            "confirm": "Sudah ditaruh",
+            "say_arrived": "Robot sudah tiba di {place}. Silakan taruh barang, lalu tekan tombol hijau.",
+            "say_reminder": "Robot masih menunggu barang. Silakan taruh ya.",
+        },
+        "drop": {
+            "arrived_kicker": "Barang sudah tiba",
+            "arrived_hint": "Ambil barang dari robot, lalu tekan tombol hijau",
+            "confirm": "Sudah diambil",
+            "say_arrived": "Barang untuk {place} sudah tiba. Silakan diambil, lalu tekan tombol hijau.",
+            "say_reminder": "Barangnya masih di sini. Silakan diambil ya.",
+        },
+        "drop_pick": {
+            "arrived_kicker": "Tukar barang",
+            "arrived_hint": "Ambil barang dari robot, taruh barang baru, lalu tekan tombol hijau",
+            "confirm": "Sudah selesai",
+            "say_arrived": "Robot sudah tiba di {place}. Silakan ambil barang dan taruh barang baru, lalu tekan tombol hijau.",
+            "say_reminder": "Robot masih menunggu. Silakan tukar barangnya ya.",
+        },
+    },
+    "en": {
+        "pick": {
+            "arrived_kicker": "Ready to be loaded",
+            "arrived_hint": "Put the item on the robot, then press the green button",
+            "confirm": "Item loaded",
+            "say_arrived": "The robot is at {place}. Please put the item on it, then press the green button.",
+            "say_reminder": "The robot is still waiting for the item.",
+        },
+        "drop": {
+            "arrived_kicker": "Your item has arrived",
+            "arrived_hint": "Take the item off the robot, then press the green button",
+            "confirm": "Item taken",
+            "say_arrived": "The item for {place} has arrived. Please take it, then press the green button.",
+            "say_reminder": "The item is still here. Please take it.",
+        },
+        "drop_pick": {
+            "arrived_kicker": "Swap the items",
+            "arrived_hint": "Take the item off, put the new one on, then press the green button",
+            "confirm": "Done",
+            "say_arrived": "The robot is at {place}. Please take the item and put the new one on, then press the green button.",
+            "say_reminder": "The robot is still waiting for the swap.",
+        },
+    },
+}
+
+
+def texts(lang: str, task: str = "") -> dict:
+    """The screen's words for a language, with the arrived screen fitted to the task."""
+    base = TEXT.get(lang, TEXT["id"])
+    overrides = TASK_TEXT.get(lang, TASK_TEXT["id"]).get(task or "", {})
+    return {**base, **overrides} if overrides else base
+
 
 @dataclass
 class Inputs:
@@ -144,6 +205,8 @@ class Inputs:
     intent: str = ""
     #: "tickle", "annoyed" or "" — the face reacting to a touch.
     reaction: str = ""
+    #: The current step's task: "none", "pick", "drop", "drop_pick" or "".
+    task: str = ""
     lang: str = "id"
 
 
@@ -243,8 +306,8 @@ def view_for(inputs: Inputs) -> View:
     )
 
 
-def spoken(lang: str, key: str, place: str = "") -> str:
-    return TEXT.get(lang, TEXT["id"])[key].format(place=place)
+def spoken(lang: str, key: str, place: str = "", task: str = "") -> str:
+    return texts(lang, task)[key].format(place=place)
 
 
 def countdown_text(lang: str, remaining: int | None) -> str:

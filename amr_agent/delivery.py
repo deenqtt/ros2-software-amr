@@ -185,6 +185,7 @@ def kiosk_status(
     confirm_remaining: float | None = None,
     confirm_timeout: float | None = None,
     detail: str = "",
+    task: str = "",
 ) -> dict:
     """
     The message on /amr/kiosk.
@@ -211,4 +212,7 @@ def kiosk_status(
         "confirm_remaining": remaining,
         "confirm_timeout": int(confirm_timeout) if confirm_timeout else None,
         "detail": detail,
+        # The step's task, so the arrived screen asks for the right thing:
+        # put an item on (pick), take it off (drop), or both.
+        "task": task,
     }

@@ -231,6 +231,7 @@ class RosSource:
                 "mission": str(data.get("mission") or ""),
                 "robot_mode": str(data.get("robot_mode") or ""),
                 "intent": str(data.get("intent") or ""),
+                "task": str(data.get("task") or ""),
             }
         )
 

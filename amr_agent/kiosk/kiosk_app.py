@@ -133,7 +133,10 @@ class Kiosk(QObject):
             if remaining <= REMIND_AT_S and not self._reminded:
                 self._reminded = True
                 self._sound.chime("arrive")
-                self._sound.say(screens.spoken(self._inputs.lang, "say_reminder"), self._inputs.lang)
+                self._sound.say(
+                    screens.spoken(self._inputs.lang, "say_reminder", task=self._inputs.task),
+                    self._inputs.lang,
+                )
         self.changed.emit()
 
     def _on_screen_change(self, screen: str) -> None:
@@ -141,7 +144,9 @@ class Kiosk(QObject):
         if screen == screens.ARRIVED:
             self._reminded = False
             self._sound.chime("arrive")
-            self._sound.say(screens.spoken(lang, "say_arrived", self._view.place), lang)
+            self._sound.say(
+                screens.spoken(lang, "say_arrived", self._view.place, self._inputs.task), lang
+            )
         elif screen == screens.THANKS:
             self._sound.chime("thanks")
             self._sound.say(screens.spoken(lang, "say_thanks"), lang)
@@ -156,7 +161,7 @@ class Kiosk(QObject):
     # ── Properties ───────────────────────────────────────────────────────────
 
     def _text(self, key: str) -> str:
-        return screens.TEXT.get(self._inputs.lang, screens.TEXT["id"])[key]
+        return screens.texts(self._inputs.lang, self._inputs.task)[key]
 
     screen = Property(str, lambda self: self._view.screen, notify=changed)
     mood = Property(str, lambda self: self._view.mood, notify=changed)
@@ -202,7 +207,7 @@ class Kiosk(QObject):
         "QVariantMap",
         lambda self: {
             key: value
-            for key, value in screens.TEXT.get(self._inputs.lang, screens.TEXT["id"]).items()
+            for key, value in screens.texts(self._inputs.lang, self._inputs.task).items()
             if isinstance(value, str)
         },
         notify=changed,

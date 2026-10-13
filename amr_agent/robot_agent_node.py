@@ -76,10 +76,21 @@ calls    /station_config      custom_interfaces/srv/StationConfig
            changes — a dragged dock moves no map, so a load-only push would
            leave the robot driving to where the station used to be.
 
-service  /mission_confirm     std_srvs/Trigger   (mission_via=nav only)
-           Somebody took the order at a `confirm` stop; drive on. With
-           mission_via=mission_plan the mission manager serves this name
-           itself, so the kiosk calls the same service either way.
+service  /mission_confirm     std_srvs/Trigger
+           Somebody took the order at a `confirm` stop; drive on. The kiosk and
+           the web UI call this on every robot. With mission_via=nav the agent
+           holds the stop itself; with mission_plan master_control holds it and
+           the agent forwards the call to its /confirm_next_mission
+           (confirm_forward_service), but only while master_control says it is
+           waiting.
+
+topic    /robot_status        custom_interfaces/msg/RobotStatus  (in, mission_plan only)
+topic    /amr_run_data        custom_interfaces/msg/AmrRunData   (in, mission_plan only)
+           master_control's own status (idle / moving / waiting for "OK") and
+           its event stream (docking, undocking, retries...). Turned into the
+           kiosk's phase and the web UI's per-step detail; see
+           master_control_link.py. master_control's names are taken as they
+           are: the agent adapts to it, not the other way round.
 
 topic    /amr/kiosk           std_msgs/String  (JSON, latched, 1 Hz)
            What the screen on the robot shows: phase (idle, moving, near,
@@ -182,7 +193,9 @@ from delivery import (
 from backend_client import BackendClient, BackendError
 from guards import resolve_map_path, sanitize_twist, validate_limit
 from custom_interfaces.action import MissionPlan
+from custom_interfaces.msg import AmrRunData, RobotStatus
 from custom_interfaces.srv import RobotMode, StationConfig
+from master_control_link import MasterControlLink, rejection_detail
 
 # Mode names on the wire. "map" and "nav" are what the existing frontend
 # already sends to /robot_mode.
@@ -246,6 +259,14 @@ MISSION_POLL_SERVICE = "/mission_poll"
 ZONES_TOPIC = "/amr/zones"
 KIOSK_TOPIC = "/amr/kiosk"
 MISSION_CONFIRM_SERVICE = "/mission_confirm"
+# master_control's own operator confirm ("pencet OK"). With mission_via=
+# mission_plan the agent keeps serving /mission_confirm for the kiosk and the
+# web UI and forwards it here, so neither needs to know which stack it is on.
+MASTER_CONFIRM_SERVICE = "/confirm_next_mission"
+MASTER_STATUS_TOPIC = "/robot_status"
+MASTER_EVENTS_TOPIC = "/amr_run_data"
+# How long a forwarded confirm may take to be answered.
+CONFIRM_FORWARD_TIMEOUT_S = 3.0
 # After "Sudah diambil", the robot waits this long before driving off: the
 # person is still standing at the tray, and a robot pulling away under their
 # hands is the moment they stop trusting it.
@@ -478,6 +499,13 @@ class RobotAgent(Node):
         # Two minutes: long enough to walk over from the far side of a room,
         # short enough that a forgotten tray does not hold the whole route.
         self.declare_parameter("confirm_timeout", 120.0)
+        # mission_via=mission_plan: master_control's operator-confirm service,
+        # which the kiosk's and web UI's /mission_confirm is forwarded to.
+        self.declare_parameter("confirm_forward_service", MASTER_CONFIRM_SERVICE)
+        # master_control refuses a mission goal at or below this battery %. Its
+        # own parameter (battery_min_threshold) decides; this is only so the
+        # agent can say why a step was refused. Keep the two equal.
+        self.declare_parameter("mission_min_battery", 30.0)
         # zone_mask_server, run alongside navigation by this agent. For stacks
         # whose own launch does not include it — this repository's navigation
         # launch does, so it stays empty there. A path to the script.
@@ -555,6 +583,15 @@ class RobotAgent(Node):
         # And their names, for the kiosk: a guest reads "Meja 5", not a uuid.
         self._station_names: dict[str, str] = {}
         self._confirm_timeout = float(self.get_parameter("confirm_timeout").value)
+        self._confirm_forward_service = str(
+            self.get_parameter("confirm_forward_service").value
+        ).strip()
+        self._mission_min_battery = float(self.get_parameter("mission_min_battery").value)
+        # What master_control last said (mission_via=mission_plan only).
+        self._master = MasterControlLink()
+        # Set when a forwarded confirm was accepted: the kiosk shows "thanks"
+        # until then, whatever master_control's next status says.
+        self._thanks_until = 0.0
         # The kiosk's view of the current run. Written by the run thread and by
         # Nav2 feedback on executor threads, read by the publish timer.
         self._kiosk_lock = threading.Lock()
@@ -685,13 +722,32 @@ class RobotAgent(Node):
             String, KIOSK_TOPIC, qos_profile=_latched_qos()
         )
         self.create_timer(1.0, self._publish_kiosk, callback_group=self._cb)
-        if self._mission_via == "nav":
-            # mission_plan stacks have a mission manager serving this name.
-            # Two servers on one service name is undefined which one answers.
-            self.create_service(
-                Trigger,
-                MISSION_CONFIRM_SERVICE,
-                self._on_mission_confirm,
+        # The kiosk's and the web UI's "OK", on every stack. With mission_via=
+        # nav the agent holds the stop itself; with mission_plan master_control
+        # holds it, under its own service name, and the agent forwards.
+        self.create_service(
+            Trigger,
+            MISSION_CONFIRM_SERVICE,
+            self._on_mission_confirm,
+            callback_group=self._cb,
+        )
+        self._confirm_forward = None
+        if self._mission_via == "mission_plan":
+            self._confirm_forward = self.create_client(
+                Trigger, self._confirm_forward_service, callback_group=self._cb
+            )
+            self.create_subscription(
+                RobotStatus,
+                MASTER_STATUS_TOPIC,
+                self._on_master_status,
+                10,
+                callback_group=self._cb,
+            )
+            self.create_subscription(
+                AmrRunData,
+                MASTER_EVENTS_TOPIC,
+                self._on_master_event,
+                10,
                 callback_group=self._cb,
             )
 
@@ -1825,7 +1881,12 @@ class RobotAgent(Node):
                         return
                     step = steps[step_index]
                     self._progress.reset()
-                    self._kiosk_set(phase=PHASE_MOVING, step=step_index, lap=lap)
+                    self._kiosk_set(
+                        phase=PHASE_MOVING,
+                        step=step_index,
+                        lap=lap,
+                        task=str(step.get("task") or "none"),
+                    )
                     ok, detail = (
                         self._run_step_nav(client, step, run_id)
                         if self._mission_via == "nav"
@@ -1947,6 +2008,9 @@ class RobotAgent(Node):
     def _on_mission_confirm(self, request, response):
         """The order was taken: the kiosk's button, or the web UI's."""
         del request
+        if self._mission_via == "mission_plan":
+            response.success, response.message = self._forward_confirm()
+            return response
         if self._confirm_gate.confirm():
             response.success = True
             response.message = "confirmed"
@@ -1954,6 +2018,44 @@ class RobotAgent(Node):
             response.success = False
             response.message = "nothing is waiting for a confirmation"
         return response
+
+    def _forward_confirm(self) -> tuple[bool, str]:
+        """
+        Pass the "OK" on to master_control, which holds the stop on these robots.
+
+        Only while master_control says it is waiting: its own service answers
+        success even when nothing is waiting, and a press then would read as a
+        confirmed stop on the screen.
+        """
+        if not self._master.waiting_for_operator():
+            return False, "nothing is waiting for a confirmation"
+        client = self._confirm_forward
+        if client is None or not client.service_is_ready():
+            return False, f"{self._confirm_forward_service} is not available"
+        future = client.call_async(Trigger.Request())
+        deadline = time.time() + CONFIRM_FORWARD_TIMEOUT_S
+        while not future.done():
+            if time.time() > deadline:
+                return False, f"{self._confirm_forward_service} did not answer"
+            time.sleep(0.05)
+        answer = future.result()
+        if answer is None or not answer.success:
+            message = answer.message if answer is not None else "no answer"
+            return False, f"master_control: {message}"
+        self._thanks_until = time.monotonic() + THANKS_HOLD_S
+        self._kiosk_set(phase=PHASE_THANKS)
+        return True, answer.message or "confirmed"
+
+    def _on_master_status(self, msg) -> None:
+        self._master.on_status(
+            int(msg.robot_current_sts), float(msg.battery_percentage), bool(msg.robot_docked)
+        )
+
+    def _on_master_event(self, msg) -> None:
+        self._master.on_event(str(msg.event_status), int(msg.event_index))
+
+    def _on_mission_feedback(self, message) -> None:
+        self._master.on_feedback(str(message.feedback.mission_sts))
 
     def _on_nav_feedback(self, message) -> None:
         feedback = message.feedback
@@ -2002,6 +2104,7 @@ class RobotAgent(Node):
                 confirm_remaining=self._confirm_gate.remaining(),
                 confirm_timeout=self._confirm_gate.timeout,
                 detail=str(view.get("detail") or "") if phase == PHASE_FAILED else "",
+                task="" if idle else str(view.get("task") or ""),
             )
         )
         self._kiosk_pub.publish(msg)
@@ -2047,18 +2150,29 @@ class RobotAgent(Node):
             return False
         return current is None or str(current.get("id")) != run_id
 
-    def _wait_for_step(self, handle, run_id: str, timeout_msg: str):
+    def _wait_for_step(self, handle, run_id: str, timeout_msg: str, on_tick=None):
         """
         Wait for a step's goal, giving it up when it should not continue.
 
         Returns (outcome, None) when the goal finished by itself, or
         (None, (ok, detail)) for the step to return after its goal has been
         canceled — by a mode change, the step timeout, or the run being ended.
+
+        `on_tick`, called on every poll, returns True while the robot is held
+        at a station for a person. The step timeout restarts then: the time
+        somebody takes to walk over is not the robot being stuck, and
+        master_control may wait for its "OK" without a limit of its own.
         """
         result_future = handle.get_result_async()
         deadline = time.time() + MISSION_STEP_TIMEOUT_S
         next_check = time.time() + RUN_CANCEL_CHECK_S
         while not result_future.done():
+            if on_tick is not None:
+                try:
+                    if on_tick():
+                        deadline = time.time() + MISSION_STEP_TIMEOUT_S
+                except Exception as exc:  # noqa: BLE001 — a display update must not end a step
+                    self.get_logger().warning(f"[robot_agent] step update failed: {exc}")
             if not self._run_allowed():
                 handle.cancel_goal_async()
                 return None, (False, "robot left navigation mode")
@@ -2174,7 +2288,9 @@ class RobotAgent(Node):
         # standing there to press it.
         goal.continue_mode = str(step.get("confirm", "auto")) != "confirm"
 
-        send_future = client.send_goal_async(goal)
+        # The last step's events and feedback are not this step's.
+        self._master.begin_step()
+        send_future = client.send_goal_async(goal, feedback_callback=self._on_mission_feedback)
         deadline = time.time() + MISSION_GOAL_ACCEPT_TIMEOUT_S
         while not send_future.done():
             if time.time() > deadline:
@@ -2183,9 +2299,25 @@ class RobotAgent(Node):
 
         handle = send_future.result()
         if handle is None or not handle.accepted:
-            return False, "mission_plan rejected the goal"
+            return False, rejection_detail(self._master.battery, self._mission_min_battery)
 
-        result, early = self._wait_for_step(handle, run_id, "step timed out")
+        station = self._station_names.get(goal.station_id, "") or "the station"
+        shown = {"detail": ""}
+
+        def tick() -> bool:
+            # The kiosk follows master_control: on its way, held for the
+            # operator, or getting nowhere. "Thanks" after an accepted OK is
+            # left up for its moment before the next status replaces it.
+            if time.monotonic() >= self._thanks_until:
+                self._kiosk_set(phase=self._master.phase())
+            # And the web UI's mission panel gets each new stage once.
+            detail = self._master.detail(station)
+            if detail and detail != shown["detail"]:
+                shown["detail"] = detail
+                self._report_run(run_id, {"detail": detail})
+            return self._master.waiting_for_operator()
+
+        result, early = self._wait_for_step(handle, run_id, "step timed out", on_tick=tick)
         if early is not None:
             return early
 

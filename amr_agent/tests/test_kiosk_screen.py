@@ -113,3 +113,37 @@ def test_countdown_words_and_clock():
     assert clock_text(None) == ""
     assert countdown_text("id", 120) == "Tidak ditekan? Robot lanjut sendiri"
     assert countdown_text("id", 30) == "Robot akan segera lanjut"
+
+
+# ── Words per step task ─────────────────────────────────────────────────────
+
+
+def test_a_pass_through_stop_keeps_the_restaurant_words():
+    from screen import TEXT, texts
+
+    assert texts("id", "none")["confirm"] == TEXT["id"]["confirm"]
+    assert texts("id", "")["arrived_hint"] == TEXT["id"]["arrived_hint"]
+
+
+def test_a_pick_stop_asks_for_the_item_to_be_put_on():
+    from screen import texts
+
+    words = texts("id", "pick")
+    assert words["confirm"] == "Sudah ditaruh"
+    assert "Taruh barang" in words["arrived_hint"]
+    # Everything else still comes from the base table.
+    assert words["thanks"] == texts("id", "none")["thanks"]
+
+
+def test_drop_and_swap_have_their_own_words_in_both_languages():
+    from screen import texts
+
+    assert texts("id", "drop")["confirm"] == "Sudah diambil"
+    assert texts("en", "drop_pick")["confirm"] == "Done"
+
+
+def test_spoken_lines_follow_the_task():
+    from screen import spoken
+
+    assert "taruh barang" in spoken("id", "say_arrived", "Dock A", "pick")
+    assert "Dock A" in spoken("id", "say_arrived", "Dock A", "pick")
