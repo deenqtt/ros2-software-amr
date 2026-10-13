@@ -1,12 +1,16 @@
 -- migrate: foreign-keys-off
 --
--- Station types as master_control has them: home, pick_drop, charging.
+-- Station types as master_control has them: pick_drop and charging.
 --
 -- master_control's Station_t is HOME_STATION=0, PICKDROP_STATION=1,
 -- CHARGING_STATION=2, and that is what /station_config's `type` carries. The
 -- registry had pick, drop, pick_drop and charging numbered 0..3, so a pick
 -- station arrived as a home station and a charging one as a number master_control
 -- does not have.
+--
+-- Home is left out on purpose: master_control does nothing with it yet, and a
+-- type that changes nothing only confuses whoever picks it. Add it back when
+-- master_control gives it a behaviour (returning home after a mission).
 --
 -- What happens at a station (pick, drop, drop then pick) is the mission step's
 -- task, not the station's type. Every pick and drop station becomes pick_drop;
@@ -28,7 +32,7 @@ CREATE TABLE stations_new (
     name     TEXT NOT NULL,
 
     -- Stored as text rather than the wire enum. master_control's Station_t
-    -- uses 0=Home, 1=Pick-drop, 2=Charging; that numbering is a transport
+    -- uses 1=Pick-drop, 2=Charging (0=Home is not offered); that numbering is a transport
     -- detail, and a registry that stores `2` is one nobody can read.
     type     TEXT NOT NULL,
 
@@ -50,7 +54,7 @@ CREATE TABLE stations_new (
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
 
     CONSTRAINT stations_name_not_blank CHECK (length(trim(name)) > 0),
-    CONSTRAINT stations_type_known CHECK (type IN ('home', 'pick_drop', 'charging'))
+    CONSTRAINT stations_type_known CHECK (type IN ('pick_drop', 'charging'))
 );
 
 INSERT INTO stations_new (

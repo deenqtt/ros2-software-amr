@@ -15,8 +15,9 @@ _COLUMNS = """
     taught_by_robot_id, created_at, updated_at
 """
 
-# The three master_control's Station_t knows, in its own order.
-STATION_TYPES = ("home", "pick_drop", "charging")
+# master_control's Station_t, in its own order, less HOME_STATION (no
+# behaviour behind it yet).
+STATION_TYPES = ("pick_drop", "charging")
 
 
 class DuplicateStationError(Exception):

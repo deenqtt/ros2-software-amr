@@ -9,7 +9,8 @@ import { STATION_TYPE_LABEL, STATION_TYPE_WIRE, STATION_TYPES } from '../station
 
 describe('station types', () => {
   it('match the robot numbering', () => {
-    expect(STATION_TYPE_WIRE).toEqual({ home: 0, pick_drop: 1, charging: 2 })
+    // 0 is master_control's HOME_STATION, not offered; the others keep its numbers.
+    expect(STATION_TYPE_WIRE).toEqual({ pick_drop: 1, charging: 2 })
   })
 
   it('all have a label for the editor', () => {

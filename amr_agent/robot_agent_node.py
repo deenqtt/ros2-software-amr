@@ -247,11 +247,12 @@ STATION_CONFIG_SERVICE = "/station_config"
 # anything answers it. `ros2 node info /docking_server` is.
 DOCK_RELOAD_SERVICE = "/docking_server/reload_database"
 
-# StationConfig.srv `type`, numbered as master_control's Station_t: 0=Home,
-# 1=Pick-drop, 2=Charging. The registry stores these as words; this is the only
-# place the numbers are known. What is done at a station is the step's task
+# StationConfig.srv `type`, numbered as master_control's Station_t: 1=Pick-drop,
+# 2=Charging (0=Home exists there but has no behaviour, so the registry does not
+# offer it). The registry stores these as words; this is the only place the
+# numbers are known. What is done at a station is the step's task
 # (MISSION_TASK_WIRE), not the station's type.
-STATION_TYPE_WIRE = {"home": 0, "pick_drop": 1, "charging": 2}
+STATION_TYPE_WIRE = {"pick_drop": 1, "charging": 2}
 STATION_ACTION_SAVE = 1
 STATION_ACTION_DELETE = 0
 

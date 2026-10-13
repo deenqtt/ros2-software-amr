@@ -5,7 +5,7 @@
  * which is two copies of a decision that has to stay identical: a marker drawn
  * in one colour and listed in another is not a legend, it is a puzzle.
  */
-import { BatteryCharging, House, Repeat } from 'lucide-vue-next'
+import { BatteryCharging, Repeat } from 'lucide-vue-next'
 import type { Component } from 'vue'
 import { STATION_TYPES, type StationType } from '@/domain/types'
 
@@ -18,12 +18,6 @@ export interface StationTypeStyle {
 }
 
 export const STATION_TYPE_STYLE: Record<StationType, StationTypeStyle> = {
-  home: {
-    label: 'Home',
-    colour: '#1a6ef5',
-    icon: House,
-    hint: 'Where the robot rests and starts from',
-  },
   pick_drop: {
     label: 'Pick & drop',
     colour: '#0f9d58',

@@ -139,7 +139,7 @@ bernomor — dengan **Set pose**, **Go here**, **Cancel goal**, dan **Stop & par
 
 ### 📍 Station, 🚧 Zone & 📋 Mission
 
-- **Station** — titik tujuan bernama dengan arah hadap: *Home*, *Pick & drop*, *Charging* (sama dengan `Station_t` di master_control). Pick atau drop-nya ditentukan di task step mission. Dibuat dengan klik di peta atau **Capture** dari posisi robot.
+- **Station** — titik tujuan bernama dengan arah hadap: *Pick & drop*, *Charging* (nomornya sama dengan `Station_t` di master_control; *Home* belum ditawarkan karena belum ada behavior-nya). Pick atau drop-nya ditentukan di task step mission. Dibuat dengan klik di peta atau **Capture** dari posisi robot.
 - **Zone** — poligon aturan area yang diterapkan ke Nav2:
 
   | Jenis | Perilaku robot |

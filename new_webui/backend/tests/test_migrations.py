@@ -189,7 +189,7 @@ def test_drop_pick_migration_keeps_every_step(settings, tmp_path):
 
 def test_station_types_migration_folds_pick_and_drop(settings, tmp_path):
     """
-    012 rebuilds stations to master_control's three types. Pick and drop
+    012 rebuilds stations to pick_drop and charging. Pick and drop
     stations become pick_drop, charging stays, and the steps that name them
     keep pointing at them.
     """
@@ -234,10 +234,11 @@ def test_station_types_migration_folds_pick_and_drop(settings, tmp_path):
             "INSERT INTO stations (id, map_id, name, type, x, y, yaw) "
             "VALUES ('s5', 'm1', 'E', 'pick', 0, 0, 0)"
         )
-    connection.execute(
-        "INSERT INTO stations (id, map_id, name, type, x, y, yaw) "
-        "VALUES ('s6', 'm1', 'Base', 'home', 0, 0, 0)"
-    )
+    with pytest.raises(sqlite3.IntegrityError):
+        connection.execute(
+            "INSERT INTO stations (id, map_id, name, type, x, y, yaw) "
+            "VALUES ('s6', 'm1', 'Base', 'home', 0, 0, 0)"
+        )
     # Steps still name their stations, and a used station still refuses deletion.
     with pytest.raises(sqlite3.IntegrityError):
         connection.execute("DELETE FROM stations WHERE id = 's1'")
