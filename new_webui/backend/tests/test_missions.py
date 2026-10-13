@@ -880,3 +880,20 @@ def test_a_mission_note_still_clears_with_null(client, warehouse, stations):
 
     assert response.status_code == 200
     assert response.json()["note"] is None
+
+
+def test_a_step_may_drop_then_pick_at_one_station(client, warehouse, stations):
+    """master_control's DROP_PICK: take the carried item off, put a new one on."""
+    payload = route(warehouse, stations)
+    payload["steps"][1]["task"] = "drop_pick"
+
+    body = client.post("/api/missions", json=payload).json()
+
+    assert [step["task"] for step in body["steps"]] == ["pick", "drop_pick"]
+
+
+def test_an_unknown_task_is_refused(client, warehouse, stations):
+    payload = route(warehouse, stations)
+    payload["steps"][0]["task"] = "lift"
+
+    assert client.post("/api/missions", json=payload).status_code == 422

@@ -11,12 +11,20 @@
  * edited. The previous schema made that mistake.
  */
 
-/** What to do on arrival. `none` is a waypoint merely passed through. */
-export const STEP_TASKS = ['none', 'pick', 'drop'] as const
+/**
+ * What to do on arrival. `none` is a waypoint merely passed through;
+ * `drop_pick` takes the carried item off and puts a new one on, at one stop.
+ */
+export const STEP_TASKS = ['none', 'pick', 'drop', 'drop_pick'] as const
 export type StepTask = (typeof STEP_TASKS)[number]
 
 /** MissionPlan.action dest_tasks. Converted at the edge; the app carries words. */
-export const STEP_TASK_WIRE: Record<StepTask, number> = { none: 0, pick: 1, drop: 2 }
+export const STEP_TASK_WIRE: Record<StepTask, number> = {
+  none: 0,
+  pick: 1,
+  drop: 2,
+  drop_pick: 3,
+}
 
 /**
  * Whether the robot continues by itself.
@@ -119,6 +127,7 @@ export const STEP_TASK_LABEL: Record<StepTask, string> = {
   none: 'Pass through',
   pick: 'Pick',
   drop: 'Drop',
+  drop_pick: 'Drop & pick',
 }
 
 export const RUN_MODE_LABEL: Record<RunMode, string> = {

@@ -23,9 +23,11 @@ MAX_STEPS = 50
 
 MissionName = Annotated[str, Field(min_length=1, max_length=NAME_MAX)]
 
-#: MissionPlan.action dest_tasks. `none` is a waypoint merely passed through.
-StepTask = Literal["none", "pick", "drop"]
-TASK_TO_WIRE: dict[str, int] = {"none": 0, "pick": 1, "drop": 2}
+#: MissionPlan.action dest_tasks. `none` is a waypoint merely passed through;
+#: `drop_pick` takes the carried item off and puts a new one on, at one stop.
+#: The numbers are master_control's Station_Action_t.
+StepTask = Literal["none", "pick", "drop", "drop_pick"]
+TASK_TO_WIRE: dict[str, int] = {"none": 0, "pick": 1, "drop": 2, "drop_pick": 3}
 
 #: MissionPlan.action continue_mode, spelled out. `confirm` waits for
 #: /mission_confirm, which means somebody has to be standing there.

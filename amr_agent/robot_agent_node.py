@@ -298,11 +298,10 @@ def _latched_qos() -> QoSProfile:
         reliability=ReliabilityPolicy.RELIABLE,
     )
 
-# MissionPlan.action dest_tasks. `none` is a waypoint merely passed through;
-# mission_manager treats anything that is not 1 as a drop, so its log says
-# "Drop" for a pass-through. Harmless — it navigates and completes either way —
-# but worth knowing before trusting that line.
-MISSION_TASK_WIRE = {"none": 0, "pick": 1, "drop": 2}
+# MissionPlan.action dest_tasks, as master_control's Station_Action_t numbers
+# them: 0 no action, 1 pick, 2 drop, 3 drop then pick. `none` is a waypoint
+# merely passed through.
+MISSION_TASK_WIRE = {"none": 0, "pick": 1, "drop": 2, "drop_pick": 3}
 
 # How long a single step may take before the agent gives up on it. Generous:
 # a robot crossing a warehouse with a detour is not stuck, and the old UI's

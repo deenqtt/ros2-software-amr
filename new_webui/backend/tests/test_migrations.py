@@ -130,3 +130,58 @@ def test_super_admin_migration_keeps_sessions_and_audit_and_promotes_admins(sett
     connection.execute("DELETE FROM users WHERE id = 'u1'")
     assert connection.execute("SELECT count(*) FROM sessions").fetchone()[0] == 0
     connection.close()
+
+
+def test_drop_pick_migration_keeps_every_step(settings, tmp_path):
+    """
+    011 rebuilds mission_steps to allow `drop_pick`. The rebuild must copy every
+    existing step, keep its references valid, and still cascade from missions.
+    """
+    import shutil
+
+    from app.db import MIGRATIONS_DIR
+
+    before = tmp_path / "before"
+    before.mkdir()
+    for path in sorted(MIGRATIONS_DIR.glob("*.sql")):
+        if int(path.stem.split("_")[0]) < 11:
+            shutil.copy(path, before / path.name)
+
+    connection = connect(settings.db_path)
+    migrate(connection, before)
+    connection.execute(
+        "INSERT INTO maps (id, name, version, content_hash, yaml_file, image_file, image_bytes) "
+        "VALUES ('m1', 'Floor', 1, 'h', 'a.yaml', 'a.pgm', 1)"
+    )
+    connection.execute(
+        "INSERT INTO stations (id, map_id, name, type, x, y, yaw) VALUES "
+        "('s1', 'm1', 'Dock A', 'pick', 0, 0, 0), ('s2', 'm1', 'Dock B', 'drop', 1, 1, 0)"
+    )
+    connection.execute("INSERT INTO missions (id, map_id, name) VALUES ('r1', 'm1', 'Shuttle')")
+    connection.execute(
+        "INSERT INTO mission_steps (id, mission_id, ordinal, station_id, task, confirm) VALUES "
+        "('a', 'r1', 1, 's1', 'pick', 'confirm'), ('b', 'r1', 2, 's2', 'drop', 'auto')"
+    )
+
+    assert 11 in migrate(connection)
+
+    rows = connection.execute(
+        "SELECT id, ordinal, station_id, task, confirm FROM mission_steps ORDER BY ordinal"
+    ).fetchall()
+    assert [tuple(row) for row in rows] == [
+        ("a", 1, "s1", "pick", "confirm"),
+        ("b", 2, "s2", "drop", "auto"),
+    ]
+    connection.execute(
+        "INSERT INTO mission_steps (id, mission_id, ordinal, station_id, task) "
+        "VALUES ('c', 'r1', 3, 's1', 'drop_pick')"
+    )
+    with pytest.raises(sqlite3.IntegrityError):
+        connection.execute(
+            "INSERT INTO mission_steps (id, mission_id, ordinal, station_id, task) "
+            "VALUES ('d', 'r1', 4, 's1', 'lift')"
+        )
+    # The rebuilt table still cascades from its mission.
+    connection.execute("DELETE FROM missions WHERE id = 'r1'")
+    assert connection.execute("SELECT count(*) FROM mission_steps").fetchone()[0] == 0
+    connection.close()
