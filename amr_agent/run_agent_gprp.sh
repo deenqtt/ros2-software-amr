@@ -22,8 +22,8 @@
 #   AMR_ROS_DISTRO       ROS 2 under /opt/ros to use (jazzy)
 #   AMR_CONFIRM_TIMEOUT  seconds a `confirm` stop waits before driving on (120)
 #   AMR_MISSION_VIA      who drives mission steps: nav (the agent, through Nav2)
-#                        or mission_plan (master_control's /mission_plan; try it
-#                        in sim with tools/fake_master_control.py) (nav)
+#                        or mission_plan (master_control's /mission_plan, which
+#                        docks for pick and drop steps) (nav)
 #   AMR_MAX_LINEAR       teleop ceiling in m/s (0.5)
 #   AMR_MAX_ANGULAR      teleop ceiling in rad/s (1.5)
 #   AMR_AGENT_TOKEN      backend credential; read by the agent from its
@@ -102,6 +102,17 @@ case "$MISSION_VIA" in
     *) echo "AMR_MISSION_VIA must be nav or mission_plan, not '$MISSION_VIA'" >&2; exit 64 ;;
 esac
 
+# master_control runs only next to Nav2, and only when it drives the missions.
+# It then reads the dock database this agent writes (station_file), and leaves
+# /robot_mode to the agent: two servers on one service name answer at random.
+# Never during mapping: the SLAM launch has no way to keep it off /robot_mode.
+STATION_FILE="$HOME/amr_agent/station_data.yaml"
+if [[ "$MISSION_VIA" == mission_plan ]]; then
+    NAV_MASTER_CONTROL_ARGS="launch_master_control:=true master_control_serve_robot_mode:=false master_control_station_data_path:=$STATION_FILE"
+else
+    NAV_MASTER_CONTROL_ARGS="launch_master_control:=false"
+fi
+
 stop_kiosk() {
     if [[ -n "$KIOSK_PID" ]]; then kill "$KIOSK_PID" 2>/dev/null || true; fi
 }
@@ -119,11 +130,12 @@ python3 "$HERE/robot_agent_node.py" --ros-args \
     -p slam_launch_file:=amr_mapping_sim_launch.py \
     -p nav_launch_package:=amr_description \
     -p nav_launch_file:=amr_navigation_sim_launch.py \
-    -p extra_launch_args:="launch_master_control:=false launch_websocket:=false launch_rviz:=false" \
-    -p slam_extra_launch_args:="launch_scan_filter:=true scan_topic:=/scan_filtered" \
+    -p extra_launch_args:="launch_websocket:=false launch_rviz:=false" \
+    -p slam_extra_launch_args:="launch_master_control:=false launch_scan_filter:=true scan_topic:=/scan_filtered" \
+    -p nav_extra_launch_args:="$NAV_MASTER_CONTROL_ARGS" \
     -p map_save_via:=cli \
     -p map_save_timeout:=20.0 \
-    -p "station_file:=$HOME/amr_agent/station_data.yaml" \
+    -p "station_file:=$STATION_FILE" \
     -p dock_reload_service:=/docking_server/reload_database \
     -p dock_plugin:=simple_charging_dock \
     -p "mission_via:=$MISSION_VIA" \

@@ -473,6 +473,9 @@ class RobotAgent(Node):
         # arguments out of navigation while preserving the shared arguments
         # above for both launch modes.
         self.declare_parameter("slam_extra_launch_args", "")
+        # Appended only to the navigation launch command: what runs next to Nav2
+        # alone, such as master_control when it drives the missions.
+        self.declare_parameter("nav_extra_launch_args", "")
         # How a survey is written to disk: "service" calls a running map_saver
         # node, "cli" shells out to map_saver_cli. See _write_map_via_cli.
         self.declare_parameter("map_save_via", "service")
@@ -564,6 +567,9 @@ class RobotAgent(Node):
         )
         self._slam_extra_launch_args = shlex.split(
             str(self.get_parameter("slam_extra_launch_args").value)
+        )
+        self._nav_extra_launch_args = shlex.split(
+            str(self.get_parameter("nav_extra_launch_args").value)
         )
         self._map_save_timeout = float(self.get_parameter("map_save_timeout").value)
         station_file = str(self.get_parameter("station_file").value).strip()
@@ -2828,7 +2834,7 @@ class RobotAgent(Node):
             ]
         if mode == MODE_MAP:
             return cmd + self._slam_extra_launch_args + self._extra_launch_args
-        return cmd + self._extra_launch_args
+        return cmd + self._nav_extra_launch_args + self._extra_launch_args
 
     def _start_child(self, mode: str) -> None:
         cmd = self._launch_command(mode)
