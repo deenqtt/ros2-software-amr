@@ -271,3 +271,105 @@ def test_unknown_fields_are_refused_rather_than_ignored(client, robot_payload):
         f"/api/robots/{created['id']}/mode", json={"desired_mode": "nav", "force": True}
     )
     assert response.status_code == 422
+
+
+# ── Unified status ────────────────────────────────────────────────────────────
+#
+# What the robot itself says it is doing. The agent reports one word from the
+# shared vocabulary (amr_agent/robot_status.py) on change and as a heartbeat;
+# every surface reads it from the registry instead of translating the robot's
+# raw topics again — which is how "waiting for the operator" once showed as
+# "Docking".
+
+
+def test_a_new_robot_has_no_status_yet(client, robot_payload):
+    """A robot that has never spoken has no status, rather than a made-up one."""
+    body = client.post("/api/robots", json=robot_payload).json()
+    assert body["status"] is None
+    assert body["status_detail"] == ""
+    assert body["status_since"] is None
+    assert body["status_reported_at"] is None
+
+
+def test_the_agent_reports_its_status(client, client_as, agent_for, robot_payload):
+    created = client.post("/api/robots", json=robot_payload).json()
+    agent = agent_for(client_as("super_admin", "tokens"), created["id"])
+
+    reported = agent.put(
+        f"/api/robots/{created['id']}/status",
+        json={"status": "on_mission", "detail": "docking at Table 3"},
+    )
+    assert reported.status_code == 200, reported.text
+    body = reported.json()
+    assert body["status"] == "on_mission"
+    assert body["status_detail"] == "docking at Table 3"
+    assert body["status_since"] is not None
+    assert body["status_reported_at"] is not None
+
+    # Every reader sees the same word, not just the reporter.
+    assert client.get(f"/api/robots/{created['id']}").json()["status"] == "on_mission"
+
+
+def test_an_off_the_vocabulary_status_is_422(client, robot_payload):
+    created = client.post("/api/robots", json=robot_payload).json()
+    response = client.put(f"/api/robots/{created['id']}/status", json={"status": "haunted"})
+    assert response.status_code == 422
+
+
+def test_offline_is_not_a_word_a_robot_can_report(client, robot_payload):
+    """Only the reader calls a robot offline, from the age of its last report."""
+    created = client.post("/api/robots", json=robot_payload).json()
+    response = client.put(f"/api/robots/{created['id']}/status", json={"status": "offline"})
+    assert response.status_code == 422
+
+
+def test_the_status_of_an_unknown_robot_is_404(client):
+    response = client.put("/api/robots/ghost/status", json={"status": "ready"})
+    assert response.status_code == 404
+
+
+def test_an_agent_cannot_report_for_another_robot(
+    client, client_as, agent_for, robot_payload
+):
+    first = client.post("/api/robots", json=robot_payload).json()
+    second = client.post(
+        "/api/robots", json={"name": "AMR-02", "bridge_url": "ws://192.168.1.51:8765"}
+    ).json()
+    agent = agent_for(client_as("super_admin", "tokens"), first["id"])
+
+    response = agent.put(f"/api/robots/{second['id']}/status", json={"status": "ready"})
+    assert response.status_code == 403
+
+
+def test_the_heartbeat_does_not_move_status_since(connection):
+    """Minutes-on-mission must survive the robot's routine re-report."""
+    from app.repositories import robots as robots_repo
+
+    created = robots_repo.create_robot(
+        connection,
+        {
+            "name": "AMR-01",
+            "bridge_url": "ws://192.168.1.50:8765",
+            "ros_domain_id": None,
+            "camera_url": None,
+            "namespace": "",
+            "serial": None,
+        },
+    )
+    robot_id = created["id"]
+
+    robots_repo.set_status(connection, robot_id, "on_mission", "driving a mission")
+    connection.execute(
+        "UPDATE robots SET status_since = '2026-01-01 00:00:00' WHERE id = ?", (robot_id,)
+    )
+
+    # The heartbeat: same status, new detail. The clock does not move.
+    same = robots_repo.set_status(connection, robot_id, "on_mission", "docking at Table 3")
+    assert same["status_since"] == "2026-01-01 00:00:00"
+    assert same["status_detail"] == "docking at Table 3"
+    assert same["status_reported_at"] is not None
+
+    # A real change does move it.
+    changed = robots_repo.set_status(connection, robot_id, "waiting_confirm", "")
+    assert changed["status_since"] != "2026-01-01 00:00:00"
+    assert changed["status"] == "waiting_confirm"

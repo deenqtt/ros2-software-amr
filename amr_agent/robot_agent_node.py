@@ -196,6 +196,7 @@ from custom_interfaces.action import MissionPlan
 from custom_interfaces.msg import AmrRunData, RobotStatus
 from custom_interfaces.srv import RobotMode, StationConfig
 from master_control_link import MasterControlLink, rejection_detail
+from robot_status import REPORT_INTERVAL_S, Signals, unified_status
 
 # Mode names on the wire. "map" and "nav" are what the existing frontend
 # already sends to /robot_mode.
@@ -284,6 +285,12 @@ NO_MAP_DETAIL = "No map assigned — nothing to navigate on"
 # How long to wait before trying a failed stack again. Long enough that the
 # error stays readable in the log, short enough that a transient fault heals.
 MODE_RETRY_COOLDOWN_S = 60.0
+
+# How often the unified-status reporter ticks (robot_status.py). A change is
+# reported on the next tick; an unchanged status goes out as a heartbeat every
+# REPORT_INTERVAL_S, which is what lets the reader tell a robot standing
+# still from one that has gone quiet.
+STATUS_REPORT_TICK_S = 5.0
 
 
 def _latched_qos() -> QoSProfile:
@@ -633,6 +640,17 @@ class RobotAgent(Node):
         self._station_ids: set[str] = set()
         # The thread executing a mission run, or None when idle.
         self._run_thread: threading.Thread | None = None
+        # Unified status reporting (robot_status.py): the last report the
+        # backend accepted, when the next routine one is due, and the station
+        # the current step is driving to (for master_control's detail line).
+        self._status_reported: tuple[str, str] | None = None
+        self._status_due_at = 0.0
+        self._status_sending = threading.Lock()
+        self._mission_station = ""
+        # The most recent run ended in failure: the robot's status says error
+        # until the next run starts. Cleared at run start, never on a timer.
+        self._last_run_failed = False
+        self._last_run_detail = ""
         # Fingerprint of the zone set last published, so an unchanged set does
         # not make every filter rebuild its mask once a second.
         self._zone_hash: str | None = None
@@ -723,6 +741,9 @@ class RobotAgent(Node):
             Trigger, MISSION_POLL_SERVICE, self._on_mission_poll, callback_group=self._cb
         )
         self.create_timer(1.0, self._publish_status, callback_group=self._cb)
+        self.create_timer(
+            STATUS_REPORT_TICK_S, self._tick_status_report, callback_group=self._cb
+        )
 
         # Latched, so a kiosk started after the agent sees the current state at
         # once instead of a blank face for up to a second.
@@ -835,6 +856,60 @@ class RobotAgent(Node):
         except Exception:
             return False
         return any(marker in names for marker in markers)
+
+    # ── Unified status ──────────────────────────────────────────────────────
+
+    def _robot_status_signals(self) -> Signals:
+        """Gather the four sources' latest words for the mapper."""
+        return Signals(
+            agent_mode=self._mode,
+            agent_state=self._state,
+            run_active=self._run_thread is not None,
+            last_run_failed=self._last_run_failed,
+            last_run_detail=self._last_run_detail,
+            master_status=self._master.status(),
+            waiting_for_operator=self._master.waiting_for_operator(),
+            docked=self._master.docked,
+            charging=self._master.charging,
+            battery=self._master.battery,
+            mission_detail=self._master.detail(self._mission_station),
+        )
+
+    def _tick_status_report(self) -> None:
+        """
+        Report the robot's unified status to the registry (robot_status.py).
+
+        Sent the tick after it changes, and re-sent as a heartbeat every
+        REPORT_INTERVAL_S. The HTTP call runs in a worker thread: a slow
+        server must never stall the executor's callbacks.
+        """
+        if self._backend is None:
+            return
+        decision = unified_status(self._robot_status_signals())
+        fresh = (decision.status, decision.detail) != self._status_reported
+        if not fresh and time.monotonic() < self._status_due_at:
+            return
+        # One report in flight: a slow answer must not stack threads.
+        if not self._status_sending.acquire(blocking=False):
+            return
+        threading.Thread(
+            target=self._send_status_report,
+            args=(decision.status, decision.detail),
+            daemon=True,
+        ).start()
+
+    def _send_status_report(self, status: str, detail: str) -> None:
+        try:
+            self._backend.report_status(status, detail)
+        except BackendError as error:
+            # Late, never wrong: the backend keeps the previous word, and its
+            # received stamp is what dates it. The next tick tries again.
+            self.get_logger().warning(f"[robot_agent] status report failed: {error}")
+            return
+        finally:
+            self._status_sending.release()
+        self._status_reported = (status, detail)
+        self._status_due_at = time.monotonic() + REPORT_INTERVAL_S
 
     # ── Service ───────────────────────────────────────────────────────────────
 
@@ -1731,6 +1806,8 @@ class RobotAgent(Node):
                 self._store.enqueue(run_id, final)
             return
 
+        self._last_run_failed = False
+        self._last_run_detail = ""
         self._run_thread = threading.Thread(
             target=self._execute_run, args=(plan,), daemon=True
         )
@@ -1922,6 +1999,8 @@ class RobotAgent(Node):
                             },
                         )
                         self.get_logger().error(f"[robot_agent] run {run_id} failed: {detail}")
+                        self._last_run_failed = True
+                        self._last_run_detail = f"lap {lap}, step {step_index + 1}: {detail}"
                         self._kiosk_set(phase=PHASE_FAILED, detail=detail)
                         return
                     # Reported the moment it arrives. step_index only moves on
@@ -1953,10 +2032,13 @@ class RobotAgent(Node):
         except Exception as exc:  # noqa: BLE001 — a failed run must not kill the agent
             self.get_logger().error(f"[robot_agent] run {run_id} aborted: {exc}")
             self._report_run(run_id, {"state": "failed", "detail": str(exc)})
+            self._last_run_failed = True
+            self._last_run_detail = str(exc)
             self._kiosk_set(phase=PHASE_FAILED, detail=str(exc))
         finally:
             client.destroy()
             self._run_thread = None
+            self._mission_station = ""
 
     def _await_confirm(self, run_id: str, step_index: int, lap: int) -> bool:
         """
@@ -2052,7 +2134,10 @@ class RobotAgent(Node):
 
     def _on_master_status(self, msg) -> None:
         self._master.on_status(
-            int(msg.robot_current_sts), float(msg.battery_percentage), bool(msg.robot_docked)
+            int(msg.robot_current_sts),
+            float(msg.battery_percentage),
+            bool(msg.robot_docked),
+            bool(msg.charging_state),
         )
 
     def _on_master_event(self, msg) -> None:
@@ -2294,6 +2379,8 @@ class RobotAgent(Node):
 
         # The last step's events and feedback are not this step's.
         self._master.begin_step()
+        # For the status detail line, which names the station in web words.
+        self._mission_station = self._station_names.get(goal.station_id, "") or goal.station_id
         send_future = client.send_goal_async(goal, feedback_callback=self._on_mission_feedback)
         deadline = time.time() + MISSION_GOAL_ACCEPT_TIMEOUT_S
         while not send_future.done():

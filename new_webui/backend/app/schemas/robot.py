@@ -35,6 +35,21 @@ Accent = Annotated[int, Field(ge=1, le=8)]
 #: both own /map. `idle` is a choice — parked, or being worked on.
 DesiredMode = Literal["nav", "idle", "map"]
 
+#: What the robot itself says it is doing, as opposed to what it is supposed to
+#: be doing. The single vocabulary every surface reads; derived and reported by
+#: the agent (see amr_agent/robot_status.py). `paused` has no control yet; the
+#: word exists so the vocabulary does not change shape when the control does.
+StatusValue = Literal[
+    "parked",
+    "mapping",
+    "ready",
+    "on_mission",
+    "waiting_confirm",
+    "charging",
+    "error",
+    "paused",
+]
+
 
 def _validate_bridge_url(value: str) -> str:
     url = value.strip()
@@ -150,6 +165,15 @@ class RobotOut(BaseModel):
     # is shown once, when minted, and its hash never leaves the database.
     agent_token_set: bool = False
     agent_token_created_at: str | None = None
+    # The robot's own word for what it is doing. None until the agent has
+    # reported at least once; a status much older than status_reported_at is
+    # read as offline by the caller, never stored here as a value.
+    status: StatusValue | None = None
+    status_detail: str = ""
+    # When the current status began, and when the last report arrived. The gap
+    # between them is the heartbeat.
+    status_since: str | None = None
+    status_reported_at: str | None = None
 
 
 class AgentTokenOut(BaseModel):
@@ -160,6 +184,21 @@ class AgentTokenOut(BaseModel):
 
     token: str
     created_at: str
+
+
+class RobotStatusReport(BaseModel):
+    """
+    The agent's report of what the robot is doing right now.
+
+    One word from the shared vocabulary plus one line of context. The server
+    stamps both times itself: status_reported_at is the server's received
+    clock, so the reader can decide liveness without trusting the robot's.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    status: StatusValue
+    detail: str = Field(default="", max_length=200)
 
 
 class SetModeIn(BaseModel):

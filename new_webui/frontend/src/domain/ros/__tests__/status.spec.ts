@@ -10,13 +10,18 @@ import {
 } from '../status'
 
 describe('status mapping', () => {
-  it('maps every RobotStatus code', () => {
+  it('maps the codes master_control actually publishes', () => {
+    // Three codes, not six: master_control fills 0 idle, 1 moving, 2 waiting
+    // for the operator's OK. The old mapping read code 2 as "Docking", so a
+    // robot stopped at a station with someone's order rendered as a docking
+    // manoeuvre; and it translated codes 3-5 that are never sent.
     expect(activityFromStatusCode(0)).toBe('idle')
     expect(activityFromStatusCode(1)).toBe('navigating')
-    expect(activityFromStatusCode(2)).toBe('docking')
-    expect(activityFromStatusCode(3)).toBe('undocking')
-    expect(activityFromStatusCode(4)).toBe('charging')
-    expect(activityFromStatusCode(5)).toBe('error')
+    expect(activityFromStatusCode(2)).toBe('waiting_confirm')
+    // Never published; never guessed at.
+    expect(activityFromStatusCode(3)).toBe('idle')
+    expect(activityFromStatusCode(4)).toBe('idle')
+    expect(activityFromStatusCode(5)).toBe('idle')
     expect(activityFromStatusCode(99)).toBe('idle')
   })
 

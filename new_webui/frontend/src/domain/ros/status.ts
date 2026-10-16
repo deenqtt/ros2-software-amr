@@ -57,19 +57,21 @@ export function connectionStatus(state: ConnectionState): StatusDescriptor {
   return CONNECTION_STATUS[state]
 }
 
-/** Map RobotStatus.robot_current_sts onto an activity. */
+/**
+ * Map RobotStatus.robot_current_sts onto an activity.
+ *
+ * master_control publishes only three codes: 0 idle, 1 moving (driving,
+ * docking or undocking alike), 2 waiting for the operator's "OK". The old
+ * mapping read code 2 as "Docking" — so every stop at a station, order on
+ * the tray, rendered as a docking manoeuvre — and translated codes 3-5 that
+ * master_control never sends. Anything unrecognised stays the honest "idle".
+ */
 export function activityFromStatusCode(code: number): RobotActivity {
   switch (code) {
-    case ROBOT_STATUS_CODE.navigating:
+    case ROBOT_STATUS_CODE.moving:
       return 'navigating'
-    case ROBOT_STATUS_CODE.docking:
-      return 'docking'
-    case ROBOT_STATUS_CODE.undocking:
-      return 'undocking'
-    case ROBOT_STATUS_CODE.charging:
-      return 'charging'
-    case ROBOT_STATUS_CODE.error:
-      return 'error'
+    case ROBOT_STATUS_CODE.waitingVerification:
+      return 'waiting_confirm'
     default:
       return 'idle'
   }

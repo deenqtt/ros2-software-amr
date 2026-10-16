@@ -240,6 +240,27 @@ class BackendClient:
             raise BackendError("assignment response was not an object")
         return result
 
+    def report_status(self, status: str, detail: str = "", robot_id: str | None = None) -> dict:
+        """
+        Report what this robot is doing, in the unified status vocabulary.
+
+        Sent on change and as a heartbeat (REPORT_INTERVAL_S in
+        robot_status.py). Safe to lose: the next heartbeat says the same thing,
+        and the reader dates the word from the server's own received stamp.
+        """
+        target = robot_id or self.robot_id
+        body = json.dumps({"status": status, "detail": detail}).encode()
+        raw, _ = self._request(
+            "PUT",
+            f"/api/robots/{urllib.parse.quote(target)}/status",
+            body=body,
+            content_type="application/json",
+        )
+        result = json.loads(raw)
+        if not isinstance(result, dict):
+            raise BackendError("status response was not an object")
+        return result
+
     def set_desired_mode(self, mode: str, robot_id: str | None = None) -> dict:
         """
         Record what this robot is supposed to be doing.

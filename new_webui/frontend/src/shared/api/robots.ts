@@ -8,7 +8,7 @@
  */
 
 import { api, ApiError } from './client'
-import type { DesiredMode, RobotConfig } from '@/domain/types'
+import type { DesiredMode, RobotConfig, RobotStatusValue } from '@/domain/types'
 
 /** Exactly what the backend returns. Do not use this shape outside this file. */
 interface RobotWire {
@@ -24,6 +24,11 @@ interface RobotWire {
   desired_mode: DesiredMode
   agent_token_set: boolean
   agent_token_created_at: string | null
+  // The agent's unified status report. Absent on a backend that predates it.
+  status?: RobotStatusValue | null
+  status_detail?: string
+  status_since?: string | null
+  status_reported_at?: string | null
   created_at: string
   updated_at: string
 }
@@ -65,6 +70,10 @@ export function fromWire(wire: RobotWire): RobotConfig {
     desiredMode: wire.desired_mode,
     agentTokenSet: wire.agent_token_set ?? false,
     agentTokenCreatedAt: wire.agent_token_created_at ?? null,
+    status: wire.status ?? null,
+    statusDetail: wire.status_detail ?? '',
+    statusSince: wire.status_since ?? null,
+    statusReportedAt: wire.status_reported_at ?? null,
   }
 }
 

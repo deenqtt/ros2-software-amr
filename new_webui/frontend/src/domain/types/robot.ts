@@ -27,15 +27,34 @@ export type RobotActivity =
 
 export type DockingState = 'idle' | 'docking' | 'docked' | 'undocking' | 'error'
 
-/** RobotStatus.robot_current_sts values, per custom_interfaces/msg/RobotStatus.msg. */
+/**
+ * RobotStatus.robot_current_sts values — as master_control actually fills them
+ * (master_control_node.cpp): 0 available/idle, 1 moving (driving, docking or
+ * undocking), 2 waiting for the operator's "OK". The codes 3-5 the message
+ * declares are never published; treating them as anything in particular would
+ * be a guess dressed up as data.
+ */
 export const ROBOT_STATUS_CODE = {
   idle: 0,
-  navigating: 1,
-  docking: 2,
-  undocking: 3,
-  charging: 4,
-  error: 5,
+  moving: 1,
+  waitingVerification: 2,
 } as const
+
+/**
+ * The one status word for a robot, shared by the dashboard, the robot page and
+ * the mission list. Derived by the agent (amr_agent/robot_status.py) and read
+ * from the registry — never re-derived per surface, which is how code 2 was
+ * once rendered as "Docking".
+ */
+export type RobotStatusValue =
+  | 'parked'
+  | 'mapping'
+  | 'ready'
+  | 'on_mission'
+  | 'waiting_confirm'
+  | 'charging'
+  | 'error'
+  | 'paused'
 
 /** A robot as configured in the registry, not as observed. */
 export interface RobotConfig {
@@ -83,6 +102,20 @@ export interface RobotConfig {
   agentTokenSet?: boolean
   /** When the current agent token was generated, or null when there is none. */
   agentTokenCreatedAt?: string | null
+  /**
+   * The robot's own word for what it is doing, as reported by its agent.
+   *
+   * Null until the agent's first report arrives. Not the same question as
+   * `desiredMode`, which is what the robot is supposed to be doing; both are
+   * shown, and disagreeing is exactly what an operator needs to see.
+   */
+  status?: RobotStatusValue | null
+  /** One line of context from the robot, e.g. "docking at Table 3". */
+  statusDetail?: string
+  /** When the current status began (server clock). */
+  statusSince?: string | null
+  /** When the last report arrived. Older than a few heartbeats = offline. */
+  statusReportedAt?: string | null
 }
 
 /**

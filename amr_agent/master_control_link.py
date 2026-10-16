@@ -116,18 +116,26 @@ class MasterControlLink:
         self._status_at: float | None = None
         self._battery: float | None = None
         self._docked: bool | None = None
+        self._charging: bool | None = None
         self._event: str = ""
         self._event_index: int | None = None
         self._feedback: str = ""
 
     # ── Inputs ────────────────────────────────────────────────────────────────
 
-    def on_status(self, status: int, battery: float | None, docked: bool) -> None:
+    def on_status(
+        self,
+        status: int,
+        battery: float | None,
+        docked: bool,
+        charging: bool | None = None,
+    ) -> None:
         with self._lock:
             self._status = int(status)
             self._status_at = self._clock()
             self._battery = None if battery is None else float(battery)
             self._docked = bool(docked)
+            self._charging = None if charging is None else bool(charging)
 
     def on_event(self, event: str, index: int | None = None) -> None:
         with self._lock:
@@ -156,6 +164,18 @@ class MasterControlLink:
     def battery(self) -> float | None:
         with self._lock:
             return self._battery
+
+    @property
+    def docked(self) -> bool | None:
+        """Whether master_control last saw the robot docked, or None."""
+        with self._lock:
+            return self._docked
+
+    @property
+    def charging(self) -> bool | None:
+        """Whether the robot says it is on the charger, or None."""
+        with self._lock:
+            return self._charging
 
     def status(self) -> int | None:
         """robot_current_sts, or None when master_control has gone quiet."""

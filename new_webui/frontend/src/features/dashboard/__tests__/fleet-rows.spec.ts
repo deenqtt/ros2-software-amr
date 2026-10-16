@@ -104,3 +104,68 @@ describe('fleetLine', () => {
     expect(fleetLine(rows.filter((row) => row.tone === 'idle'))).toBe('2 robots')
   })
 })
+
+describe('fleetRows with a reported robot status', () => {
+  // The robot's own word from the registry (amr_agent/robot_status.py), fresh
+  // as of `now`. Without a fresh report the legacy desired-mode lines stand.
+  const now = Date.parse('2026-10-16T08:00:00Z') + 1_000
+
+  function reportedRobot(status: RobotConfig['status'], detail = ''): RobotConfig {
+    return {
+      ...robot('s', 'AMR-09'),
+      status,
+      statusDetail: detail,
+      statusReportedAt: '2026-10-16T08:00:00Z',
+    }
+  }
+
+  function rowsFor(status: RobotConfig['status'], detail = '') {
+    return fleetRows({
+      robots: [reportedRobot(status, detail)],
+      attention: [],
+      linkFor: () => 'online',
+      runFor: () => null,
+      now,
+    })
+  }
+
+  it("speaks the robot's word instead of the desired-mode guess", () => {
+    expect(rowsFor('charging', 'battery 44%')[0]).toMatchObject({
+      tone: 'idle',
+      status: 'battery 44%',
+    })
+    expect(rowsFor('mapping')[0]).toMatchObject({ tone: 'active', status: 'Surveying' })
+  })
+
+  it('a robot saying error is not Idle, whatever the registry intended', () => {
+    expect(rowsFor('error', 'lap 1, step 2: no valid path found')[0]).toMatchObject({
+      tone: 'fault',
+      status: 'lap 1, step 2: no valid path found',
+    })
+  })
+
+  it('a robot waiting for the operator ranks as a warning', () => {
+    expect(rowsFor('waiting_confirm', 'waiting for the operator at Table 3')[0]).toMatchObject({
+      tone: 'warning',
+      status: 'waiting for the operator at Table 3',
+    })
+  })
+
+  it('a stale report does not speak at all', () => {
+    const stale = fleetRows({
+      robots: [
+        {
+          ...reportedRobot('error', 'the last mission failed'),
+          statusReportedAt: '2026-10-16T07:00:00Z',
+        },
+      ],
+      attention: [],
+      linkFor: () => 'online',
+      runFor: () => null,
+      now,
+    })
+    // The link indicator owns silence; the row keeps the desired-mode line
+    // rather than quoting an hour-old word as if it were current.
+    expect(stale[0]).toMatchObject({ tone: 'idle', status: 'Idle' })
+  })
+})

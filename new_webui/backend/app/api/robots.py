@@ -30,7 +30,14 @@ from app.repositories import missions as missions_repo
 from app.repositories import robots as repo
 from app.schemas.map import AssignMapIn
 from app.schemas.mission import RunPlan, StepOut
-from app.schemas.robot import AgentTokenOut, RobotCreate, RobotOut, RobotUpdate, SetModeIn
+from app.schemas.robot import (
+    AgentTokenOut,
+    RobotCreate,
+    RobotOut,
+    RobotStatusReport,
+    RobotUpdate,
+    SetModeIn,
+)
 from app.security import hash_token
 
 router = APIRouter(prefix="/api/robots", tags=["robots"], dependencies=[Reader])
@@ -152,6 +159,33 @@ def set_mode(
 
     row = repo.get_robot(connection, robot_id)
     if row is None:  # pragma: no cover — existence was just checked
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Robot not found")
+    return _to_out(row)
+
+
+@router.put("/{robot_id}/status", response_model=RobotOut)
+def report_status(
+    robot_id: str,
+    body: RobotStatusReport,
+    principal: Annotated[Principal, OperatorOrAgent],
+    connection: Connection,
+) -> RobotOut:
+    """
+    The robot's own word for what it is doing, from the shared vocabulary.
+
+    Written by the robot's agent — on change, and as a heartbeat — so every
+    surface reads one status from the registry instead of translating the
+    robot's topics again (which is how "waiting for the operator" once showed
+    as "Docking"). An operator may correct it by hand, the way they may set
+    the desired mode.
+
+    `offline` is not accepted here: a status that stops arriving is called
+    offline by the reader, from the age of status_reported_at.
+    """
+    ensure_robot(principal, robot_id)
+    with transaction(connection):
+        row = repo.set_status(connection, robot_id, body.status, body.detail)
+    if row is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Robot not found")
     return _to_out(row)
 

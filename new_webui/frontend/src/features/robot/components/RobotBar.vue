@@ -6,17 +6,20 @@
  * which robot, whether it is reachable, a tab to the other view, and Stop &
  * park — on every robot page, not only the one with the map.
  */
+import { computed } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import { Bot, LayoutDashboard, OctagonX } from 'lucide-vue-next'
 import type { RobotConfig } from '@/domain/types'
 import type { LinkState } from '@/domain/ros/link'
+import { robotStatusDescriptor } from '@/domain/robotStatus'
 import { Button } from '@/shared/ui/button'
 import LinkIndicator from '@/shared/components/LinkIndicator.vue'
+import StatusBadge from '@/shared/components/StatusBadge.vue'
 import BlockedTip from '@/shared/components/BlockedTip.vue'
 import { usePermission } from '@/shared/composables/usePermission'
 import { cn } from '@/shared/lib/utils'
 
-defineProps<{
+const props = defineProps<{
   robot: RobotConfig
   linkState: LinkState
   attempt: number
@@ -27,6 +30,13 @@ const emit = defineEmits<{ stop: [] }>()
 
 const route = useRoute()
 const { canOperate, operateBlocker } = usePermission()
+
+// The robot's own word for what it is doing, from the registry. Distinct from
+// the link state beside it: a link can be fine while the robot reports an
+// error, and that disagreement is the one thing an operator must not miss.
+const status = computed(() =>
+  robotStatusDescriptor(props.robot.status, props.robot.statusReportedAt),
+)
 
 const TABS = [
   { name: 'robot-nav', label: 'Navigation' },
@@ -52,6 +62,12 @@ const TABS = [
       </p>
     </div>
     <LinkIndicator :state="linkState" :attempt="attempt" />
+    <StatusBadge
+      :tone="status.tone"
+      :label="status.label"
+      :pulse="status.tone === 'attention'"
+      :title="props.robot.statusDetail || undefined"
+    />
 
     <!-- On a phone the tabs take their own full-width row, last; from md they
          sit inline after the name as before. -->

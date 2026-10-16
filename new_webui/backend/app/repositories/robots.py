@@ -17,7 +17,8 @@ ACCENT_COUNT = 8
 _COLUMNS = """
     id, name, bridge_url, ros_domain_id, camera_url,
     namespace, serial, accent, active_map_id, desired_mode, created_at, updated_at,
-    agent_token_hash IS NOT NULL AS agent_token_set, agent_token_created_at
+    agent_token_hash IS NOT NULL AS agent_token_set, agent_token_created_at,
+    status, status_detail, status_since, status_reported_at
 """
 
 
@@ -141,6 +142,35 @@ def set_desired_mode(connection: sqlite3.Connection, robot_id: str, mode: str) -
         "UPDATE robots SET desired_mode = ? WHERE id = ?", (mode, robot_id)
     )
     return cursor.rowcount > 0
+
+
+def set_status(
+    connection: sqlite3.Connection, robot_id: str, status: str, detail: str
+) -> sqlite3.Row | None:
+    """
+    Record the robot's unified status report.
+
+    Separate from update_robot for the same reason set_desired_mode is: this is
+    the robot reporting, not a person editing. Inside the SET, `status` still
+    holds the stored value — SQLite evaluates SET expressions against the old
+    row — so status_since moves only when the status itself changes, and the
+    heartbeat does not rewrite the "on mission for 4 minutes" clock.
+    """
+    if get_robot(connection, robot_id) is None:
+        return None
+    connection.execute(
+        """
+        UPDATE robots
+        SET status = ?,
+            status_detail = ?,
+            status_since = CASE WHEN status IS ? THEN status_since
+                                ELSE datetime('now') END,
+            status_reported_at = datetime('now')
+        WHERE id = ?
+        """,
+        (status, detail, status, robot_id),
+    )
+    return get_robot(connection, robot_id)
 
 
 def get_robot_by_agent_token(connection: sqlite3.Connection, token_hash: str) -> sqlite3.Row | None:

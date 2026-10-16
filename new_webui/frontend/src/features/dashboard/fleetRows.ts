@@ -13,8 +13,9 @@
  * The exception is a robot in the middle of a mission: losing sight of a robot
  * that is driving a route is worth a warning, so that row stays near the top.
  */
+import { robotStatusDescriptor, robotStatusLine } from '@/domain/robotStatus'
 import type { LinkState } from '@/domain/ros/link'
-import type { MissionRun, RobotConfig } from '@/domain/types'
+import type { MissionRun, RobotConfig, StatusTone } from '@/domain/types'
 import type { AttentionItem } from './attention'
 
 export type FleetRowTone = 'fault' | 'warning' | 'active' | 'idle' | 'off'
@@ -35,9 +36,19 @@ export interface FleetRowInput {
   attention: readonly AttentionItem[]
   linkFor: (robotId: string) => LinkState
   runFor: (robotId: string) => MissionRun | null
+  /** Wall clock, injectable so tests can hold time still. */
+  now?: number
 }
 
 const RANK: Record<FleetRowTone, number> = { fault: 0, warning: 1, active: 2, idle: 3, off: 4 }
+
+/** The shared StatusTone scale onto the few tones a phone row has. */
+function toneOf(tone: StatusTone): FleetRowTone {
+  if (tone === 'fault') return 'fault'
+  if (tone === 'attention' || tone === 'warning') return 'warning'
+  if (tone === 'active') return 'active'
+  return 'idle'
+}
 
 const LIVE_RUN = new Set(['running', 'stopping'])
 
@@ -52,7 +63,7 @@ function runLine(run: MissionRun): string {
   return `${head} · step ${run.stepIndex + 1}${lap}`
 }
 
-function rowFor(robot: RobotConfig, input: FleetRowInput): FleetRow {
+function rowFor(robot: RobotConfig, input: FleetRowInput, now: number): FleetRow {
   const link = input.linkFor(robot.id)
   const base = {
     robotId: robot.id,
@@ -87,14 +98,30 @@ function rowFor(robot: RobotConfig, input: FleetRowInput): FleetRow {
 
   if (working) return { ...base, tone: 'active', status: runLine(run) }
 
+  // The robot's own word, when it has one and it is fresh. It outranks the
+  // desired-mode guesswork below — a robot saying "error" is not "Idle",
+  // whatever the registry intended — but not the run line above, which says
+  // more while a mission is actually driving. A stale report is left to the
+  // link indicator beside it; repeating "offline" here would be the same
+  // fact twice.
+  const descriptor = robotStatusDescriptor(robot.status, robot.statusReportedAt, now)
+  if (!descriptor.offline) {
+    return {
+      ...base,
+      tone: toneOf(descriptor.tone),
+      status: robotStatusLine(robot.status, robot.statusDetail, robot.statusReportedAt, now),
+    }
+  }
+
   if (robot.desiredMode === 'idle') return { ...base, tone: 'idle', status: 'Parked' }
   if (robot.desiredMode === 'map') return { ...base, tone: 'active', status: 'Surveying' }
   return { ...base, tone: 'idle', status: 'Idle' }
 }
 
 export function fleetRows(input: FleetRowInput): FleetRow[] {
+  const now = input.now ?? Date.now()
   return input.robots
-    .map((robot) => rowFor(robot, input))
+    .map((robot) => rowFor(robot, input, now))
     .sort(
       (a, b) =>
         RANK[a.tone] - RANK[b.tone] ||

@@ -21,6 +21,10 @@ const wire = {
   desired_mode: 'nav' as const,
   agent_token_set: true,
   agent_token_created_at: '2026-10-01T08:00:00Z',
+  status: 'ready' as const,
+  status_detail: 'battery 87%',
+  status_since: '2026-10-16T07:59:40Z',
+  status_reported_at: '2026-10-16T08:00:00Z',
   created_at: '2026-09-25 08:00:00',
   updated_at: '2026-09-25 08:00:00',
 }
@@ -40,7 +44,19 @@ describe('fromWire', () => {
       desiredMode: 'nav',
       agentTokenSet: true,
       agentTokenCreatedAt: '2026-10-01T08:00:00Z',
+      status: 'ready',
+      statusDetail: 'battery 87%',
+      statusSince: '2026-10-16T07:59:40Z',
+      statusReportedAt: '2026-10-16T08:00:00Z',
     })
+  })
+
+  it('maps a robot without a status report yet', () => {
+    // A backend (or robot) that has not spoken yet, not a broken record.
+    const silent = fromWire({ ...wire, status: null, status_detail: '', status_since: null, status_reported_at: null })
+    expect(silent.status).toBeNull()
+    expect(silent.statusDetail).toBe('')
+    expect(silent.statusReportedAt).toBeNull()
   })
 
   it('maps an unset agent token', () => {
