@@ -23,11 +23,13 @@ function room(): Grid {
 }
 
 describe('stagingPose', () => {
-  it('stands one metre behind the station, facing the same way', () => {
+  it('stands one metre behind the station, facing away from it', () => {
     const pose = stagingPose({ x: 5, y: 3, yaw: Math.PI / 2 })
     expect(pose.x).toBeCloseTo(5)
     expect(pose.y).toBeCloseTo(2)
-    expect(pose.yaw).toBeCloseTo(Math.PI / 2)
+    // The staging heading is the station's plus ≈ π (staging_yaw_offset),
+    // wrapped to [-π, π]: the robot backs onto the station tail first.
+    expect(pose.yaw).toBeCloseTo(-Math.PI / 2)
   })
 })
 

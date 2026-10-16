@@ -761,7 +761,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
           <FormField
             label="Heading (°)"
             required
-            hint="Which way the robot faces on arrival."
+            hint="Which way the robot faces when driving here. Pick & drop and charging stations dock in reverse: the robot ends up facing away from this heading."
             class="col-span-2 sm:col-span-1"
           >
             <template #default="{ id }">
@@ -797,7 +797,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
           <p class="mt-xxs text-caption text-muted">
             {{
               formDocking.problem ??
-              'Pick and drop steps stop here first, then drive straight onto the station.'
+              'Pick and drop steps stop here first, then reverse onto the station.'
             }}
           </p>
         </div>

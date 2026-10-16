@@ -3,18 +3,23 @@
  *
  * A pick or drop step docks: master_control asks Nav2's docking server, which
  * first drives the robot to a *staging pose* a fixed distance behind the
- * station, along the station's heading, and only then creeps forward onto the
- * station itself. The operator only ever places the station. When the staging
- * pose lands in a wall the planner refuses it ("no valid path found") and the
+ * station, along the station's heading but facing away from it, and then
+ * reverses onto the station itself — rear first, the same way it meets its
+ * charger. The operator only ever places the station. When the staging pose
+ * lands in a wall the planner refuses it ("no valid path found") and the
  * robot never moves — with nothing on the map saying why. This module is what
  * lets the station editor draw that pose and say so before a mission finds out.
  *
  * The numbers are the robot's (amr_description/config/amr_cfg.yaml):
- * docking_server.simple_charging_dock.staging_x_offset and the costmap
- * footprint. They are written here rather than read from the robot because the
- * editor works without one connected; change them together.
+ * docking_server.simple_charging_dock.staging_x_offset,
+ * docking_server.simple_charging_dock.staging_yaw_offset (≈ π, hence the
+ * reversed heading) and the costmap footprint. They are written here rather
+ * than read from the robot because the editor works without one connected;
+ * change them together.
  */
 import { type Grid, type MapPlacement } from './map/pgm'
+
+import { normalizeAngle } from './ros/quaternion'
 
 /** staging_x_offset: -1.0 — the staging pose is this far behind the station. */
 export const STAGING_DISTANCE_M = 1.0
@@ -36,12 +41,16 @@ export interface PlanarPose {
   yaw: number
 }
 
-/** The staging pose of a station: STAGING_DISTANCE_M behind it, same heading. */
+/**
+ * The staging pose of a station: STAGING_DISTANCE_M behind it, facing away
+ * from it. The robot waits here tail first and then backs straight onto the
+ * station — staging_yaw_offset is ≈ π and dock_backwards is on.
+ */
 export function stagingPose(station: PlanarPose): PlanarPose {
   return {
     x: station.x - Math.cos(station.yaw) * STAGING_DISTANCE_M,
     y: station.y - Math.sin(station.yaw) * STAGING_DISTANCE_M,
-    yaw: station.yaw,
+    yaw: normalizeAngle(station.yaw + Math.PI),
   }
 }
 
@@ -139,7 +148,7 @@ function nearestWall(grid: Grid, placement: MapPlacement, at: PlanarPose): numbe
 }
 
 /**
- * Whether a robot can stand at a station's staging pose and drive straight in.
+ * Whether a robot can stand at a station's staging pose and back straight in.
  *
  * Checks the footprint (plus CLEARANCE_MARGIN_M) at the staging pose, then the
  * band it sweeps on the way to the station. The station's own footprint is not
@@ -160,7 +169,7 @@ export function checkDocking(
   if (atStaging === 'occupied') return { staging, problem: 'staging-blocked', wallDistance }
 
   // From the staging pose's centre to the station's: the band the robot's
-  // body sweeps while it creeps in.
+  // body sweeps while it reverses in.
   const band: PlanarPose = {
     x: (staging.x + station.x) / 2,
     y: (staging.y + station.y) / 2,

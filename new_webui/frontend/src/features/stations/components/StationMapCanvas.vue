@@ -243,8 +243,9 @@ const ENTRY_UNSURE = '#e8a317'
 
 /**
  * The docking entry of one station: a robot-sized outline where the robot
- * stops first, a dashed line along the way it creeps in, and the robot's
- * outline on the station itself, faint.
+ * stops first, an arrow for the way it faces there — away from the station,
+ * tail towards it — a dashed line along the way it reverses in, and the
+ * robot's outline on the station itself, faint.
  */
 function drawDockingEntry(context: CanvasRenderingContext2D, station: PlanarPose) {
   const grid = props.grid
@@ -290,7 +291,9 @@ function drawDockingEntry(context: CanvasRenderingContext2D, station: PlanarPose
     context.setLineDash([])
   }
 
-  // The way in, entry to station, with an arrowhead at the station end.
+  // The way in, entry to station, with an arrowhead at the station end. The
+  // robot travels this way in reverse gear; the arrow drawn next shows which
+  // way its body faces while it does.
   const from = toScreen(check.staging.x, check.staging.y)
   const to = toScreen(station.x, station.y)
   if (from && to) {
@@ -309,6 +312,30 @@ function drawDockingEntry(context: CanvasRenderingContext2D, station: PlanarPose
     context.moveTo(tip.x, tip.y)
     context.lineTo(tip.x - Math.cos(angle - 0.5) * 7, tip.y - Math.sin(angle - 0.5) * 7)
     context.lineTo(tip.x - Math.cos(angle + 0.5) * 7, tip.y - Math.sin(angle + 0.5) * 7)
+    context.closePath()
+    context.fill()
+  }
+
+  // Which way the robot faces at the entry: away from the station, so the
+  // dashed move into the station reads as reversing. Without this arrow the
+  // entry looks like a forward approach.
+  if (from) {
+    const shaft = 16
+    const wing = 6
+    const sa = -check.staging.yaw // screen angle: the canvas y axis points down
+    const head = { sx: from.sx + Math.cos(sa) * shaft, sy: from.sy + Math.sin(sa) * shaft }
+    context.strokeStyle = colour
+    context.lineWidth = 2
+    context.lineCap = 'round'
+    context.beginPath()
+    context.moveTo(from.sx, from.sy)
+    context.lineTo(head.sx, head.sy)
+    context.stroke()
+    context.fillStyle = colour
+    context.beginPath()
+    context.moveTo(head.sx + Math.cos(sa) * wing, head.sy + Math.sin(sa) * wing)
+    context.lineTo(head.sx - Math.cos(sa - 0.5) * wing, head.sy - Math.sin(sa - 0.5) * wing)
+    context.lineTo(head.sx - Math.cos(sa + 0.5) * wing, head.sy - Math.sin(sa + 0.5) * wing)
     context.closePath()
     context.fill()
   }
