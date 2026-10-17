@@ -52,6 +52,21 @@ describe('robotStatusDescriptor', () => {
     expect(gone).toEqual({ tone: 'warning', label: 'Offline', offline: true })
   })
 
+  it('reads a registry stamp that carries no zone as UTC', () => {
+    // The format the backend actually sends: SQLite's datetime('now') writes
+    // "2026-10-16 08:00:00", which is UTC with nothing on it to say so. Read
+    // as local wall-clock it lands seven hours adrift in WIB, and a report
+    // two seconds old renders as Offline — which is exactly what it did.
+    const stamp = '2026-10-16 08:00:00'
+    const twoSecondsOn = Date.parse('2026-10-16T08:00:02Z')
+    expect(robotStatusDescriptor('on_mission', stamp, twoSecondsOn).offline).toBe(false)
+    expect(robotStatusDescriptor('on_mission', stamp, twoSecondsOn).label).toBe('On mission')
+
+    // It still goes quiet when the robot really has stopped reporting.
+    const fiveMinutesOn = Date.parse('2026-10-16T08:05:00Z')
+    expect(robotStatusDescriptor('on_mission', stamp, fiveMinutesOn).label).toBe('Offline')
+  })
+
   it('does not invent an offline that the clock cannot support', () => {
     // A malformed stamp is missing information, not an outage: it reads as
     // unknown rather than alarming.

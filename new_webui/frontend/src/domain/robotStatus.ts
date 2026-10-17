@@ -74,6 +74,22 @@ const GONE_QUIET: RobotStatusDescriptor = {
   offline: true,
 }
 
+/**
+ * A registry stamp as an instant.
+ *
+ * SQLite's `datetime('now')` writes "2026-10-17 03:14:55": UTC, but with no
+ * zone marker to say so. Handed to `Date.parse` that reads as local wall-clock
+ * — seven hours adrift in WIB, which made a two-second-old report look hours
+ * stale and every robot read as Offline. So the zone is made explicit here, the
+ * same way `auditLabel.ts` does it; a stamp that already carries one is left
+ * alone.
+ */
+function parseReported(value: string): number {
+  const hasZone = /[zZ]$|[+-]\d\d:?(\d\d)?$/.test(value.trim())
+  const iso = hasZone ? value.trim() : `${value.trim().replace(' ', 'T')}Z`
+  return Date.parse(iso)
+}
+
 /** The status to show for one robot, staleness judged against `now`. */
 export function robotStatusDescriptor(
   status: RobotStatusValue | null | undefined,
@@ -82,7 +98,7 @@ export function robotStatusDescriptor(
 ): RobotStatusDescriptor {
   if (!status) return NO_REPORT
   if (!reportedAt) return NO_REPORT
-  const reported = Date.parse(reportedAt)
+  const reported = parseReported(reportedAt)
   if (Number.isNaN(reported) || now - reported > STATUS_FRESH_MS) return GONE_QUIET
   return { tone: TONE[status], label: LABEL[status], offline: false }
 }
